@@ -403,14 +403,14 @@
     <section class="view" id="v-admin-conn">
       <div class="page-head">
         <div class="eyebrow">Administration</div>
-        <h2>Connections.</h2>
-        <p>Hier autorisierst du Verbindungen und steuerst, worauf enneo OS zugreifen darf. Einmal verbunden, ordnest du sie Open Spaces (ganzes Team) oder Restricted Spaces (ausgewählte Mitglieder) zu.</p>
+        <h2>Connections — Ennis Wissensquellen.</h2>
+        <p>Connections sind Datenquellen zum Lesen: sie werden verbunden und indexiert, damit Enni darin suchen kann. Einmal verbunden, ordnest du sie Open Spaces (ganzes Team) oder Restricted Spaces (ausgewählte Mitglieder) zu. Aktionen laufen separat über Tools.</p>
       </div>
       <div class="cost-shell">
         <div class="glass list-panel">
           <div class="row"><div><div class="r-name">📖 Wiki</div><div class="r-sub">Internes Firmenwissen · eingebaut</div></div><div></div><span class="role admin">Verbunden</span></div>
           <div class="row"><div><div class="r-name">🦊 GitLab</div><div class="r-sub">gitlab.com/enneo · read-only · persönlicher Token</div></div><div></div><span class="role admin">Verbunden</span></div>
-          <div class="row"><div><div class="r-name">＋ Add Connections</div><div class="r-sub">Google Drive, Attio, Kalender, E-Mail — folgt in Phase 2 mit OAuth (nur du / Team wählbar)</div></div><div></div><div></div></div>
+          <div class="row"><div><div class="r-name">＋ Add Connections</div><div class="r-sub">Google Drive, Notion, Slack-Channels, Attio-Reads — folgt in Phase 2 mit OAuth</div></div><div></div><div></div></div>
         </div>
       </div>
     </section>
@@ -428,38 +428,28 @@
     <!-- CONNECTORS -->
     <section class="view" id="v-conn">
       <div class="page-head">
-        <div class="eyebrow">Company Data · Tools</div>
-        <h2>Ennis Werkzeuge und Quellen.</h2>
-        <p>Tools gehören zu einem Space: in Open Spaces fürs ganze Team, in Restricted Spaces nur für ausgewählte Mitglieder. Beim Verbinden entscheidest du, ob dein Zugang nur dir oder dem Team gehört.</p>
+        <div class="eyebrow">Tools</div>
+        <h2>Aktionen, die Enni ausführen darf.</h2>
+        <p>Tools sind Aktionen in externen Systemen — anders als Connections (Wissensquellen zum Lesen). High-Stake-Aktionen wie Schreiben oder Senden brauchen immer deine Freigabe, Zugänge sind persönlich: Aktionen laufen als du.</p>
       </div>
       <div class="conn-grid">
         <div class="glass conn">
-          <div class="c-top"><span class="c-ic">📖</span><span class="c-name">Wiki</span><span class="c-state ok"><span class="dot-s"></span>Verbunden</span></div>
-          <p class="c-desc">Das interne Firmenwissen — 303 Seiten. Enni liest bei jeder Frage nach, Änderungen nur als Diff mit Freigabe.</p>
-          <div class="c-foot">Eingebaut · Team-weit</div>
-        </div>
-        <div class="glass conn">
-          <div class="c-top"><span class="c-ic">🦊</span><span class="c-name">GitLab</span><span class="c-state ok"><span class="dot-s"></span>Verbunden</span></div>
-          <p class="c-desc">Projekte, Code-Suche, Dateien und Merge Requests aus dem enneo-GitLab. Kein Schreibzugriff.</p>
-          <div class="c-foot">Persönlicher Token · read-only</div>
-        </div>
-        <div class="glass conn">
-          <div class="c-top"><span class="c-ic">📊</span><span class="c-name">Attio</span><span class="c-state off"><span class="dot-s"></span>Nicht verbunden</span></div>
-          <p class="c-desc">CRM — Companies, Notizen, Deals. Reads frei, Writes brauchen deine Freigabe.</p>
+          <div class="c-top"><span class="c-ic">✉️</span><span class="c-name">E-Mail senden</span><span class="c-state off"><span class="dot-s"></span>Nicht verbunden</span></div>
+          <p class="c-desc">Enni entwirft Mails aus Konversationen. Senden ist High-Stake — immer mit deiner Freigabe.</p>
           <div class="c-foot">Phase 2 · persönliche Anmeldung <button class="btn quiet" disabled>Verbinden</button></div>
         </div>
         <div class="glass conn">
           <div class="c-top"><span class="c-ic">📅</span><span class="c-name">Kalender</span><span class="c-state off"><span class="dot-s"></span>Nicht verbunden</span></div>
-          <p class="c-desc">Dein Kalender für Termin-Kontext und Vorschläge. Nur du — außer du gibst ihn fürs Team frei.</p>
+          <p class="c-desc">Termine vorschlagen und anlegen. Anlegen braucht Freigabe, Lesen ist frei.</p>
           <div class="c-foot">Phase 2 · nur du / Team wählbar <button class="btn quiet" disabled>Verbinden</button></div>
         </div>
         <div class="glass conn">
-          <div class="c-top"><span class="c-ic">✉️</span><span class="c-name">E-Mail</span><span class="c-state off"><span class="dot-s"></span>Nicht verbunden</span></div>
-          <p class="c-desc">Mail-Entwürfe direkt aus Konversationen. Lese-/Schreibrechte legst du beim Verbinden fest, Senden bleibt bei dir.</p>
-          <div class="c-foot">Phase 2 · nur du / Team wählbar <button class="btn quiet" disabled>Verbinden</button></div>
+          <div class="c-top"><span class="c-ic">📊</span><span class="c-name">Attio</span><span class="c-state off"><span class="dot-s"></span>Nicht verbunden</span></div>
+          <p class="c-desc">Notizen und Tasks im CRM anlegen. Writes sind High-Stake mit Freigabe, Reads laufen als Connection.</p>
+          <div class="c-foot">Phase 2 · offizieller Attio-MCP <button class="btn quiet" disabled>Verbinden</button></div>
         </div>
         <div class="glass conn" style="border-style:dashed;background:rgba(255,255,255,.25);align-items:center;justify-content:center;text-align:center;color:var(--ink-3);min-height:150px">
-          <div style="font-size:13px">+ Connector hinzufügen<br><span style="font-size:11.5px">jeder MCP-Server per URL · Phase 2</span></div>
+          <div style="font-size:13px">+ Tool hinzufügen<br><span style="font-size:11.5px">jeder MCP-Server per URL · Phase 2</span></div>
         </div>
       </div>
     </section>

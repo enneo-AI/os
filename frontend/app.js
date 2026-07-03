@@ -400,13 +400,14 @@ document.addEventListener('keydown', (e) => {
 })
 
 // ============================================================ Spaces (Dust-Pattern)
+// Connections = Wissensquellen (lesen/indexieren). Aktionen laufen separat als Tools.
 const CONNECTIONS = {
   wiki: { ic: '📖', name: 'Wiki', sub: 'Internes Firmenwissen · eingebaut' },
   gitlab: { ic: '🦊', name: 'GitLab', sub: 'Code, Projekte, MRs · read-only' },
   google_drive: { ic: '📁', name: 'Google Drive', sub: 'folgt in Phase 2', disabled: true },
-  attio: { ic: '📊', name: 'Attio', sub: 'folgt in Phase 2', disabled: true },
-  calendar: { ic: '📅', name: 'Kalender', sub: 'folgt in Phase 2', disabled: true },
-  email: { ic: '✉️', name: 'E-Mail', sub: 'folgt in Phase 2', disabled: true },
+  notion: { ic: '📄', name: 'Notion', sub: 'folgt in Phase 2', disabled: true },
+  slack: { ic: '💬', name: 'Slack-Channels', sub: 'read-only Sync · folgt in Phase 2', disabled: true },
+  attio: { ic: '📊', name: 'Attio (Reads)', sub: 'folgt in Phase 2', disabled: true },
 }
 const FOLDER_GROUPS = [
   { label: 'Unternehmen', match: (s) => !s.includes('/') },
