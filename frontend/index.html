@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>enneo OS</title>
+<style>
+  :root{
+    --ink:#1D1E2C; --ink-2:rgba(29,30,44,.62); --ink-3:rgba(29,30,44,.40);
+    --lila:#7B5AE2; --lila-deep:#5F41C4;
+    --glass:rgba(255,255,255,.58); --glass-strong:rgba(255,255,255,.78);
+    --edge:rgba(255,255,255,.85); --hair:rgba(29,30,44,.07);
+    --good:#2E9E6B; --high:#C8564E; --warn:#C08A3E;
+    --sans:ui-sans-serif,system-ui,-apple-system,"SF Pro Text","Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+    --shadow:0 24px 60px -20px rgba(83,63,165,.18), 0 2px 8px rgba(83,63,165,.05);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:var(--sans);color:var(--ink);font-size:14px;line-height:1.55;
+    -webkit-font-smoothing:antialiased;min-height:100vh;background:#F5F3F8;
+  }
+  body::before{
+    content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+    background-image:
+      radial-gradient(900px 480px at 50% -8%, rgba(255,178,125,.24), transparent 62%),
+      radial-gradient(1200px 700px at 18% 12%, rgba(160,130,240,.18), transparent 60%),
+      radial-gradient(1000px 600px at 88% 30%, rgba(190,160,255,.13), transparent 60%),
+      linear-gradient(180deg,#F4F1FA 0%,#FAF6F3 55%,#FCFAF8 100%);
+  }
+  button{font:inherit;cursor:pointer;color:inherit}
+  input,textarea,select{font:inherit;color:inherit}
+  .glass{
+    background:var(--glass);
+    -webkit-backdrop-filter:blur(28px) saturate(1.5);backdrop-filter:blur(28px) saturate(1.5);
+    border:1px solid var(--edge);border-radius:24px;box-shadow:var(--shadow);
+  }
+  [hidden]{display:none!important}
+
+  /* ---------- login ---------- */
+  .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+  .login{width:min(400px,100%);padding:36px 36px 30px}
+  .login .enni-dot{width:44px;height:44px;font-size:18px;margin-bottom:18px}
+  .login h1{font-size:24px;font-weight:650;letter-spacing:-.02em;margin:0 0 6px}
+  .login p{margin:0 0 24px;color:var(--ink-2);font-size:13.5px}
+  .login label{display:block;font-size:11px;font-weight:650;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:0 0 7px}
+  .login input{width:100%;border:1px solid var(--hair);border-radius:12px;background:rgba(255,255,255,.75);padding:11px 14px;font-size:14px;outline:0;margin-bottom:16px}
+  .login input:focus{border-color:var(--lila);box-shadow:0 0 0 3px rgba(123,90,226,.12)}
+  .login .err{color:var(--high);font-size:12.5px;margin:-6px 0 12px;min-height:18px}
+  .login button[type=submit]{width:100%;border:0;border-radius:12px;background:var(--ink);color:#fff;padding:12px;font-size:14px;font-weight:600}
+  .login button[type=submit]:hover{background:#33354a}
+  .login .foot{margin-top:18px;font-size:11.5px;color:var(--ink-3);text-align:center}
+
+  /* ---------- app shell ---------- */
+  .app{display:grid;grid-template-columns:256px minmax(0,1fr);min-height:100vh}
+  @media(max-width:900px){.app{grid-template-columns:1fr}.sidebar{position:static;height:auto;border-right:0;border-bottom:1px solid var(--hair)}}
+  .sidebar{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;padding:18px 14px 16px;border-right:1px solid var(--hair)}
+  .rail{display:flex;gap:4px;margin-bottom:16px}
+  .rail-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;border:0;background:none;border-radius:12px;padding:9px 4px 7px;color:var(--ink-3);font-size:10px;font-weight:600;letter-spacing:.02em;transition:all .15s}
+  .rail-btn svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .rail-btn:hover{color:var(--ink);background:rgba(29,30,44,.04)}
+  .rail-btn.active{color:var(--lila-deep);background:rgba(123,90,226,.08)}
+  .sb-new{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;border:0;border-radius:11px;background:var(--ink);color:#fff;padding:9px;font-size:13px;font-weight:600;margin-bottom:16px;transition:background .15s}
+  .sb-new:hover{background:#33354a}
+  .sb-scroll{flex:1;overflow-y:auto;min-height:0;margin:0 -6px;padding:0 6px}
+  .sb-sec{font-size:10.5px;font-weight:680;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:12px 6px 5px}
+  .sb-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:0;background:none;border-radius:9px;padding:7px 9px;font-size:13px;color:var(--ink-2)}
+  .sb-item:hover{background:rgba(29,30,44,.04);color:var(--ink)}
+  .sb-item.on{background:rgba(123,90,226,.08);color:var(--ink);font-weight:600}
+  .sb-item .ic{width:17px;text-align:center;flex:none;font-size:12px}
+  .sb-item .txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sb-foot{border-top:1px solid var(--hair);margin-top:10px;padding-top:12px;display:flex;align-items:center;gap:10px}
+  .avatar{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#2E3145,#4A4D66);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:650;flex:none}
+  .sb-foot .f-name{font-size:13px;font-weight:600;line-height:1.2}
+  .sb-foot .f-sub{font-size:11px;color:var(--ink-3);font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .sb-foot .logout{margin-left:auto;border:0;background:none;color:var(--ink-3);font-size:12px;padding:4px 8px;border-radius:8px}
+  .sb-foot .logout:hover{color:var(--ink);background:rgba(29,30,44,.05)}
+
+  .main{min-width:0;padding:0 24px}
+  .view{display:none}
+  .view.active{display:block}
+  @media (prefers-reduced-motion: no-preference){
+    .view.active{animation:rise .3s cubic-bezier(.2,.7,.3,1)}
+    @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  }
+  .page-head{text-align:center;margin:44px auto 32px;max-width:60ch}
+  .page-head .eyebrow{font-size:12px;font-weight:620;letter-spacing:.14em;text-transform:uppercase;color:var(--lila);margin-bottom:10px}
+  .page-head h2{font-size:32px;line-height:1.15;font-weight:640;letter-spacing:-.025em;margin:0 0 10px;text-wrap:balance}
+  .page-head p{margin:0;color:var(--ink-2);font-size:15px}
+
+  /* ---------- chat ---------- */
+  .chat-shell{max-width:720px;margin:0 auto;display:flex;flex-direction:column;min-height:100vh;padding-top:22px}
+  .chat-head{display:flex;align-items:center;gap:10px;padding:0 4px 22px;font-size:13px;color:var(--ink-2)}
+  .chat-head .t{font-weight:640;color:var(--ink);font-size:15px;max-width:46ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .badge{font-size:10.5px;font-weight:650;padding:3px 10px;border-radius:999px;background:rgba(255,255,255,.6);border:1px solid var(--hair);color:var(--ink-2)}
+  .enni-dot{width:26px;height:26px;border-radius:50%;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;background:linear-gradient(135deg,#8A6BEE,#5FA8E8);box-shadow:0 4px 12px rgba(123,90,226,.35)}
+  .msgs{display:flex;flex-direction:column;gap:30px;flex:1}
+  .msgs .empty{margin:120px auto;text-align:center;color:var(--ink-3);font-size:14px;max-width:44ch}
+  .msgs .empty .enni-dot{width:40px;height:40px;font-size:16px;margin-bottom:14px}
+  .m-user{align-self:flex-end;max-width:78%;background:var(--ink);color:#fff;border-radius:20px 20px 6px 20px;padding:12px 18px;font-size:14px;box-shadow:0 10px 26px -10px rgba(29,30,44,.35);white-space:pre-wrap;word-break:break-word}
+  .m-agent .who{display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--ink-3);margin:0 0 12px}
+  .m-agent .who b{color:var(--ink);font-weight:620}
+  .m-agent .body{padding:0 2px;font-size:14.5px}
+  .m-agent .body p{margin:0 0 13px;max-width:64ch}
+  .m-agent .body p:last-child{margin-bottom:0}
+  .m-agent .body ul,.m-agent .body ol{margin:0 0 13px;padding-left:22px;max-width:62ch}
+  .m-agent .body li{margin-bottom:4px}
+  .m-agent .body code{font-family:var(--mono);font-size:12.5px;background:rgba(29,30,44,.05);border-radius:5px;padding:1px 5px}
+  .m-agent .body pre{background:rgba(29,30,44,.05);border-radius:12px;padding:12px 15px;overflow-x:auto;font-size:12.5px}
+  .m-agent .body pre code{background:none;padding:0}
+  .m-agent .body h1,.m-agent .body h2,.m-agent .body h3{font-size:15.5px;font-weight:650;margin:18px 0 8px;letter-spacing:-.01em}
+  .m-agent .body table{border-collapse:collapse;font-size:13px;margin:0 0 13px}
+  .m-agent .body th,.m-agent .body td{border:1px solid var(--hair);padding:6px 12px;text-align:left}
+
+  .think{margin:0 0 16px;border-left:2px solid rgba(29,30,44,.1);padding-left:16px}
+  .think-head{display:flex;align-items:center;gap:8px;border:0;background:none;padding:0 0 6px;font-size:12px;color:var(--ink-3);font-weight:560;width:100%;text-align:left}
+  .think-head:hover{color:var(--ink-2)}
+  .think-head .chev{transition:transform .2s;font-size:10px}
+  .think.open .think-head .chev{transform:rotate(90deg)}
+  .think-body{position:relative;overflow:hidden;max-height:46px;cursor:pointer;
+    -webkit-mask-image:linear-gradient(180deg,#000 0%,#000 8px,transparent 44px);
+    mask-image:linear-gradient(180deg,#000 0%,#000 8px,transparent 44px);
+    transition:max-height .3s ease}
+  .think.open .think-body{max-height:2000px;cursor:default;-webkit-mask-image:none;mask-image:none}
+  .think-body .tp{margin:0 0 9px;font-size:12.5px;color:var(--ink-2);max-width:62ch;white-space:pre-wrap}
+  .tool-row{display:flex;align-items:center;gap:9px;width:100%;text-align:left;border:0;background:none;border-radius:8px;padding:6px 8px;margin:0 0 6px -8px;font-size:12.5px;color:var(--ink-2);transition:background .15s}
+  .tool-row:hover{background:rgba(29,30,44,.045);color:var(--ink)}
+  .tool-row .t-ic{width:16px;text-align:center;font-size:11px;flex:none}
+  .tool-row code{font-family:var(--mono);font-size:11.5px}
+  .tool-row .t-q{color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:24ch}
+  .tool-row .arr{margin-left:auto;color:var(--ink-3);font-size:12px}
+  .tool-row.err code{color:var(--high)}
+  .think-done{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--good);padding:2px 0}
+  .think-run{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--lila-deep);padding:2px 0}
+  .pulse{width:7px;height:7px;border-radius:50%;background:var(--lila);animation:pulse 1.2s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:.35;transform:scale(.85)}50%{opacity:1;transform:scale(1.1)}}
+
+  .m-meta{display:flex;gap:16px;align-items:center;margin:14px 2px 0;font-size:12px;color:var(--ink-3)}
+  .m-meta .cost{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+  .composer{position:sticky;bottom:18px;margin-top:30px}
+  .composer .box{display:flex;gap:12px;align-items:center;background:var(--glass-strong);-webkit-backdrop-filter:blur(24px) saturate(1.5);backdrop-filter:blur(24px) saturate(1.5);border:1px solid var(--edge);border-radius:999px;padding:8px 8px 8px 22px;box-shadow:var(--shadow)}
+  .composer input{border:0;outline:0;flex:1;background:none;font-size:14px}
+  .composer input::placeholder{color:var(--ink-3)}
+  .send{width:38px;height:38px;border-radius:50%;border:0;background:var(--lila);color:#fff;font-size:15px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+  .send:hover{background:var(--lila-deep)}
+  .send:disabled{background:rgba(29,30,44,.18);cursor:default}
+
+  /* ---------- tool detail panel ---------- */
+  .tool-panel{position:fixed;top:0;right:0;bottom:0;width:min(400px,92vw);z-index:80;background:var(--glass-strong);
+    -webkit-backdrop-filter:blur(30px) saturate(1.6);backdrop-filter:blur(30px) saturate(1.6);
+    border-left:1px solid var(--edge);box-shadow:-30px 0 70px -30px rgba(29,30,44,.25);
+    transform:translateX(105%);transition:transform .28s cubic-bezier(.2,.7,.3,1);
+    display:flex;flex-direction:column;padding:22px 24px;overflow-y:auto}
+  .tool-panel.open{transform:none}
+  .tp-head{display:flex;align-items:center;gap:10px;margin-bottom:20px}
+  .tp-head .tp-t{font-size:12px;font-weight:650;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+  .tp-close{margin-left:auto;border:0;background:none;font-size:16px;color:var(--ink-3);padding:4px 8px;border-radius:8px}
+  .tp-close:hover{color:var(--ink);background:rgba(29,30,44,.05)}
+  .tp-title{display:flex;align-items:baseline;gap:10px;margin-bottom:22px}
+  .tp-title code{font-family:var(--mono);font-size:14px;font-weight:600}
+  .tp-title .tp-time{margin-left:auto;font-size:11.5px;color:var(--ink-3);font-family:var(--mono)}
+  .tp-sec{font-size:11px;font-weight:680;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:0 0 9px}
+  .tp-block{border:1px solid var(--hair);border-radius:12px;background:rgba(255,255,255,.6);padding:13px 15px;margin-bottom:20px;font-size:12.5px}
+  .tp-out{font-family:var(--mono);font-size:11.5px;line-height:1.7;color:var(--ink-2);white-space:pre-wrap;word-break:break-word}
+  .tp-foot{margin-top:auto;font-size:11.5px;color:var(--ink-3);border-top:1px solid var(--hair);padding-top:12px}
+
+  /* ---------- wiki ---------- */
+  .wiki-grid{display:grid;grid-template-columns:264px minmax(0,1fr);gap:0;align-items:start}
+  @media(max-width:1000px){.wiki-grid{grid-template-columns:1fr}.wiki-side{border-right:0;position:static;height:auto}}
+  .wiki-side{padding:26px 16px 16px 2px;border-right:1px solid var(--hair);position:sticky;top:0;height:100vh;overflow-y:auto}
+  .ws-sec{font-size:10.5px;font-weight:680;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:12px 8px 5px}
+  .ws-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:0;background:none;border-radius:9px;padding:6px 9px;font-size:12.5px;color:var(--ink-2)}
+  .ws-item:hover{background:rgba(29,30,44,.04);color:var(--ink)}
+  .ws-item.on{background:rgba(123,90,226,.08);color:var(--ink);font-weight:600}
+  .ws-item .txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .doc{padding:34px 8px 42px 42px;max-width:820px}
+  .doc-crumb{font-size:12px;color:var(--ink-3);margin-bottom:14px;font-family:var(--mono)}
+  .doc h1{font-size:29px;font-weight:650;letter-spacing:-.02em;margin:0 0 10px}
+  .doc-meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:24px;font-size:12px;color:var(--ink-3)}
+  .doc-body h1,.doc-body h2{font-size:20px;font-weight:650;margin:26px 0 8px;letter-spacing:-.01em}
+  .doc-body h3,.doc-body h4{font-size:16px;font-weight:640;margin:22px 0 8px}
+  .doc-body p{margin:0 0 12px;max-width:68ch;font-size:14px}
+  .doc-body ul,.doc-body ol{margin:0 0 12px;padding-left:22px;max-width:64ch;font-size:14px}
+  .doc-body code{font-family:var(--mono);font-size:12.5px;background:rgba(29,30,44,.05);border-radius:5px;padding:1px 5px}
+  .doc-body pre{background:rgba(29,30,44,.05);border-radius:12px;padding:12px 15px;overflow-x:auto;font-size:12.5px}
+  .doc-body pre code{background:none;padding:0}
+  .doc-body table{border-collapse:collapse;font-size:13px;margin:0 0 14px;max-width:100%}
+  .doc-body th,.doc-body td{border:1px solid var(--hair);padding:7px 12px;text-align:left}
+  .doc-body img{max-width:100%}
+  .wiki-search{width:calc(100% - 8px);border:1px solid var(--hair);border-radius:11px;background:rgba(255,255,255,.45);padding:8px 12px;font-size:12.5px;outline:0;margin:0 0 8px 2px}
+  .wiki-search:focus{border-color:var(--lila)}
+
+  /* ---------- admin ---------- */
+  .cost-shell{max-width:760px;margin:0 auto;padding-bottom:50px}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:14px}
+  .kpi{padding:22px 24px}
+  .kpi .k-lbl{font-size:11px;font-weight:650;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+  .kpi .k-val{font-size:29px;font-weight:620;letter-spacing:-.03em;margin-top:8px;font-variant-numeric:tabular-nums}
+  .kpi .k-val small{font-size:15px;color:var(--ink-3);font-weight:500}
+  .kpi .k-sub{font-size:12.5px;color:var(--ink-2);margin-top:3px}
+  .footnote{margin:22px auto 0;color:var(--ink-3);font-size:12px;max-width:72ch;text-align:center}
+</style>
+</head>
+<body>
+
+<!-- ================= LOGIN ================= -->
+<div class="login-wrap" id="login-view" hidden>
+  <div class="glass login">
+    <span class="enni-dot">E</span>
+    <h1>enneo OS</h1>
+    <p>Melde dich mit deinem enneo-Account an.</p>
+    <form id="login-form">
+      <label for="li-email">E-Mail</label>
+      <input type="email" id="li-email" autocomplete="username" required>
+      <label for="li-pw">Passwort</label>
+      <input type="password" id="li-pw" autocomplete="current-password" required>
+      <div class="err" id="li-err"></div>
+      <button type="submit">Anmelden</button>
+    </form>
+    <div class="foot">Microsoft-SSO folgt in Phase 2</div>
+  </div>
+</div>
+
+<!-- ================= APP ================= -->
+<div class="app" id="app-view" hidden>
+  <aside class="sidebar">
+    <nav class="rail" aria-label="Bereiche">
+      <button class="rail-btn active" data-v="chat" title="Chat">
+        <svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H5l-2 2V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8z"/></svg>
+        Chat
+      </button>
+      <button class="rail-btn" data-v="wiki" title="Wiki">
+        <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V4a2 2 0 0 0-2-2H6.5A2.5 2.5 0 0 0 4 4.5v15z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg>
+        Wiki
+      </button>
+      <button class="rail-btn" data-v="admin" title="Kosten">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+        Kosten
+      </button>
+    </nav>
+
+    <button class="sb-new" id="new-chat">＋ Neue Konversation</button>
+
+    <div class="sb-scroll">
+      <div class="sb-sec">Konversationen</div>
+      <div id="conv-list"></div>
+    </div>
+
+    <div class="sb-foot">
+      <span class="avatar" id="f-avatar">·</span>
+      <div>
+        <div class="f-name" id="f-name">—</div>
+        <div class="f-sub" id="f-cost">Heute 0,00 €</div>
+      </div>
+      <button class="logout" id="logout" title="Abmelden">Abmelden</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <!-- CHAT -->
+    <section class="view active" id="v-chat">
+      <div class="chat-shell">
+        <div class="chat-head">
+          <span class="enni-dot">E</span>
+          <div>
+            <div class="t" id="chat-title">Neue Konversation</div>
+            <div style="font-size:12px;color:var(--ink-3)">Private Konversation · Enni antwortet mit deinen Rechten</div>
+          </div>
+          <span class="badge" style="margin-left:auto">nur du</span>
+        </div>
+        <div class="msgs" id="msgs"></div>
+        <div class="composer">
+          <div class="box">
+            <input type="text" id="composer-input" placeholder="Frag Enni …" aria-label="Nachricht">
+            <button class="send" id="send-btn" aria-label="Senden">↑</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- WIKI -->
+    <section class="view" id="v-wiki">
+      <div class="wiki-grid">
+        <aside class="wiki-side">
+          <input type="search" class="wiki-search" id="wiki-filter" placeholder="Seiten filtern …">
+          <div id="wiki-nav"></div>
+        </aside>
+        <article class="doc">
+          <div class="doc-crumb" id="doc-crumb">Wiki</div>
+          <h1 id="doc-title">Wähle eine Seite</h1>
+          <div class="doc-meta" id="doc-meta"></div>
+          <div class="doc-body" id="doc-body"><p style="color:var(--ink-3)">303 Seiten enneo-Wissen — Firmen-Profil, Produkt- und API-Doku. Enni nutzt genau diese Quellen für seine Antworten.</p></div>
+        </article>
+      </div>
+    </section>
+
+    <!-- ADMIN / KOSTEN -->
+    <section class="view" id="v-admin">
+      <div class="page-head">
+        <div class="eyebrow">Kosten</div>
+        <h2>Transparent, nicht überwachend.</h2>
+        <p>Kosten stehen an jeder Antwort. Analytics sind metadata-only, Inhalte werden nie ausgewertet.</p>
+      </div>
+      <div class="cost-shell">
+        <div class="kpis">
+          <div class="glass kpi">
+            <div class="k-lbl">Heute</div>
+            <div class="k-val" id="k-today">— <small>€</small></div>
+            <div class="k-sub">deine Anfragen</div>
+          </div>
+          <div class="glass kpi">
+            <div class="k-lbl">Dieser Monat</div>
+            <div class="k-val" id="k-month">— <small>€</small></div>
+            <div class="k-sub" id="k-month-sub">&nbsp;</div>
+          </div>
+          <div class="glass kpi">
+            <div class="k-lbl">Antworten gesamt</div>
+            <div class="k-val" id="k-count">—</div>
+            <div class="k-sub">seit Start</div>
+          </div>
+        </div>
+        <p class="footnote">Jede Antwort schreibt einen Eintrag mit Token-Zahlen und Euro-Betrag. Du siehst nur deine eigenen Kosten.</p>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ================= TOOL DETAIL PANEL ================= -->
+<aside class="tool-panel" id="tool-panel" aria-label="Tool-Detail">
+  <div class="tp-head">
+    <span class="tp-t">Tool-Detail</span>
+    <button class="tp-close" id="tp-close" aria-label="Schließen">✕</button>
+  </div>
+  <div class="tp-title"><span id="tp-ic">🛠️</span><code id="tp-name"></code><span class="tp-time" id="tp-time"></span></div>
+  <div class="tp-sec">Input</div>
+  <div class="tp-block"><div class="tp-out" id="tp-inputs"></div></div>
+  <div class="tp-sec">Output</div>
+  <div class="tp-block"><div class="tp-out" id="tp-output"></div></div>
+  <div class="tp-foot">Ausgeführt mit deinen Zugangsdaten · im Audit-Log attribuiert</div>
+</aside>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>
