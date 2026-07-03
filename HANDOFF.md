@@ -15,14 +15,15 @@
 ## Als Nächstes (MVP Phase 1)
 
 1. [x] **Auth-Entscheidung (2026-07-03):** enneo nutzt **Microsoft**, nicht Google — und Aleksa ist kein Azure-Admin. Darum MVP mit **Supabase Email+Passwort** (reicht für Demo + Founder-Pitch). **Microsoft-SSO (Azure AD) kommt in Phase 2**, sobald ein Admin den OAuth-Client in Entra ID anlegen kann. Schema ist provider-agnostisch (profiles-Trigger greift bei jedem Auth-Provider).
-2. [ ] **Node-Backend mit Claude Agent SDK:** ein Enni-Agent, LLM-Wrapper mit usage-Logging, Tools `wiki.read_page` / `wiki.search` / Attio read-only (offizieller MCP `mcp.attio.com`)
+2. [x] **Node-Backend geschrieben (2026-07-03, Code komplett, noch nicht deployed):** `backend/` — Express + SSE-Streaming, Enni-Tool-Loop mit dem offiziellen `@anthropic-ai/sdk` (bewusste Abweichung vom Agent-SDK: gleiche API, volle Kontrolle über Gedankenkette/Tool-Calls/cost_eur-Persistenz, läuft auf jedem Node-Hosting — Begründung in `backend/README.md`). Tools: `wiki_list_pages`/`wiki_read_page`/`wiki_search` (Supabase) + `gitlab_search_projects`/`_search_code`/`_read_file`/`_list_merge_requests` (read-only REST, ersetzt Attio als ersten Connector). Model `claude-opus-4-8`, Prompt-Caching auf dem System-Prompt, `llm_usage`-Logging mit Euro-Betrag pro Antwort. **Zum Laufen fehlt:** (a) Hosting (Punkt 3), (b) `ANTHROPIC_API_KEY` (Aleksas persönlicher), (c) `GITLAB_TOKEN` (read_api-PAT aus dem enneo-GitLab) + `GITLAB_BASE_URL` — GitLab-Tools antworten bis dahin mit "Connector noch nicht konfiguriert", Wiki-Tools funktionieren sofort. Code ist ungetestet bis zum ersten Deploy (kein lokales Node auf dieser Maschine).
+2b. [ ] **Wiki-Seeding aus Ennis KB (kuratiert):** die enneo-Wissens-Files aus claude-team (`ai-team/agents/enni-enneo/knowledge/` — enneo-company, product-docs, api-docs, Implementation-Patterns) als `wiki_pages` importieren, damit Enni im OS dasselbe Wissen hat wie in Aleksas Setup. **NICHT rein:** vertrauliche Files (`aleksa-role.md` mit Vertragsdetails, private Notes) — Wiki ist org-weit lesbar.
 3. [ ] **Backend-Hosting wählen** (Railway/Render/Fly — Edge Functions scheiden aus wegen Agent-Loop-Timeouts)
 4. [ ] **Frontend:** Chat im v5-Design (Streaming, Gedankenkette, Tool-Detail-Panel), Login via Supabase Email+Passwort (Microsoft-SSO in Phase 2)
 5. [ ] **Wissens-Update-Loop:** Diff-Vorschlag → Freigabe → Wiki-Seite aktualisiert → Audit-Eintrag
 
 ## Offene Entscheidungen
 
-- [ ] Anthropic-API-Account: eigener Key vs. enneo-Rechnung (spätestens beim Founder-Pitch klären)
+- [x] **Anthropic-API-Account (entschieden 2026-07-03):** MVP läuft mit Aleksas persönlichem API-Key — nur Test + Team-Demo, keine Produktion, Kosten minimal und via `llm_usage` transparent. enneo hat bereits einen Unternehmens-API-Account, aber Aleksa hat (noch) keinen Konsolen-Zugriff. Sobald Team-Testing startet → Firmen-Key von enneo. Key kommt als Env-Var ins Backend-Hosting, nie ins Repo.
 - [ ] Founder-Pitch-Termin: MVP-Demo als Kernstück der Team-Präsentation
 - [ ] Block-Editor-Library für Wiki-Phase-2 (BlockNote vs. Tiptap — nicht selbst bauen)
 
