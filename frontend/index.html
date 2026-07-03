@@ -74,6 +74,14 @@
   .sb-item.on{background:rgba(123,90,226,.08);color:var(--ink);font-weight:600}
   .sb-item .ic{width:17px;text-align:center;flex:none;font-size:12px}
   .sb-item .txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sb-sec .sec-add{margin-left:auto;border:0;background:none;color:var(--ink-3);font-size:13px;padding:0 4px;border-radius:5px;cursor:pointer}
+  .sb-sec .sec-add:hover{color:var(--lila)}
+  .sb-sec{display:flex;align-items:center}
+  .tree-chev{width:16px;flex:none;text-align:center;font-size:9px;color:var(--ink-3);transition:transform .18s}
+  .tree-item.open > .tree-chev{transform:rotate(90deg)}
+  .tree-kids{margin-left:14px}
+  .tree-kids .sb-item{font-size:12.5px;padding:5px 9px}
+  .tree-kids .tree-kids .sb-item{font-size:12px}
   .sb-foot{border-top:1px solid var(--hair);margin-top:10px;padding-top:12px;display:flex;align-items:center;gap:10px}
   .avatar{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#2E3145,#4A4D66);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:650;flex:none}
   .sb-foot .f-name{font-size:13px;font-weight:600;line-height:1.2}
@@ -223,6 +231,28 @@
   .role{font-size:10.5px;font-weight:650;padding:2px 10px;border-radius:999px;background:rgba(29,30,44,.06);color:var(--ink-2)}
   .role.admin{background:rgba(123,90,226,.1);color:var(--lila-deep)}
 
+  /* ---------- modal ---------- */
+  .overlay{position:fixed;inset:0;z-index:100;display:none;align-items:center;justify-content:center;background:rgba(29,30,44,.25);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+  .overlay.open{display:flex}
+  .modal{width:min(460px,calc(100vw - 40px));background:var(--glass-strong);-webkit-backdrop-filter:blur(30px) saturate(1.6);backdrop-filter:blur(30px) saturate(1.6);border:1px solid var(--edge);border-radius:24px;box-shadow:0 40px 90px -20px rgba(29,30,44,.35);padding:26px 28px}
+  .modal h3{margin:0 0 18px;font-size:17px;font-weight:650;letter-spacing:-.015em}
+  .modal label{display:block;font-size:11px;font-weight:650;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:0 0 7px}
+  .modal input[type=text]{width:100%;border:1px solid var(--hair);border-radius:12px;background:rgba(255,255,255,.75);padding:10px 14px;font-size:14px;outline:0;margin-bottom:18px}
+  .modal input[type=text]:focus{border-color:var(--lila);box-shadow:0 0 0 3px rgba(123,90,226,.12)}
+  .seg{display:flex;background:rgba(29,30,44,.05);border-radius:12px;padding:3px;margin-bottom:8px}
+  .seg button{flex:1;border:0;background:none;border-radius:9px;padding:8px;font-size:13px;font-weight:560;color:var(--ink-2)}
+  .seg button.on{background:#fff;color:var(--ink);font-weight:620;box-shadow:0 1px 4px rgba(83,63,165,.14)}
+  .seg-hint{font-size:12px;color:var(--ink-3);margin:0 0 18px}
+  .modal .m-actions{display:flex;gap:10px;justify-content:flex-end}
+  .modal .btn{padding:8px 18px;font-size:13px}
+  .btn.dark{background:var(--ink);color:#fff;border-radius:999px}
+  .btn.dark:hover{background:#33354a}
+  .check-row{display:flex;align-items:center;gap:10px;padding:7px 4px;font-size:13.5px;border-bottom:1px solid var(--hair)}
+  .check-row:last-child{border-bottom:0}
+  .check-row input{width:16px;height:16px;accent-color:var(--lila)}
+  .check-row .cr-sub{font-size:11.5px;color:var(--ink-3)}
+  .check-row.disabled{opacity:.5}
+
   /* ---------- admin ---------- */
   .cost-shell{max-width:760px;margin:0 auto;padding-bottom:50px}
   .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:14px}
@@ -285,14 +315,14 @@
 
     <!-- Sidebar-Inhalt: Spaces -->
     <div class="sb-ctx" id="sb-spaces" hidden>
-      <input type="search" class="wiki-search" id="wiki-filter" placeholder="Suchen …">
       <div class="sb-scroll">
-        <div class="sb-sec">Open Spaces</div>
-        <div class="sb-item space-root" style="cursor:default"><span class="ic">📚</span><span class="txt"><b>Company Data</b></span></div>
-        <button class="sb-item" id="space-tools"><span class="ic">🛠️</span><span class="txt">Tools &amp; Connectors</span></button>
-        <div id="wiki-nav"></div>
-        <div class="sb-sec">Restricted Spaces</div>
-        <div class="sb-item" style="cursor:default;color:var(--ink-3)"><span class="ic">🔒</span><span class="txt">Folgen in Phase 2 — mit Mitglieder-Auswahl</span></div>
+        <div class="sb-sec">Administration</div>
+        <button class="sb-item admin-area" data-view="admin-conn"><span class="ic">🔌</span><span class="txt">Connections</span></button>
+        <button class="sb-item admin-area" data-view="conn"><span class="ic">🛠️</span><span class="txt">Tools</span></button>
+        <div class="sb-sec">Open Spaces <button class="sec-add" id="new-open-space" title="Neuer Open Space">＋</button></div>
+        <div id="space-tree-open"></div>
+        <div class="sb-sec">Restricted Spaces <button class="sec-add" id="new-restricted-space" title="Neuer Restricted Space">＋</button></div>
+        <div id="space-tree-restricted"></div>
       </div>
     </div>
 
@@ -334,6 +364,53 @@
             <input type="text" id="composer-input" placeholder="Frag Enni …" aria-label="Nachricht">
             <button class="send" id="send-btn" aria-label="Senden">↑</button>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SPACES: Connected Data eines Space -->
+    <section class="view" id="v-connected">
+      <div class="page-head">
+        <div class="eyebrow" id="cd-space-name">Space</div>
+        <h2>Connected Data</h2>
+        <p>Verbundene Quellen aus der Administration, die diesem Space zugeordnet sind. Alle mit Zugriff auf den Space können sie über Enni nutzen.</p>
+      </div>
+      <div class="cost-shell">
+        <div class="glass list-panel">
+          <div id="cd-list"></div>
+          <div class="row" style="border-bottom:0">
+            <div><button class="sb-new" id="cd-add" style="margin:8px 0;max-width:320px">＋ Add data from connections</button></div>
+            <div></div><div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SPACES: Seiten-Liste (Folders / Websites) -->
+    <section class="view" id="v-pagelist">
+      <div class="page-head">
+        <div class="eyebrow" id="pl-crumb">Space</div>
+        <h2 id="pl-title">Ordner</h2>
+        <p id="pl-sub"></p>
+      </div>
+      <div class="cost-shell">
+        <input type="search" class="wiki-search" id="pl-filter" placeholder="Seiten filtern …" style="max-width:420px;margin:0 0 14px">
+        <div class="glass list-panel"><div id="pl-list"></div></div>
+      </div>
+    </section>
+
+    <!-- ADMINISTRATION: Connections -->
+    <section class="view" id="v-admin-conn">
+      <div class="page-head">
+        <div class="eyebrow">Administration</div>
+        <h2>Connections.</h2>
+        <p>Hier autorisierst du Verbindungen und steuerst, worauf enneo OS zugreifen darf. Einmal verbunden, ordnest du sie Open Spaces (ganzes Team) oder Restricted Spaces (ausgewählte Mitglieder) zu.</p>
+      </div>
+      <div class="cost-shell">
+        <div class="glass list-panel">
+          <div class="row"><div><div class="r-name">📖 Wiki</div><div class="r-sub">Internes Firmenwissen · eingebaut</div></div><div></div><span class="role admin">Verbunden</span></div>
+          <div class="row"><div><div class="r-name">🦊 GitLab</div><div class="r-sub">gitlab.com/enneo · read-only · persönlicher Token</div></div><div></div><span class="role admin">Verbunden</span></div>
+          <div class="row"><div><div class="r-name">＋ Add Connections</div><div class="r-sub">Google Drive, Attio, Kalender, E-Mail — folgt in Phase 2 mit OAuth (nur du / Team wählbar)</div></div><div></div><div></div></div>
         </div>
       </div>
     </section>
@@ -449,6 +526,41 @@
   <div class="tp-block"><div class="tp-out" id="tp-output"></div></div>
   <div class="tp-foot">Ausgeführt mit deinen Zugangsdaten · im Audit-Log attribuiert</div>
 </aside>
+
+<!-- ================= SPACE MODAL ================= -->
+<div class="overlay" id="space-overlay">
+  <div class="modal" role="dialog" aria-modal="true">
+    <h3 id="sm-title">Neuen Space erstellen</h3>
+    <label for="sm-name">Name</label>
+    <input type="text" id="sm-name" placeholder="z. B. STAWAG Rollout">
+    <label>Zugriff</label>
+    <div class="seg" id="sm-seg">
+      <button data-acc="open">🌐 Open</button>
+      <button class="on" data-acc="restricted">🔒 Restricted</button>
+    </div>
+    <p class="seg-hint" id="sm-hint">Nur ausgewählte Mitglieder haben Zugriff.</p>
+    <div id="sm-members-wrap">
+      <label>Mitglieder</label>
+      <div id="sm-members" style="max-height:180px;overflow-y:auto;margin-bottom:18px"></div>
+    </div>
+    <div class="m-actions">
+      <button class="btn quiet" id="sm-cancel">Abbrechen</button>
+      <button class="btn dark" id="sm-create">Erstellen</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= ADD CONNECTED DATA MODAL ================= -->
+<div class="overlay" id="cd-overlay">
+  <div class="modal" role="dialog" aria-modal="true">
+    <h3>Add connected data to <span id="cdm-space"></span></h3>
+    <div id="cdm-list" style="margin-bottom:18px"></div>
+    <div class="m-actions">
+      <button class="btn quiet" id="cdm-cancel">Abbrechen</button>
+      <button class="btn dark" id="cdm-save">Speichern</button>
+    </div>
+  </div>
+</div>
 
 <script type="module" src="./app.js"></script>
 </body>

@@ -68,7 +68,10 @@ async function showApp() {
 }
 
 // Rail-Navigation — Sidebar-Inhalt wechselt mit dem Bereich
-const views = { chat: 'v-chat', wiki: 'v-wiki', conn: 'v-conn', admin: 'v-admin' }
+const views = {
+  chat: 'v-chat', wiki: 'v-wiki', conn: 'v-conn', admin: 'v-admin',
+  connected: 'v-connected', pagelist: 'v-pagelist', 'admin-conn': 'v-admin-conn',
+}
 const sidebars = { chat: 'sb-chat', wiki: 'sb-spaces', admin: 'sb-admin' }
 
 function activateArea(area, view = area) {
@@ -82,7 +85,7 @@ function activateArea(area, view = area) {
 document.querySelectorAll('.rail-btn').forEach((b) =>
   b.addEventListener('click', () => {
     activateArea(b.dataset.v)
-    if (b.dataset.v === 'wiki') loadWikiNav()
+    if (b.dataset.v === 'wiki') loadSpacesTree()
     if (b.dataset.v === 'admin') { refreshCosts(); loadMembers() }
   })
 )
@@ -91,12 +94,10 @@ function activateChatView() {
   activateArea('chat')
 }
 
-// Tools & Connectors leben im Space
-$('space-tools').addEventListener('click', () => {
-  activateArea('wiki', 'conn')
-  document.querySelectorAll('#wiki-nav .ws-item').forEach((x) => x.classList.remove('on'))
-  $('space-tools').classList.add('on')
-})
+// Administration-Bereich (Spaces-Sidebar oben)
+document.querySelectorAll('.admin-area').forEach((b) =>
+  b.addEventListener('click', () => activateArea('wiki', b.dataset.view))
+)
 
 // Admin-Sidebar: zu Panel scrollen
 document.querySelectorAll('.admin-link').forEach((b) =>
@@ -398,15 +399,26 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closePanel()
 })
 
-// ============================================================ Wiki
-let wikiPages = null
-async function loadWikiNav() {
-  if (!wikiPages) {
-    const { data } = await sb.from('wiki_pages').select('slug, title, updated_at').order('slug')
-    wikiPages = data || []
-  }
-  renderWikiNav($('wiki-filter').value.trim().toLowerCase())
+// ============================================================ Spaces (Dust-Pattern)
+const CONNECTIONS = {
+  wiki: { ic: '📖', name: 'Wiki', sub: 'Internes Firmenwissen · eingebaut' },
+  gitlab: { ic: '🦊', name: 'GitLab', sub: 'Code, Projekte, MRs · read-only' },
+  google_drive: { ic: '📁', name: 'Google Drive', sub: 'folgt in Phase 2', disabled: true },
+  attio: { ic: '📊', name: 'Attio', sub: 'folgt in Phase 2', disabled: true },
+  calendar: { ic: '📅', name: 'Kalender', sub: 'folgt in Phase 2', disabled: true },
+  email: { ic: '✉️', name: 'E-Mail', sub: 'folgt in Phase 2', disabled: true },
 }
+const FOLDER_GROUPS = [
+  { label: 'Unternehmen', match: (s) => !s.includes('/') },
+  { label: 'Produkt-Doku', match: (s) => s.startsWith('product-docs/') },
+  { label: 'API-Doku', match: (s) => s.startsWith('api-docs/') },
+]
+const WEBSITE_MATCH = (s) => s.startsWith('marketing-site/')
+
+let spacesList = []
+let wikiPages = null
+let currentSpace = null
+const expanded = new Set()
 
 // Gecrawlte Seiten haben teils URLs als Titel — dann lesbaren Namen aus dem Slug bauen
 function pageLabel(p) {
@@ -415,45 +427,221 @@ function pageLabel(p) {
   return last.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-function renderWikiNav(filter) {
-  const nav = $('wiki-nav')
-  nav.innerHTML = ''
-  const groups = {}
-  for (const p of wikiPages) {
-    if (filter && !(p.title + ' ' + p.slug).toLowerCase().includes(filter)) continue
-    const g = p.slug.includes('/') ? p.slug.split('/')[0] : 'Unternehmen'
-    ;(groups[g] = groups[g] || []).push(p)
-  }
-  const order = ['Unternehmen', 'product-docs', 'api-docs', 'marketing-site']
-  const labels = { 'product-docs': 'Produkt-Doku', 'api-docs': 'API-Doku', 'marketing-site': 'Website' }
-  for (const g of [...order.filter((o) => groups[o]), ...Object.keys(groups).filter((k) => !order.includes(k))]) {
-    nav.insertAdjacentHTML('beforeend', `<div class="ws-sec">${esc(labels[g] || g)} · ${groups[g].length}</div>`)
-    for (const p of groups[g]) {
-      const btn = document.createElement('button')
-      btn.className = 'ws-item'
-      btn.dataset.slug = p.slug
-      btn.innerHTML = `<span class="txt">${esc(pageLabel(p))}</span>`
-      btn.addEventListener('click', () => openWikiPage(p.slug))
-      nav.appendChild(btn)
+async function loadSpacesTree() {
+  const [{ data: spaces }, { data: conns }, { data: pages }] = await Promise.all([
+    sb.from('spaces').select('*').order('created_at'),
+    sb.from('space_connections').select('*'),
+    wikiPages ? Promise.resolve({ data: null }) : sb.from('wiki_pages').select('slug, title, updated_at, space_id').order('slug'),
+  ])
+  if (pages) wikiPages = pages
+  spacesList = (spaces || []).map((s) => ({
+    ...s,
+    connections: (conns || []).filter((c) => c.space_id === s.id).map((c) => c.connection_key),
+  }))
+  if (!expanded.size && spacesList.length) expanded.add(spacesList[0].id)
+  renderSpaceTree()
+}
+
+function treeItem({ chev, ic, label, cls = '', indent = false }) {
+  const btn = document.createElement('button')
+  btn.className = 'sb-item tree-item ' + cls
+  btn.innerHTML = `${chev != null ? `<span class="tree-chev">${chev ? '▶' : ''}</span>` : ''}<span class="ic">${ic}</span><span class="txt">${esc(label)}</span>`
+  return btn
+}
+
+function renderSpaceTree() {
+  const openTree = $('space-tree-open')
+  const restrTree = $('space-tree-restricted')
+  openTree.innerHTML = ''
+  restrTree.innerHTML = ''
+
+  for (const s of spacesList) {
+    const target = s.restricted ? restrTree : openTree
+    const isOpen = expanded.has(s.id)
+    const row = treeItem({ chev: true, ic: s.restricted ? '🔒' : '📚', label: s.name })
+    if (isOpen) row.classList.add('open')
+    row.addEventListener('click', () => {
+      isOpen ? expanded.delete(s.id) : expanded.add(s.id)
+      renderSpaceTree()
+    })
+    target.appendChild(row)
+    if (!isOpen) continue
+
+    const kids = document.createElement('div')
+    kids.className = 'tree-kids'
+
+    const cd = treeItem({ ic: '🔌', label: 'Connected Data' })
+    cd.addEventListener('click', () => openConnectedData(s))
+    kids.appendChild(cd)
+
+    const spacePages = (wikiPages || []).filter((p) => p.space_id === s.id)
+    const foldersKey = s.id + ':folders'
+    const folders = treeItem({ chev: true, ic: '📂', label: 'Folders' })
+    if (expanded.has(foldersKey)) folders.classList.add('open')
+    folders.addEventListener('click', () => {
+      expanded.has(foldersKey) ? expanded.delete(foldersKey) : expanded.add(foldersKey)
+      renderSpaceTree()
+    })
+    kids.appendChild(folders)
+    if (expanded.has(foldersKey)) {
+      const sub = document.createElement('div')
+      sub.className = 'tree-kids'
+      for (const g of FOLDER_GROUPS) {
+        const pages = spacePages.filter((p) => g.match(p.slug) && !WEBSITE_MATCH(p.slug))
+        const item = treeItem({ ic: '📄', label: `${g.label} · ${pages.length}` })
+        item.addEventListener('click', () => openPagelist(s, g.label, pages))
+        sub.appendChild(item)
+      }
+      if (!spacePages.length) sub.insertAdjacentHTML('beforeend', '<div class="sb-item" style="cursor:default;color:var(--ink-3)"><span class="txt">Noch leer — Datei-Upload folgt</span></div>')
+      kids.appendChild(sub)
     }
+
+    const web = treeItem({ ic: '🌐', label: 'Websites' })
+    web.addEventListener('click', () => openPagelist(s, 'Websites', spacePages.filter((p) => WEBSITE_MATCH(p.slug))))
+    kids.appendChild(web)
+
+    const tools = treeItem({ ic: '🛠️', label: 'Tools' })
+    tools.addEventListener('click', () => activateArea('wiki', 'conn'))
+    kids.appendChild(tools)
+
+    target.appendChild(kids)
   }
 }
 
-$('wiki-filter').addEventListener('input', () => renderWikiNav($('wiki-filter').value.trim().toLowerCase()))
+// ---------- Connected Data eines Space
+function openConnectedData(space) {
+  currentSpace = space
+  $('cd-space-name').textContent = (space.restricted ? '🔒 ' : '📚 ') + space.name
+  const list = $('cd-list')
+  list.innerHTML = ''
+  if (!space.connections.length) {
+    list.innerHTML = '<div class="row"><div><div class="r-name">Noch keine Daten verbunden</div><div class="r-sub">Füge Quellen aus den Administration-Connections hinzu.</div></div><div></div><div></div></div>'
+  }
+  for (const key of space.connections) {
+    const c = CONNECTIONS[key] || { ic: '🔗', name: key, sub: '' }
+    list.insertAdjacentHTML('beforeend',
+      `<div class="row"><div><div class="r-name">${c.ic} ${esc(c.name)}</div><div class="r-sub">${esc(c.sub)}</div></div><div></div><span class="role admin">Aktiv</span></div>`)
+  }
+  activateArea('wiki', 'connected')
+}
 
+$('cd-add').addEventListener('click', () => {
+  if (!currentSpace) return
+  $('cdm-space').textContent = `„${currentSpace.name}“`
+  const list = $('cdm-list')
+  list.innerHTML = ''
+  for (const [key, c] of Object.entries(CONNECTIONS)) {
+    list.insertAdjacentHTML('beforeend',
+      `<label class="check-row${c.disabled ? ' disabled' : ''}">
+        <input type="checkbox" value="${key}" ${currentSpace.connections.includes(key) ? 'checked' : ''} ${c.disabled ? 'disabled' : ''}>
+        <span>${c.ic} ${esc(c.name)}</span><span class="cr-sub">${esc(c.sub)}</span>
+      </label>`)
+  }
+  $('cd-overlay').classList.add('open')
+})
+$('cdm-cancel').addEventListener('click', () => $('cd-overlay').classList.remove('open'))
+$('cdm-save').addEventListener('click', async () => {
+  const chosen = [...document.querySelectorAll('#cdm-list input:not(:disabled)')].filter((i) => i.checked).map((i) => i.value)
+  const before = currentSpace.connections.filter((k) => !CONNECTIONS[k]?.disabled)
+  const toAdd = chosen.filter((k) => !before.includes(k))
+  const toRemove = before.filter((k) => !chosen.includes(k))
+  if (toAdd.length)
+    await sb.from('space_connections').insert(toAdd.map((k) => ({ space_id: currentSpace.id, connection_key: k, added_by: session.user.id })))
+  for (const k of toRemove)
+    await sb.from('space_connections').delete().eq('space_id', currentSpace.id).eq('connection_key', k)
+  $('cd-overlay').classList.remove('open')
+  await loadSpacesTree()
+  openConnectedData(spacesList.find((s) => s.id === currentSpace.id))
+})
+
+// ---------- Seiten-Liste (Folders / Websites)
+let plPages = []
+function openPagelist(space, label, pages) {
+  currentSpace = space
+  plPages = pages
+  $('pl-crumb').textContent = (space.restricted ? '🔒 ' : '📚 ') + space.name
+  $('pl-title').textContent = label
+  $('pl-sub').textContent = pages.length ? `${pages.length} Seiten` : 'Noch keine Inhalte — Datei-Upload folgt in Phase 2.'
+  $('pl-filter').value = ''
+  renderPagelist('')
+  activateArea('wiki', 'pagelist')
+}
+
+function renderPagelist(filter) {
+  const list = $('pl-list')
+  list.innerHTML = ''
+  for (const p of plPages) {
+    if (filter && !(pageLabel(p) + ' ' + p.slug).toLowerCase().includes(filter)) continue
+    const row = document.createElement('div')
+    row.className = 'row'
+    row.style.cursor = 'pointer'
+    row.innerHTML = `<div><div class="r-name">📄 ${esc(pageLabel(p))}</div><div class="r-sub">${esc(p.slug)}</div></div><div></div><span class="r-val">${new Date(p.updated_at).toLocaleDateString('de-DE')}</span>`
+    row.addEventListener('click', () => openWikiPage(p.slug))
+    list.appendChild(row)
+  }
+}
+$('pl-filter').addEventListener('input', () => renderPagelist($('pl-filter').value.trim().toLowerCase()))
+
+// ---------- Space erstellen
+let smRestricted = true
+function openSpaceModal(restricted) {
+  smRestricted = restricted
+  $('sm-title').textContent = restricted ? 'Neuen Restricted Space erstellen' : 'Neuen Open Space erstellen'
+  document.querySelectorAll('#sm-seg button').forEach((b) => b.classList.toggle('on', (b.dataset.acc === 'restricted') === restricted))
+  updateSmHint()
+  sb.from('profiles').select('id, email, display_name').then(({ data }) => {
+    $('sm-members').innerHTML = (data || [])
+      .map((m) => `<label class="check-row"><input type="checkbox" value="${m.id}" ${m.id === session.user.id ? 'checked disabled' : ''}><span>${esc(m.display_name || m.email)}</span><span class="cr-sub">${esc(m.email)}</span></label>`)
+      .join('')
+  })
+  $('sm-name').value = ''
+  $('space-overlay').classList.add('open')
+  setTimeout(() => $('sm-name').focus(), 50)
+}
+function updateSmHint() {
+  $('sm-hint').textContent = smRestricted
+    ? 'Nur ausgewählte Mitglieder haben Zugriff — zusätzlich zum Wissen aus den Open Spaces.'
+    : 'Alle in der Organisation können auf diesen Space zugreifen.'
+  $('sm-members-wrap').style.display = smRestricted ? '' : 'none'
+}
+document.querySelectorAll('#sm-seg button').forEach((b) =>
+  b.addEventListener('click', () => {
+    smRestricted = b.dataset.acc === 'restricted'
+    document.querySelectorAll('#sm-seg button').forEach((x) => x.classList.toggle('on', x === b))
+    updateSmHint()
+  })
+)
+$('new-open-space').addEventListener('click', () => openSpaceModal(false))
+$('new-restricted-space').addEventListener('click', () => openSpaceModal(true))
+$('sm-cancel').addEventListener('click', () => $('space-overlay').classList.remove('open'))
+$('sm-create').addEventListener('click', async () => {
+  const name = $('sm-name').value.trim()
+  if (!name) return
+  const { data, error } = await sb
+    .from('spaces')
+    .insert({ name, restricted: smRestricted, created_by: session.user.id })
+    .select()
+    .single()
+  if (error) { alert('Fehler: ' + error.message); return }
+  const memberIds = smRestricted
+    ? [...document.querySelectorAll('#sm-members input')].filter((i) => i.checked || i.disabled).map((i) => i.value)
+    : []
+  if (memberIds.length)
+    await sb.from('space_members').insert(memberIds.map((uid) => ({ space_id: data.id, user_id: uid })))
+  $('space-overlay').classList.remove('open')
+  expanded.add(data.id)
+  await loadSpacesTree()
+})
+
+// ---------- Einzelseite lesen
 async function openWikiPage(slug) {
-  activateArea('wiki')
-  $('space-tools').classList.remove('on')
-  document.querySelectorAll('#wiki-nav .ws-item').forEach((x) => x.classList.toggle('on', x.dataset.slug === slug))
   const { data } = await sb.from('wiki_pages').select('*').eq('slug', slug).maybeSingle()
   if (!data) return
-  $('doc-crumb').textContent = 'Company Data / ' + data.slug
+  $('doc-crumb').textContent = (currentSpace?.name || 'Company Data') + ' / ' + data.slug
   $('doc-title').textContent = pageLabel(data)
   $('doc-meta').innerHTML = `<span>zuletzt aktualisiert ${new Date(data.updated_at).toLocaleDateString('de-DE')}</span>`
-  let content = data.content
-  // erste H1 entfernen (steht schon im Titel)
-  content = content.replace(/^#\s+.+\n/, '')
-  $('doc-body').innerHTML = md(content)
+  $('doc-body').innerHTML = md(data.content.replace(/^#\s+.+\n/, ''))
+  activateArea('wiki')
   window.scrollTo({ top: 0 })
 }
 
