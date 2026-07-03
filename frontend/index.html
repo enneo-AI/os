@@ -57,13 +57,16 @@
   .app{display:grid;grid-template-columns:256px minmax(0,1fr);min-height:100vh}
   @media(max-width:900px){.app{grid-template-columns:1fr}.sidebar{position:static;height:auto;border-right:0;border-bottom:1px solid var(--hair)}}
   .sidebar{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;padding:18px 14px 16px;border-right:1px solid var(--hair)}
-  .rail{display:flex;gap:4px;margin-bottom:16px}
-  .rail-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;border:0;background:none;border-radius:12px;padding:9px 4px 7px;color:var(--ink-3);font-size:10px;font-weight:600;letter-spacing:.02em;transition:all .15s}
-  .rail-btn svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .rail{display:flex;gap:6px;margin-bottom:16px}
+  .rail-btn{display:flex;align-items:center;gap:0;border:0;background:none;border-radius:999px;padding:9px 10px;color:var(--ink-3);font-size:13px;font-weight:600;transition:all .2s cubic-bezier(.2,.7,.3,1);white-space:nowrap;overflow:hidden}
+  .rail-btn svg{width:19px;height:19px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .rail-btn .rl{max-width:0;opacity:0;transition:all .2s cubic-bezier(.2,.7,.3,1)}
   .rail-btn:hover{color:var(--ink);background:rgba(29,30,44,.04)}
-  .rail-btn.active{color:var(--lila-deep);background:rgba(123,90,226,.08)}
+  .rail-btn.active{color:var(--lila-deep);background:rgba(123,90,226,.1)}
+  .rail-btn.active .rl{max-width:90px;opacity:1;margin-left:7px}
   .sb-new{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;border:0;border-radius:11px;background:var(--ink);color:#fff;padding:9px;font-size:13px;font-weight:600;margin-bottom:16px;transition:background .15s}
   .sb-new:hover{background:#33354a}
+  .sb-ctx{display:flex;flex-direction:column;flex:1;min-height:0}
   .sb-scroll{flex:1;overflow-y:auto;min-height:0;margin:0 -6px;padding:0 6px}
   .sb-sec{font-size:10.5px;font-weight:680;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:12px 6px 5px}
   .sb-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:0;background:none;border-radius:9px;padding:7px 9px;font-size:13px;color:var(--ink-2)}
@@ -257,29 +260,50 @@
     <nav class="rail" aria-label="Bereiche">
       <button class="rail-btn active" data-v="chat" title="Chat">
         <svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H5l-2 2V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8z"/></svg>
-        Chat
+        <span class="rl">Chat</span>
       </button>
-      <button class="rail-btn" data-v="wiki" title="Wiki">
+      <button class="rail-btn" data-v="wiki" title="Spaces">
         <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V4a2 2 0 0 0-2-2H6.5A2.5 2.5 0 0 0 4 4.5v15z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg>
-        Wiki
-      </button>
-      <button class="rail-btn" data-v="conn" title="Connectors">
-        <svg viewBox="0 0 24 24"><path d="M9 7 7 9a5 5 0 0 0 0 7l1 1a5 5 0 0 0 7 0l2-2"/><path d="m15 17 2-2a5 5 0 0 0 0-7l-1-1a5 5 0 0 0-7 0L7 9"/></svg>
-        Connect
+        <span class="rl">Spaces</span>
       </button>
       <button class="rail-btn" data-v="admin" title="Admin">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h0a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h0a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v0a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>
-        Admin
+        <span class="rl">Admin</span>
       </button>
     </nav>
 
-    <button class="sb-new" id="new-chat">＋ Neue Konversation</button>
+    <!-- Sidebar-Inhalt: Chat -->
+    <div class="sb-ctx" id="sb-chat">
+      <button class="sb-new" id="new-chat">＋ Neue Konversation</button>
+      <div class="sb-scroll">
+        <div class="sb-sec">Pods</div>
+        <div class="sb-item" style="cursor:default;color:var(--ink-3)"><span class="ic">⬡</span><span class="txt">Team-Pods folgen in Phase 2</span></div>
+        <div class="sb-sec">Konversationen</div>
+        <div id="conv-list"></div>
+      </div>
+    </div>
 
-    <div class="sb-scroll">
-      <div class="sb-sec">Pods</div>
-      <div class="sb-item" style="cursor:default;color:var(--ink-3)"><span class="ic">⬡</span><span class="txt">Team-Pods folgen in Phase 2</span></div>
-      <div class="sb-sec">Konversationen</div>
-      <div id="conv-list"></div>
+    <!-- Sidebar-Inhalt: Spaces -->
+    <div class="sb-ctx" id="sb-spaces" hidden>
+      <input type="search" class="wiki-search" id="wiki-filter" placeholder="Suchen …">
+      <div class="sb-scroll">
+        <div class="sb-sec">Open Spaces</div>
+        <div class="sb-item space-root" style="cursor:default"><span class="ic">📚</span><span class="txt"><b>Company Data</b></span></div>
+        <button class="sb-item" id="space-tools"><span class="ic">🛠️</span><span class="txt">Tools &amp; Connectors</span></button>
+        <div id="wiki-nav"></div>
+        <div class="sb-sec">Restricted Spaces</div>
+        <div class="sb-item" style="cursor:default;color:var(--ink-3)"><span class="ic">🔒</span><span class="txt">Folgen in Phase 2 — mit Mitglieder-Auswahl</span></div>
+      </div>
+    </div>
+
+    <!-- Sidebar-Inhalt: Admin -->
+    <div class="sb-ctx" id="sb-admin" hidden>
+      <div class="sb-scroll">
+        <div class="sb-sec">Administration</div>
+        <button class="sb-item admin-link" data-target="k-today"><span class="ic">💶</span><span class="txt">Kosten</span></button>
+        <button class="sb-item admin-link" data-target="panel-model"><span class="ic">🧠</span><span class="txt">Modell</span></button>
+        <button class="sb-item admin-link" data-target="panel-members"><span class="ic">👥</span><span class="txt">Mitglieder</span></button>
+      </div>
     </div>
 
     <div class="sb-foot">
@@ -314,28 +338,22 @@
       </div>
     </section>
 
-    <!-- WIKI -->
+    <!-- SPACES / WIKI -->
     <section class="view" id="v-wiki">
-      <div class="wiki-grid">
-        <aside class="wiki-side">
-          <input type="search" class="wiki-search" id="wiki-filter" placeholder="Seiten filtern …">
-          <div id="wiki-nav"></div>
-        </aside>
-        <article class="doc">
-          <div class="doc-crumb" id="doc-crumb">Wiki</div>
-          <h1 id="doc-title">Wähle eine Seite</h1>
-          <div class="doc-meta" id="doc-meta"></div>
-          <div class="doc-body" id="doc-body"><p style="color:var(--ink-3)">303 Seiten enneo-Wissen — Firmen-Profil, Produkt- und API-Doku. Enni nutzt genau diese Quellen für seine Antworten.</p></div>
-        </article>
-      </div>
+      <article class="doc" style="margin:0 auto">
+        <div class="doc-crumb" id="doc-crumb">Company Data</div>
+        <h1 id="doc-title">Company Data</h1>
+        <div class="doc-meta" id="doc-meta"></div>
+        <div class="doc-body" id="doc-body"><p style="color:var(--ink-3)">Der Open Space fürs ganze Team: 303 Seiten enneo-Wissen plus die verbundenen Tools. Enni nutzt genau diese Quellen für seine Antworten. Wähle links eine Seite.</p></div>
+      </article>
     </section>
 
     <!-- CONNECTORS -->
     <section class="view" id="v-conn">
       <div class="page-head">
-        <div class="eyebrow">Connectors</div>
+        <div class="eyebrow">Company Data · Tools</div>
         <h2>Ennis Werkzeuge und Quellen.</h2>
-        <p>Persönliche Zugänge, wo möglich — Aktionen laufen als du, Rechte vererben sich automatisch. Beim Verbinden entscheidest du: nur für dich oder fürs Team freigegeben.</p>
+        <p>Tools gehören zu einem Space: in Open Spaces fürs ganze Team, in Restricted Spaces nur für ausgewählte Mitglieder. Beim Verbinden entscheidest du, ob dein Zugang nur dir oder dem Team gehört.</p>
       </div>
       <div class="conn-grid">
         <div class="glass conn">
@@ -395,7 +413,7 @@
           </div>
         </div>
 
-        <div class="glass list-panel">
+        <div class="glass list-panel" id="panel-model">
           <h3>Modell</h3>
           <div class="row">
             <div><div class="r-name">Enni läuft auf Claude Opus 4.8</div><div class="r-sub">Anthropic · Provider-Auswahl und weitere Modelle folgen in Phase 2</div></div>
@@ -403,7 +421,7 @@
           </div>
         </div>
 
-        <div class="glass list-panel">
+        <div class="glass list-panel" id="panel-members">
           <h3>Mitglieder</h3>
           <div id="member-list"></div>
           <div class="row">

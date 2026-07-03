@@ -67,23 +67,44 @@ async function showApp() {
   newConversation()
 }
 
-// Rail-Navigation
+// Rail-Navigation — Sidebar-Inhalt wechselt mit dem Bereich
 const views = { chat: 'v-chat', wiki: 'v-wiki', conn: 'v-conn', admin: 'v-admin' }
+const sidebars = { chat: 'sb-chat', wiki: 'sb-spaces', admin: 'sb-admin' }
+
+function activateArea(area, view = area) {
+  document.querySelectorAll('.rail-btn').forEach((x) => x.classList.toggle('active', x.dataset.v === area))
+  Object.entries(views).forEach(([k, id]) => $(id).classList.toggle('active', k === view))
+  Object.entries(sidebars).forEach(([k, id]) => ($(id).hidden = k !== area))
+  closePanel()
+  window.scrollTo({ top: 0 })
+}
+
 document.querySelectorAll('.rail-btn').forEach((b) =>
   b.addEventListener('click', () => {
-    document.querySelectorAll('.rail-btn').forEach((x) => x.classList.toggle('active', x === b))
-    Object.entries(views).forEach(([k, id]) => $(id).classList.toggle('active', k === b.dataset.v))
-    closePanel()
+    activateArea(b.dataset.v)
     if (b.dataset.v === 'wiki') loadWikiNav()
     if (b.dataset.v === 'admin') { refreshCosts(); loadMembers() }
-    window.scrollTo({ top: 0 })
   })
 )
 
 function activateChatView() {
-  document.querySelectorAll('.rail-btn').forEach((x) => x.classList.toggle('active', x.dataset.v === 'chat'))
-  Object.entries(views).forEach(([k, id]) => $(id).classList.toggle('active', k === 'chat'))
+  activateArea('chat')
 }
+
+// Tools & Connectors leben im Space
+$('space-tools').addEventListener('click', () => {
+  activateArea('wiki', 'conn')
+  document.querySelectorAll('#wiki-nav .ws-item').forEach((x) => x.classList.remove('on'))
+  $('space-tools').classList.add('on')
+})
+
+// Admin-Sidebar: zu Panel scrollen
+document.querySelectorAll('.admin-link').forEach((b) =>
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.admin-link').forEach((x) => x.classList.toggle('on', x === b))
+    document.getElementById(b.dataset.target)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
+)
 
 // ============================================================ Conversations
 async function loadConversations() {
@@ -387,6 +408,13 @@ async function loadWikiNav() {
   renderWikiNav($('wiki-filter').value.trim().toLowerCase())
 }
 
+// Gecrawlte Seiten haben teils URLs als Titel — dann lesbaren Namen aus dem Slug bauen
+function pageLabel(p) {
+  if (!p.title.startsWith('http')) return p.title
+  const last = p.slug.split('/').pop()
+  return last.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
 function renderWikiNav(filter) {
   const nav = $('wiki-nav')
   nav.innerHTML = ''
@@ -404,7 +432,7 @@ function renderWikiNav(filter) {
       const btn = document.createElement('button')
       btn.className = 'ws-item'
       btn.dataset.slug = p.slug
-      btn.innerHTML = `<span class="txt">${esc(p.title)}</span>`
+      btn.innerHTML = `<span class="txt">${esc(pageLabel(p))}</span>`
       btn.addEventListener('click', () => openWikiPage(p.slug))
       nav.appendChild(btn)
     }
@@ -414,11 +442,13 @@ function renderWikiNav(filter) {
 $('wiki-filter').addEventListener('input', () => renderWikiNav($('wiki-filter').value.trim().toLowerCase()))
 
 async function openWikiPage(slug) {
+  activateArea('wiki')
+  $('space-tools').classList.remove('on')
   document.querySelectorAll('#wiki-nav .ws-item').forEach((x) => x.classList.toggle('on', x.dataset.slug === slug))
   const { data } = await sb.from('wiki_pages').select('*').eq('slug', slug).maybeSingle()
   if (!data) return
-  $('doc-crumb').textContent = data.slug
-  $('doc-title').textContent = data.title
+  $('doc-crumb').textContent = 'Company Data / ' + data.slug
+  $('doc-title').textContent = pageLabel(data)
   $('doc-meta').innerHTML = `<span>zuletzt aktualisiert ${new Date(data.updated_at).toLocaleDateString('de-DE')}</span>`
   let content = data.content
   // erste H1 entfernen (steht schon im Titel)
