@@ -9,7 +9,7 @@
     "start": "node src/index.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": "22.x"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "latest",
