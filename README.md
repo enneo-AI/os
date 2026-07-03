@@ -4,7 +4,7 @@ Internes AI-Workbench-System für das enneo-Team (~20 Personen): **Enni** (ein s
 
 ## Stack
 
-- **Datenbank/Auth:** Supabase (Postgres + pgvector, Google-SSO, eu-central-1) — Projekt `enneo OS` (`aiwhomrvspfxotkllngz`)
+- **Datenbank/Auth:** Supabase (Postgres + pgvector, Auth: MVP Email+Passwort, Microsoft-SSO in Phase 2, eu-central-1) — Projekt `enneo OS` (`aiwhomrvspfxotkllngz`)
 - **Agent-Runtime:** Node-Backend mit Claude Agent SDK (deployed, keine Edge Functions — Agent-Loops brauchen lange Laufzeiten)
 - **Frontend:** Web-App im validierten v5-Design (siehe `design/`)
 - **Integrationen:** dünne MCP-Adapter (Attio via offiziellem `mcp.attio.com`, Slack read-only, GitLab read-only)
@@ -19,7 +19,7 @@ Internes AI-Workbench-System für das enneo-Team (~20 Personen): **Enni** (ein s
 
 ## MVP-Schnitt (Phase 1)
 
-Login (Google-SSO) → Chat mit Enni (Gedankenkette, Tool-Detail) → 2-3 echte Tools (`wiki.read_page`, `wiki.search`, Attio read-only) → Wissens-Update-Diff auf Markdown-Wiki-Seiten.
+Login (MVP: Email+Passwort) → Chat mit Enni (Gedankenkette, Tool-Detail) → 2-3 echte Tools (`wiki.read_page`, `wiki.search`, Attio read-only) → Wissens-Update-Diff auf Markdown-Wiki-Seiten.
 
 **Bewusst später:** Pods, Block-Editor (BlockNote/Tiptap), Connectors-UI, Admin-Dashboards, Routinen.
 

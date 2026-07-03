@@ -21,7 +21,7 @@ begin
 end $$;
 
 -- =========================================================================
--- profiles — 1:1 zu auth.users (Google-SSO), Anzeige-Name + Admin-Flag
+-- profiles — 1:1 zu auth.users (MVP: Email+Passwort, Microsoft-SSO Phase 2), Anzeige-Name + Admin-Flag
 -- =========================================================================
 create table profiles (
   id uuid primary key references auth.users (id) on delete cascade,
@@ -35,7 +35,7 @@ create table profiles (
 create trigger profiles_updated_at before update on profiles
   for each row execute function set_updated_at();
 
--- Auto-Anlage bei Google-SSO-Signup
+-- Auto-Anlage bei Auth-Signup (provider-agnostisch)
 create or replace function handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
