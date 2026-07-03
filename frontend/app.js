@@ -68,14 +68,14 @@ async function showApp() {
 }
 
 // Rail-Navigation
-const views = { chat: 'v-chat', wiki: 'v-wiki', admin: 'v-admin' }
+const views = { chat: 'v-chat', wiki: 'v-wiki', conn: 'v-conn', admin: 'v-admin' }
 document.querySelectorAll('.rail-btn').forEach((b) =>
   b.addEventListener('click', () => {
     document.querySelectorAll('.rail-btn').forEach((x) => x.classList.toggle('active', x === b))
     Object.entries(views).forEach(([k, id]) => $(id).classList.toggle('active', k === b.dataset.v))
     closePanel()
     if (b.dataset.v === 'wiki') loadWikiNav()
-    if (b.dataset.v === 'admin') refreshCosts()
+    if (b.dataset.v === 'admin') { refreshCosts(); loadMembers() }
     window.scrollTo({ top: 0 })
   })
 )
@@ -425,6 +425,20 @@ async function openWikiPage(slug) {
   content = content.replace(/^#\s+.+\n/, '')
   $('doc-body').innerHTML = md(content)
   window.scrollTo({ top: 0 })
+}
+
+// ============================================================ Mitglieder (Admin)
+async function loadMembers() {
+  const { data } = await sb.from('profiles').select('email, display_name, is_admin').order('created_at')
+  const list = $('member-list')
+  list.innerHTML = ''
+  for (const m of data || []) {
+    const row = document.createElement('div')
+    row.className = 'row'
+    row.innerHTML = `<div><div class="r-name">${esc(m.display_name || m.email)}</div><div class="r-sub">${esc(m.email)}</div></div>
+      <div></div><span class="role${m.is_admin ? ' admin' : ''}">${m.is_admin ? 'Admin' : 'Member'}</span>`
+    list.appendChild(row)
+  }
 }
 
 // ============================================================ Kosten

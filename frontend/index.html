@@ -193,6 +193,33 @@
   .wiki-search{width:calc(100% - 8px);border:1px solid var(--hair);border-radius:11px;background:rgba(255,255,255,.45);padding:8px 12px;font-size:12.5px;outline:0;margin:0 0 8px 2px}
   .wiki-search:focus{border-color:var(--lila)}
 
+  /* ---------- connectors ---------- */
+  .conn-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;max-width:980px;margin:0 auto;padding-bottom:50px}
+  .conn{padding:22px 24px;display:flex;flex-direction:column;gap:10px}
+  .conn .c-top{display:flex;align-items:center;gap:11px}
+  .conn .c-ic{width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,.85);border:1px solid var(--hair);display:inline-flex;align-items:center;justify-content:center;font-size:16px;flex:none}
+  .conn .c-name{font-weight:640;font-size:14.5px}
+  .conn .c-state{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600}
+  .conn .c-state .dot-s{width:7px;height:7px;border-radius:50%}
+  .conn .c-state.ok{color:var(--good)}.conn .c-state.ok .dot-s{background:var(--good)}
+  .conn .c-state.off{color:var(--ink-3)}.conn .c-state.off .dot-s{background:rgba(29,30,44,.25)}
+  .conn .c-desc{margin:0;color:var(--ink-2);font-size:12.5px;min-height:38px}
+  .conn .c-foot{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--ink-3);border-top:1px solid var(--hair);padding-top:10px}
+  .btn{border-radius:999px;padding:6px 14px;font-weight:600;font-size:12px;border:1px solid transparent;transition:all .15s}
+  .btn.quiet{background:none;border-color:var(--hair);color:var(--ink-2);margin-left:auto}
+  .btn.quiet:hover{background:rgba(255,255,255,.7);color:var(--ink)}
+
+  /* ---------- admin lists ---------- */
+  .list-panel{padding:8px 26px;margin-bottom:14px}
+  .list-panel h3{font-size:13.5px;font-weight:640;margin:18px 0 6px}
+  .row{display:grid;grid-template-columns:1fr auto auto;gap:18px;align-items:center;padding:12px 2px;border-bottom:1px solid var(--hair);font-size:13.5px}
+  .row:last-child{border-bottom:0}
+  .row .r-name{font-weight:560}
+  .row .r-sub{font-size:11.5px;color:var(--ink-3)}
+  .row .r-val{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:13px;text-align:right}
+  .role{font-size:10.5px;font-weight:650;padding:2px 10px;border-radius:999px;background:rgba(29,30,44,.06);color:var(--ink-2)}
+  .role.admin{background:rgba(123,90,226,.1);color:var(--lila-deep)}
+
   /* ---------- admin ---------- */
   .cost-shell{max-width:760px;margin:0 auto;padding-bottom:50px}
   .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:14px}
@@ -236,15 +263,21 @@
         <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V4a2 2 0 0 0-2-2H6.5A2.5 2.5 0 0 0 4 4.5v15z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg>
         Wiki
       </button>
-      <button class="rail-btn" data-v="admin" title="Kosten">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
-        Kosten
+      <button class="rail-btn" data-v="conn" title="Connectors">
+        <svg viewBox="0 0 24 24"><path d="M9 7 7 9a5 5 0 0 0 0 7l1 1a5 5 0 0 0 7 0l2-2"/><path d="m15 17 2-2a5 5 0 0 0 0-7l-1-1a5 5 0 0 0-7 0L7 9"/></svg>
+        Connect
+      </button>
+      <button class="rail-btn" data-v="admin" title="Admin">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h0a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h0a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v0a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>
+        Admin
       </button>
     </nav>
 
     <button class="sb-new" id="new-chat">＋ Neue Konversation</button>
 
     <div class="sb-scroll">
+      <div class="sb-sec">Pods</div>
+      <div class="sb-item" style="cursor:default;color:var(--ink-3)"><span class="ic">⬡</span><span class="txt">Team-Pods folgen in Phase 2</span></div>
       <div class="sb-sec">Konversationen</div>
       <div id="conv-list"></div>
     </div>
@@ -297,10 +330,49 @@
       </div>
     </section>
 
-    <!-- ADMIN / KOSTEN -->
+    <!-- CONNECTORS -->
+    <section class="view" id="v-conn">
+      <div class="page-head">
+        <div class="eyebrow">Connectors</div>
+        <h2>Ennis Werkzeuge und Quellen.</h2>
+        <p>Persönliche Zugänge, wo möglich — Aktionen laufen als du, Rechte vererben sich automatisch. Beim Verbinden entscheidest du: nur für dich oder fürs Team freigegeben.</p>
+      </div>
+      <div class="conn-grid">
+        <div class="glass conn">
+          <div class="c-top"><span class="c-ic">📖</span><span class="c-name">Wiki</span><span class="c-state ok"><span class="dot-s"></span>Verbunden</span></div>
+          <p class="c-desc">Das interne Firmenwissen — 303 Seiten. Enni liest bei jeder Frage nach, Änderungen nur als Diff mit Freigabe.</p>
+          <div class="c-foot">Eingebaut · Team-weit</div>
+        </div>
+        <div class="glass conn">
+          <div class="c-top"><span class="c-ic">🦊</span><span class="c-name">GitLab</span><span class="c-state ok"><span class="dot-s"></span>Verbunden</span></div>
+          <p class="c-desc">Projekte, Code-Suche, Dateien und Merge Requests aus dem enneo-GitLab. Kein Schreibzugriff.</p>
+          <div class="c-foot">Persönlicher Token · read-only</div>
+        </div>
+        <div class="glass conn">
+          <div class="c-top"><span class="c-ic">📊</span><span class="c-name">Attio</span><span class="c-state off"><span class="dot-s"></span>Nicht verbunden</span></div>
+          <p class="c-desc">CRM — Companies, Notizen, Deals. Reads frei, Writes brauchen deine Freigabe.</p>
+          <div class="c-foot">Phase 2 · persönliche Anmeldung <button class="btn quiet" disabled>Verbinden</button></div>
+        </div>
+        <div class="glass conn">
+          <div class="c-top"><span class="c-ic">📅</span><span class="c-name">Kalender</span><span class="c-state off"><span class="dot-s"></span>Nicht verbunden</span></div>
+          <p class="c-desc">Dein Kalender für Termin-Kontext und Vorschläge. Nur du — außer du gibst ihn fürs Team frei.</p>
+          <div class="c-foot">Phase 2 · nur du / Team wählbar <button class="btn quiet" disabled>Verbinden</button></div>
+        </div>
+        <div class="glass conn">
+          <div class="c-top"><span class="c-ic">✉️</span><span class="c-name">E-Mail</span><span class="c-state off"><span class="dot-s"></span>Nicht verbunden</span></div>
+          <p class="c-desc">Mail-Entwürfe direkt aus Konversationen. Lese-/Schreibrechte legst du beim Verbinden fest, Senden bleibt bei dir.</p>
+          <div class="c-foot">Phase 2 · nur du / Team wählbar <button class="btn quiet" disabled>Verbinden</button></div>
+        </div>
+        <div class="glass conn" style="border-style:dashed;background:rgba(255,255,255,.25);align-items:center;justify-content:center;text-align:center;color:var(--ink-3);min-height:150px">
+          <div style="font-size:13px">+ Connector hinzufügen<br><span style="font-size:11.5px">jeder MCP-Server per URL · Phase 2</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ADMIN -->
     <section class="view" id="v-admin">
       <div class="page-head">
-        <div class="eyebrow">Kosten</div>
+        <div class="eyebrow">Admin</div>
         <h2>Transparent, nicht überwachend.</h2>
         <p>Kosten stehen an jeder Antwort. Analytics sind metadata-only, Inhalte werden nie ausgewertet.</p>
       </div>
@@ -314,7 +386,7 @@
           <div class="glass kpi">
             <div class="k-lbl">Dieser Monat</div>
             <div class="k-val" id="k-month">— <small>€</small></div>
-            <div class="k-sub" id="k-month-sub">&nbsp;</div>
+            <div class="k-sub">&nbsp;</div>
           </div>
           <div class="glass kpi">
             <div class="k-lbl">Antworten gesamt</div>
@@ -322,7 +394,25 @@
             <div class="k-sub">seit Start</div>
           </div>
         </div>
-        <p class="footnote">Jede Antwort schreibt einen Eintrag mit Token-Zahlen und Euro-Betrag. Du siehst nur deine eigenen Kosten.</p>
+
+        <div class="glass list-panel">
+          <h3>Modell</h3>
+          <div class="row">
+            <div><div class="r-name">Enni läuft auf Claude Opus 4.8</div><div class="r-sub">Anthropic · Provider-Auswahl und weitere Modelle folgen in Phase 2</div></div>
+            <div></div><span class="role">Standard</span>
+          </div>
+        </div>
+
+        <div class="glass list-panel">
+          <h3>Mitglieder</h3>
+          <div id="member-list"></div>
+          <div class="row">
+            <div><div class="r-name">+ Mitglieder einladen</div><div class="r-sub">folgt in Phase 2 — mit Rollen (Admin / Builder / Member) und Microsoft-SSO</div></div>
+            <div></div><div></div>
+          </div>
+        </div>
+
+        <p class="footnote">Jede Antwort schreibt einen Eintrag mit Token-Zahlen und Euro-Betrag. Du siehst nur deine eigenen Kosten — auch als Admin keine fremden Inhalte.</p>
       </div>
     </section>
   </main>
