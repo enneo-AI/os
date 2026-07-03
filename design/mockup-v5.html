@@ -1,0 +1,792 @@
+<title>enneo Company OS — Mockup</title>
+<style>
+  :root{
+    --ink:#1D1E2C; --ink-2:rgba(29,30,44,.62); --ink-3:rgba(29,30,44,.40);
+    --lila:#7B5AE2; --lila-deep:#5F41C4;
+    --glass:rgba(255,255,255,.58); --glass-strong:rgba(255,255,255,.78);
+    --edge:rgba(255,255,255,.85); --hair:rgba(29,30,44,.07);
+    --good:#2E9E6B; --high:#C8564E; --warn:#C08A3E;
+    --sans:ui-sans-serif,system-ui,-apple-system,"SF Pro Text","Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+    --shadow:0 24px 60px -20px rgba(83,63,165,.18), 0 2px 8px rgba(83,63,165,.05);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:var(--sans);color:var(--ink);font-size:14px;line-height:1.55;
+    -webkit-font-smoothing:antialiased;min-height:100vh;background:#F5F3F8;
+  }
+  body::before{
+    content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+    background-image:
+      radial-gradient(900px 480px at 50% -8%, rgba(255,178,125,.24), transparent 62%),
+      radial-gradient(1200px 700px at 18% 12%, rgba(160,130,240,.18), transparent 60%),
+      radial-gradient(1000px 600px at 88% 30%, rgba(190,160,255,.13), transparent 60%),
+      linear-gradient(180deg,#F4F1FA 0%,#FAF6F3 55%,#FCFAF8 100%);
+  }
+  button{font:inherit;cursor:pointer;color:inherit}
+  input,textarea,select{font:inherit;color:inherit}
+
+  .glass{
+    background:var(--glass);
+    -webkit-backdrop-filter:blur(28px) saturate(1.5);backdrop-filter:blur(28px) saturate(1.5);
+    border:1px solid var(--edge);border-radius:24px;box-shadow:var(--shadow);
+  }
+
+  /* ================= app shell — flat, website-like ================= */
+  .app{display:grid;grid-template-columns:256px minmax(0,1fr);min-height:100vh}
+  @media(max-width:900px){.app{grid-template-columns:1fr}.sidebar{position:static;height:auto;border-right:0;border-bottom:1px solid var(--hair)}}
+
+  /* ---------- sidebar (no container) ---------- */
+  .sidebar{
+    position:sticky;top:0;height:100vh;
+    display:flex;flex-direction:column;padding:18px 14px 16px;
+    border-right:1px solid var(--hair);
+  }
+  .rail{display:flex;gap:4px;margin-bottom:16px}
+  .rail-btn{
+    flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;
+    border:0;background:none;border-radius:12px;padding:9px 4px 7px;
+    color:var(--ink-3);font-size:10px;font-weight:600;letter-spacing:.02em;
+    transition:all .15s;
+  }
+  .rail-btn svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .rail-btn:hover{color:var(--ink);background:rgba(29,30,44,.04)}
+  .rail-btn.active{color:var(--lila-deep);background:rgba(123,90,226,.08)}
+  .rail-btn:focus-visible{outline:2px solid var(--lila);outline-offset:1px}
+
+  .sb-search{display:flex;align-items:center;gap:8px;border:1px solid var(--hair);border-radius:11px;background:rgba(255,255,255,.45);padding:8px 12px;font-size:12.5px;color:var(--ink-3);margin-bottom:10px}
+  .sb-new{
+    display:flex;align-items:center;justify-content:center;gap:7px;width:100%;
+    border:0;border-radius:11px;background:var(--ink);color:#fff;
+    padding:9px;font-size:13px;font-weight:600;margin-bottom:16px;transition:background .15s;
+  }
+  .sb-new:hover{background:#33354a}
+
+  .sb-scroll{flex:1;overflow-y:auto;min-height:0;margin:0 -6px;padding:0 6px}
+  .sb-sec{display:flex;align-items:center;font-size:10.5px;font-weight:680;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:12px 6px 5px}
+  .sb-sec button{margin-left:auto;border:0;background:none;color:var(--ink-3);font-size:13px;padding:0 4px;border-radius:5px}
+  .sb-sec button:hover{color:var(--lila)}
+  .sb-item{
+    display:flex;align-items:center;gap:8px;width:100%;text-align:left;
+    border:0;background:none;border-radius:9px;padding:7px 9px;font-size:13px;color:var(--ink-2);
+  }
+  .sb-item:hover{background:rgba(29,30,44,.04);color:var(--ink)}
+  .sb-item.on{background:rgba(123,90,226,.08);color:var(--ink);font-weight:600}
+  .sb-item .ic{width:17px;text-align:center;flex:none;font-size:12px}
+  .sb-item .lock{margin-left:auto;font-size:10px;color:var(--ink-3)}
+
+  .sb-foot{border-top:1px solid var(--hair);margin-top:10px;padding-top:12px;display:flex;align-items:center;gap:10px}
+  .avatar{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#2E3145,#4A4D66);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:650;flex:none}
+  .sb-foot .f-name{font-size:13px;font-weight:600;line-height:1.2}
+  .sb-foot .f-sub{font-size:11px;color:var(--ink-3);font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+  /* ---------- main ---------- */
+  .main{min-width:0;padding:0 24px}
+  .view{display:none}
+  .view.active{display:block}
+  @media (prefers-reduced-motion: no-preference){
+    .view.active{animation:rise .3s cubic-bezier(.2,.7,.3,1)}
+    @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  }
+  .page-head{text-align:center;margin:44px auto 32px;max-width:60ch}
+  .page-head .eyebrow{font-size:12px;font-weight:620;letter-spacing:.14em;text-transform:uppercase;color:var(--lila);margin-bottom:10px}
+  .page-head h2{font-size:32px;line-height:1.15;font-weight:640;letter-spacing:-.025em;margin:0 0 10px;text-wrap:balance}
+  .page-head p{margin:0;color:var(--ink-2);font-size:15px}
+
+  /* ---------- chat (flat) ---------- */
+  .chat-shell{max-width:720px;margin:0 auto;display:flex;flex-direction:column;min-height:100vh;padding-top:22px}
+  .chat-head{display:flex;align-items:center;gap:10px;padding:0 4px 22px;font-size:13px;color:var(--ink-2)}
+  .chat-head .t{font-weight:640;color:var(--ink);font-size:15px}
+  .badge{font-size:10.5px;font-weight:650;padding:3px 10px;border-radius:999px;background:rgba(255,255,255,.6);border:1px solid var(--hair);color:var(--ink-2)}
+  .badge.restricted{color:var(--warn)}
+  .members{display:flex;margin-left:0}
+  .members .avatar{width:24px;height:24px;font-size:9px;border:2px solid #FAF7F5;margin-left:-7px}
+  .members .avatar:first-child{margin-left:0}
+
+  .enni-dot{width:26px;height:26px;border-radius:50%;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;
+    background:linear-gradient(135deg,#8A6BEE,#5FA8E8);box-shadow:0 4px 12px rgba(123,90,226,.35)}
+
+  .msgs{display:flex;flex-direction:column;gap:30px;flex:1}
+  .m-user{align-self:flex-end;max-width:78%;background:var(--ink);color:#fff;border-radius:20px 20px 6px 20px;padding:12px 18px;font-size:14px;box-shadow:0 10px 26px -10px rgba(29,30,44,.35)}
+  .m-user .u-name{font-size:11px;color:rgba(255,255,255,.55);margin-bottom:3px}
+  .m-peer{align-self:flex-start;max-width:78%;background:rgba(255,255,255,.75);border:1px solid var(--edge);border-radius:20px 20px 20px 6px;padding:12px 18px;font-size:14px}
+  .m-peer .u-name{font-size:11px;color:var(--ink-3);margin-bottom:3px}
+
+  .m-agent .who{display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--ink-3);margin:0 0 12px}
+  .m-agent .who b{color:var(--ink);font-weight:620}
+  .m-agent .body{padding:0 2px}
+  .m-agent .body > p{margin:0 0 13px;max-width:64ch;font-size:14.5px}
+  .m-agent .body > p:last-of-type{margin-bottom:0}
+
+  /* --- thinking block --- */
+  .think{margin:0 0 16px;border-left:2px solid rgba(29,30,44,.1);padding-left:16px}
+  .think-head{display:flex;align-items:center;gap:8px;border:0;background:none;padding:0 0 6px;font-size:12px;color:var(--ink-3);font-weight:560;width:100%;text-align:left}
+  .think-head:hover{color:var(--ink-2)}
+  .think-head .chev{transition:transform .2s;font-size:10px}
+  .think.open .think-head .chev{transform:rotate(90deg)}
+  .think-body{position:relative;overflow:hidden;max-height:46px;cursor:pointer;
+    -webkit-mask-image:linear-gradient(180deg,#000 0%,#000 8px,transparent 44px);
+    mask-image:linear-gradient(180deg,#000 0%,#000 8px,transparent 44px);
+    transition:max-height .3s ease}
+  .think.open .think-body{max-height:600px;cursor:default;-webkit-mask-image:none;mask-image:none}
+  .think-body p{margin:0 0 9px;font-size:12.5px;color:var(--ink-2);max-width:62ch}
+  .tool-row{
+    display:flex;align-items:center;gap:9px;width:100%;text-align:left;
+    border:0;background:none;border-radius:8px;padding:6px 8px;margin:0 0 6px -8px;
+    font-size:12.5px;color:var(--ink-2);transition:background .15s;
+  }
+  .tool-row:hover{background:rgba(29,30,44,.045);color:var(--ink)}
+  .tool-row .t-ic{width:16px;text-align:center;font-size:11px;flex:none}
+  .tool-row code{font-family:var(--mono);font-size:11.5px}
+  .tool-row .t-q{color:var(--ink-3)}
+  .tool-row .arr{margin-left:auto;color:var(--ink-3);font-size:12px}
+  .think-done{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--good);padding:2px 0}
+
+  /* --- learn card (kept, lightened) --- */
+  .learn{margin-top:16px;border-radius:16px;border:1px solid var(--hair);background:rgba(255,255,255,.5);padding:16px 18px}
+  .learn .l-top{display:flex;align-items:center;gap:10px;margin-bottom:7px}
+  .pill{font-size:10px;font-weight:700;letter-spacing:.08em;padding:3px 9px;border-radius:999px}
+  .pill.learnp{background:rgba(123,90,226,.1);color:var(--lila-deep)}
+  .learn .l-title{font-weight:620;font-size:13.5px}
+  .learn .l-sub{color:var(--ink-2);font-size:12.5px;margin-bottom:12px}
+  .diff{border-radius:10px;background:rgba(255,255,255,.65);border:1px solid var(--hair);padding:11px 14px;font-size:12.5px;margin-bottom:13px}
+  .diff .d-file{font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-bottom:8px}
+  .diff .add{display:block;color:var(--good);background:rgba(46,158,107,.07);border-radius:6px;padding:3px 9px;margin:2px 0}
+  .a-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .btn{border-radius:999px;padding:8px 18px;font-weight:600;font-size:13px;border:1px solid transparent;transition:all .15s}
+  .btn.dark{background:var(--ink);color:#fff}
+  .btn.dark:hover{background:#33354a}
+  .btn.quiet{background:none;border-color:var(--hair);color:var(--ink-2)}
+  .btn.quiet:hover{background:rgba(255,255,255,.7);color:var(--ink)}
+  .btn:focus-visible{outline:2px solid var(--lila);outline-offset:2px}
+  .a-hint{font-size:12px;color:var(--ink-3)}
+
+  .m-meta{display:flex;gap:16px;align-items:center;margin:14px 2px 0;font-size:12px;color:var(--ink-3)}
+  .m-meta .cost{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .m-meta button{border:0;background:none;color:var(--ink-3);padding:2px 5px;border-radius:6px}
+  .m-meta button:hover{color:var(--ink)}
+  .src-link{color:var(--lila-deep);text-decoration:none;font-weight:550}
+
+  .composer{position:sticky;bottom:18px;margin-top:30px}
+  .composer .box{display:flex;gap:12px;align-items:center;background:var(--glass-strong);-webkit-backdrop-filter:blur(24px) saturate(1.5);backdrop-filter:blur(24px) saturate(1.5);border:1px solid var(--edge);border-radius:999px;padding:8px 8px 8px 22px;box-shadow:var(--shadow)}
+  .composer input{border:0;outline:0;flex:1;background:none;font-size:14px}
+  .composer input::placeholder{color:var(--ink-3)}
+  .send{width:38px;height:38px;border-radius:50%;border:0;background:var(--lila);color:#fff;font-size:15px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+  .send:hover{background:var(--lila-deep)}
+
+  /* ---------- tool detail panel ---------- */
+  .tool-panel{
+    position:fixed;top:0;right:0;bottom:0;width:min(400px, 92vw);z-index:80;
+    background:var(--glass-strong);
+    -webkit-backdrop-filter:blur(30px) saturate(1.6);backdrop-filter:blur(30px) saturate(1.6);
+    border-left:1px solid var(--edge);box-shadow:-30px 0 70px -30px rgba(29,30,44,.25);
+    transform:translateX(105%);transition:transform .28s cubic-bezier(.2,.7,.3,1);
+    display:flex;flex-direction:column;padding:22px 24px;
+  }
+  .tool-panel.open{transform:none}
+  .tp-head{display:flex;align-items:center;gap:10px;margin-bottom:20px}
+  .tp-head .tp-t{font-size:12px;font-weight:650;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+  .tp-close{margin-left:auto;border:0;background:none;font-size:16px;color:var(--ink-3);padding:4px 8px;border-radius:8px}
+  .tp-close:hover{color:var(--ink);background:rgba(29,30,44,.05)}
+  .tp-title{display:flex;align-items:baseline;gap:10px;margin-bottom:22px}
+  .tp-title code{font-family:var(--mono);font-size:14px;font-weight:600}
+  .tp-title .tp-time{margin-left:auto;font-size:11.5px;color:var(--ink-3);font-family:var(--mono)}
+  .tp-sec{font-size:11px;font-weight:680;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:0 0 9px}
+  .tp-block{border:1px solid var(--hair);border-radius:12px;background:rgba(255,255,255,.6);padding:13px 15px;margin-bottom:20px;font-size:12.5px}
+  .tp-kv{display:flex;gap:9px;align-items:center;margin-bottom:7px}
+  .tp-kv:last-child{margin-bottom:0}
+  .tp-kv .k{font-size:10.5px;font-weight:650;letter-spacing:.04em;background:rgba(123,90,226,.09);color:var(--lila-deep);border-radius:6px;padding:2px 8px;flex:none}
+  .tp-kv code{font-family:var(--mono);font-size:12px}
+  .tp-out{font-family:var(--mono);font-size:11.5px;line-height:1.7;color:var(--ink-2);white-space:pre-wrap;word-break:break-word}
+  .tp-foot{margin-top:auto;font-size:11.5px;color:var(--ink-3);border-top:1px solid var(--hair);padding-top:12px}
+
+  /* ---------- wiki ---------- */
+  .wiki-grid{display:grid;grid-template-columns:224px minmax(0,1fr);gap:0;align-items:start}
+  @media(max-width:1000px){.wiki-grid{grid-template-columns:1fr}.wiki-side{border-right:0}}
+  .wiki-side{padding:26px 16px 16px 2px;border-right:1px solid var(--hair);position:sticky;top:0}
+  .ws-sec{font-size:10.5px;font-weight:680;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:12px 8px 5px}
+  .ws-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:0;background:none;border-radius:9px;padding:6px 9px;font-size:13px;color:var(--ink-2)}
+  .ws-item:hover{background:rgba(29,30,44,.04);color:var(--ink)}
+  .ws-item.on{background:rgba(123,90,226,.08);color:var(--ink);font-weight:600}
+  .ws-item .ic{width:16px;text-align:center;flex:none;font-size:12px}
+  .ws-item.sub{padding-left:30px;font-size:12.5px}
+  .ws-new{margin-top:14px;width:100%;border:1px dashed rgba(29,30,44,.16);background:none;border-radius:10px;padding:8px;font-size:12.5px;color:var(--ink-3)}
+  .ws-new:hover{color:var(--lila);border-color:var(--lila)}
+
+  .doc{padding:34px 8px 42px 42px;max-width:820px}
+  .doc-crumb{font-size:12px;color:var(--ink-3);margin-bottom:14px}
+  .doc-crumb b{color:var(--ink-2);font-weight:550}
+  .doc h1{font-size:29px;font-weight:650;letter-spacing:-.02em;margin:0 0 10px}
+  .doc-meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:24px;font-size:12px;color:var(--ink-3)}
+  .tagchip{background:rgba(123,90,226,.09);color:var(--lila-deep);border-radius:999px;padding:3px 11px;font-size:11.5px;font-weight:600}
+  .mention{display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.7);border:1px solid var(--hair);border-radius:999px;padding:2px 10px 2px 3px;font-size:11.5px;font-weight:560;color:var(--ink-2)}
+  .mention .mini{width:17px;height:17px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#fff}
+  .doc h3{font-size:16px;font-weight:640;margin:26px 0 8px;letter-spacing:-.01em}
+  .doc p{margin:0 0 12px;max-width:68ch;font-size:14px}
+  .doc p .inline-mention{color:var(--lila-deep);font-weight:560}
+  .block-table{border:1px solid var(--hair);border-radius:14px;background:rgba(255,255,255,.5);margin:14px 0 6px;overflow-x:auto}
+  .block-table table{width:100%;border-collapse:collapse;font-size:13px;min-width:540px}
+  .block-table th{text-align:left;font-size:10.5px;font-weight:680;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);padding:10px 16px;border-bottom:1px solid var(--hair)}
+  .block-table td{padding:10px 16px;border-bottom:1px solid var(--hair);vertical-align:middle}
+  .block-table tr:last-child td{border-bottom:0}
+  .status{font-size:10.5px;font-weight:650;padding:3px 10px;border-radius:999px;white-space:nowrap}
+  .status.done{background:rgba(46,158,107,.11);color:var(--good)}
+  .status.run{background:rgba(123,90,226,.11);color:var(--lila-deep)}
+  .status.open{background:rgba(29,30,44,.07);color:var(--ink-2)}
+  .status.risk{background:rgba(200,86,78,.11);color:var(--high)}
+  .files{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0 4px}
+  .file{display:flex;align-items:center;gap:9px;border:1px solid var(--hair);background:rgba(255,255,255,.55);border-radius:12px;padding:9px 14px;font-size:12.5px}
+  .file .f-ic{width:28px;height:28px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;background:rgba(123,90,226,.09)}
+  .file .f-sub{color:var(--ink-3);font-size:11px}
+  .imgblock{margin:14px 0 4px;border-radius:16px;overflow:hidden;border:1px solid var(--edge);position:relative;height:170px;
+    background:
+      radial-gradient(360px 200px at 25% 30%, rgba(138,107,238,.5), transparent 70%),
+      radial-gradient(320px 200px at 75% 65%, rgba(95,168,232,.45), transparent 70%),
+      radial-gradient(280px 160px at 60% 20%, rgba(255,178,125,.4), transparent 70%),
+      linear-gradient(135deg,#EFEAFB,#FDF3EC)}
+  .imgblock figcaption{position:absolute;left:14px;bottom:12px;font-size:11.5px;color:rgba(29,30,44,.55);background:rgba(255,255,255,.72);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border-radius:999px;padding:4px 12px}
+  .enni-block{margin:0 0 22px;border-radius:16px;border:1px solid rgba(123,90,226,.22);background:linear-gradient(135deg,rgba(123,90,226,.05),rgba(95,168,232,.04));padding:15px 19px}
+  .enni-block .eb-top{display:flex;align-items:center;gap:9px;font-size:12px;color:var(--ink-3);margin-bottom:8px}
+  .enni-block .eb-top b{color:var(--ink);font-weight:620}
+  .enni-block p{font-size:13px;color:var(--ink-2);margin:0;max-width:66ch}
+  .addblock{border:0;background:none;color:var(--ink-3);font-size:12.5px;padding:10px 2px;margin-top:8px;border-radius:8px}
+  .addblock:hover{color:var(--lila)}
+
+  /* ---------- connectors ---------- */
+  .conn-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;max-width:980px;margin:0 auto;padding-bottom:50px}
+  .conn{padding:22px 24px;display:flex;flex-direction:column;gap:10px}
+  .conn .c-top{display:flex;align-items:center;gap:11px}
+  .conn .c-ic{width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,.85);border:1px solid var(--hair);display:inline-flex;align-items:center;justify-content:center;font-size:16px;flex:none}
+  .conn .c-name{font-weight:640;font-size:14.5px}
+  .conn .c-state{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600}
+  .conn .c-state .dot-s{width:7px;height:7px;border-radius:50%}
+  .conn .c-state.ok{color:var(--good)}.conn .c-state.ok .dot-s{background:var(--good)}
+  .conn .c-state.off{color:var(--ink-3)}.conn .c-state.off .dot-s{background:rgba(29,30,44,.25)}
+  .conn .c-state.mig{color:var(--warn)}.conn .c-state.mig .dot-s{background:var(--warn)}
+  .conn .c-desc{margin:0;color:var(--ink-2);font-size:12.5px;min-height:38px}
+  .conn .c-foot{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--ink-3);border-top:1px solid var(--hair);padding-top:10px}
+  .conn .c-foot .btn{margin-left:auto;padding:6px 14px;font-size:12px}
+
+  /* ---------- admin ---------- */
+  .cost-shell{max-width:960px;margin:0 auto;padding-bottom:50px}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:14px}
+  .kpi{padding:22px 24px}
+  .kpi .k-lbl{font-size:11px;font-weight:650;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+  .kpi .k-val{font-size:29px;font-weight:620;letter-spacing:-.03em;margin-top:8px;font-variant-numeric:tabular-nums}
+  .kpi .k-val small{font-size:15px;color:var(--ink-3);font-weight:500}
+  .kpi .k-sub{font-size:12.5px;color:var(--ink-2);margin-top:3px}
+  .capbar{height:4px;border-radius:99px;background:rgba(29,30,44,.08);margin-top:14px;overflow:hidden}
+  .capbar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--lila),#B09CEE)}
+  .list-panel{padding:8px 26px}
+  .list-panel h3{font-size:13.5px;font-weight:640;margin:18px 0 6px}
+  .row{display:grid;grid-template-columns:1fr auto auto;gap:18px;align-items:center;padding:12px 2px;border-bottom:1px solid var(--hair);font-size:13.5px}
+  .row:last-child{border-bottom:0}
+  .row .r-name{font-weight:560}
+  .row .r-sub{font-size:11.5px;color:var(--ink-3)}
+  .row .r-val{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:13px;text-align:right;min-width:72px}
+  .audit .row{grid-template-columns:auto 1fr auto auto}
+  .who-tag{font-size:10px;font-weight:700;letter-spacing:.06em;padding:2px 9px;border-radius:999px}
+  .who-tag.ki{background:rgba(123,90,226,.12);color:var(--lila-deep)}
+  .who-tag.hu{background:rgba(29,30,44,.07);color:var(--ink-2)}
+  .t{font-family:var(--mono);font-size:11.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+  .role{font-size:10.5px;font-weight:650;padding:2px 10px;border-radius:999px;background:rgba(29,30,44,.06);color:var(--ink-2)}
+  .role.admin{background:rgba(123,90,226,.1);color:var(--lila-deep)}
+  .footnote{margin:22px auto 0;color:var(--ink-3);font-size:12px;max-width:72ch;text-align:center}
+
+  /* ---------- pod modal ---------- */
+  .overlay{position:fixed;inset:0;z-index:100;display:none;align-items:center;justify-content:center;background:rgba(29,30,44,.25);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+  .overlay.open{display:flex}
+  .modal{width:min(440px,calc(100vw - 40px));background:var(--glass-strong);-webkit-backdrop-filter:blur(30px) saturate(1.6);backdrop-filter:blur(30px) saturate(1.6);border:1px solid var(--edge);border-radius:24px;box-shadow:0 40px 90px -20px rgba(29,30,44,.35);padding:26px 28px}
+  .modal h3{margin:0 0 18px;font-size:17px;font-weight:650;letter-spacing:-.015em}
+  .modal label{display:block;font-size:11px;font-weight:650;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:0 0 7px}
+  .modal input[type=text]{width:100%;border:1px solid var(--hair);border-radius:12px;background:rgba(255,255,255,.75);padding:10px 14px;font-size:14px;outline:0;margin-bottom:18px}
+  .modal input[type=text]:focus{border-color:var(--lila);box-shadow:0 0 0 3px rgba(123,90,226,.12)}
+  .seg{display:flex;background:rgba(29,30,44,.05);border-radius:12px;padding:3px;margin-bottom:8px}
+  .seg button{flex:1;border:0;background:none;border-radius:9px;padding:8px;font-size:13px;font-weight:560;color:var(--ink-2)}
+  .seg button.on{background:#fff;color:var(--ink);font-weight:620;box-shadow:0 1px 4px rgba(83,63,165,.14)}
+  .seg-hint{font-size:12px;color:var(--ink-3);margin:0 0 22px}
+  .modal .m-actions{display:flex;gap:10px;justify-content:flex-end}
+</style>
+
+<div class="app">
+
+  <!-- ================= SIDEBAR ================= -->
+  <aside class="sidebar">
+    <nav class="rail" aria-label="Bereiche">
+      <button class="rail-btn active" data-v="chat" title="Chat">
+        <svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H5l-2 2V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8z"/></svg>
+        Chat
+      </button>
+      <button class="rail-btn" data-v="wiki" title="Wiki">
+        <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V4a2 2 0 0 0-2-2H6.5A2.5 2.5 0 0 0 4 4.5v15z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg>
+        Wiki
+      </button>
+      <button class="rail-btn" data-v="conn" title="Connectors">
+        <svg viewBox="0 0 24 24"><path d="M9 7 7 9a5 5 0 0 0 0 7l1 1a5 5 0 0 0 7 0l2-2"/><path d="m15 17 2-2a5 5 0 0 0 0-7l-1-1a5 5 0 0 0-7 0L7 9"/></svg>
+        Connect
+      </button>
+      <button class="rail-btn" data-v="admin" title="Admin">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h0a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h0a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v0a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>
+        Admin
+      </button>
+    </nav>
+
+    <div class="sb-search">🔍 Suchen oder Enni fragen …</div>
+    <button class="sb-new" id="new-chat">＋ Neue Konversation</button>
+
+    <div class="sb-scroll">
+      <div class="sb-sec">Pods <button id="new-pod" title="Neuer Pod">＋</button></div>
+      <div id="pod-list">
+        <button class="sb-item pod-item" data-chat="pod"><span class="ic">⬡</span>Dello POC<span class="lock">🔒</span></button>
+        <button class="sb-item pod-item" data-chat="pod"><span class="ic">⬡</span>AI-News intern<span class="lock">🌐</span></button>
+      </div>
+
+      <div class="sb-sec">Konversationen</div>
+      <button class="sb-item on conv-item" data-chat="priv"><span class="ic">💬</span>Jungborn Kaskaden-Check</button>
+      <button class="sb-item conv-item" data-chat="priv"><span class="ic">💬</span>Reisekosten-Frage</button>
+      <button class="sb-item conv-item" data-chat="priv"><span class="ic">💬</span>Onboarding STAWAG-Doku</button>
+    </div>
+
+    <div class="sb-foot">
+      <span class="avatar">AS</span>
+      <div>
+        <div class="f-name">Aleksa</div>
+        <div class="f-sub">Heute 0,31 €</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ================= MAIN ================= -->
+  <main class="main">
+
+    <!-- ========== CHAT ========== -->
+    <section class="view active" id="v-chat">
+
+      <!-- private conversation -->
+      <div class="chat-shell" id="chat-priv">
+        <div class="chat-head">
+          <span class="enni-dot">E</span>
+          <div>
+            <div class="t">Jungborn Kaskaden-Check</div>
+            <div style="font-size:12px;color:var(--ink-3)">Private Konversation · Enni antwortet mit deinen Rechten</div>
+          </div>
+          <span class="badge" style="margin-left:auto">nur du</span>
+        </div>
+
+        <div class="msgs">
+          <div class="m-user">Fass mir den Stand zu Jungborn zusammen und aktualisier die Projektseite im Wiki.</div>
+
+          <div class="m-agent">
+            <div class="who"><span class="enni-dot">E</span><b>Enni</b> · fertig in 8 s</div>
+
+            <div class="think" id="think-1">
+              <button class="think-head" data-think="think-1"><span class="chev">▶</span>Gedanken · 2 Tool-Aufrufe</button>
+              <div class="think-body" data-think="think-1">
+                <p>Aleksa will den Jungborn-Stand und ein Update der Wiki-Seite. Ich hole zuerst das CRM, dann vergleiche ich mit dem Wiki.</p>
+                <button class="tool-row" data-tool="attio"><span class="t-ic">📊</span><code>attio.search_records</code><span class="t-q">„Jungborn"</span><span class="arr">›</span></button>
+                <p>Vier Notizen gefunden, die neueste vom 03.07. beantwortet die Kaskaden-Frage. Jetzt prüfe ich, ob das Wiki den Stand schon kennt.</p>
+                <button class="tool-row" data-tool="wiki"><span class="t-ic">📖</span><code>wiki.read_page</code><span class="t-q">Kunden / Jungborn</span><span class="arr">›</span></button>
+                <p>Die Seite ist eine Woche alt, das Kaskaden-Ergebnis fehlt. Ich schlage einen Diff vor, statt direkt zu schreiben.</p>
+                <div class="think-done">✓ Fertig</div>
+              </div>
+            </div>
+
+            <div class="body">
+              <p><b>Jungborn</b> ist Partner-Kunde über Logen.AI. Die offene Kaskaden-Frage von Mehmet wurde am 3.&nbsp;Juli geklärt: Die Besetzt-Kaskade über beide Dienstleister ist nativ im Call-Flow abbildbar, die Callcenter müssen nichts anpassen. Nächster Schritt laut letzter Notiz: Angebot durch Sales.</p>
+              <p>Die Wiki-Seite ist auf dem Stand von letzter Woche. Hier mein Update-Vorschlag:</p>
+
+              <div class="learn">
+                <div class="l-top"><span class="pill learnp">WISSENS-UPDATE</span><span class="l-title">Änderung an „Kunden / Jungborn"</span></div>
+                <div class="l-sub">Enni ändert Wiki-Inhalte nie direkt — du gibst den Diff frei.</div>
+                <div class="diff">
+                  <div class="d-file">Kunden / Jungborn · Abschnitt „Status"</div>
+                  <span class="add">+ 03.07. Kaskaden-Check abgeschlossen: Besetzt-Kaskade nativ abbildbar, keine Anpassung bei den Dienstleistern nötig.</span>
+                  <span class="add">+ Nächster Schritt: Angebot durch Sales (Mehmet).</span>
+                </div>
+                <div class="a-row">
+                  <button class="btn dark">Übernehmen</button>
+                  <button class="btn quiet">Bearbeiten</button>
+                  <button class="btn quiet">Verwerfen</button>
+                  <span class="a-hint">wird im Audit-Log attribuiert</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="m-meta">
+              <span class="cost">0,04 €</span>
+              <span>Quellen: Attio · <a class="src-link" href="#" onclick="return false">Wiki: Jungborn</a></span>
+              <button aria-label="Hilfreich">👍</button>
+              <button aria-label="Nicht hilfreich">👎</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="composer">
+          <div class="box">
+            <input type="text" placeholder="Frag Enni … (@Seite verlinkt eine Wiki-Seite)" aria-label="Nachricht">
+            <button class="send" aria-label="Senden">↑</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- pod conversation -->
+      <div class="chat-shell" id="chat-pod" style="display:none">
+        <div class="chat-head">
+          <span style="font-size:18px;width:26px;text-align:center;flex:none">⬡</span>
+          <div>
+            <div class="t">Dello POC</div>
+            <div style="font-size:12px;color:var(--ink-3)">Pod · gemeinsamer Kontext für alle Mitglieder</div>
+          </div>
+          <span class="badge restricted" style="margin-left:auto">🔒 Restricted</span>
+          <div class="members">
+            <span class="avatar">AS</span>
+            <span class="avatar" style="background:linear-gradient(135deg,#3E6B8F,#5B8BAE)">RL</span>
+            <span class="avatar" style="background:linear-gradient(135deg,#2E9E6B,#54B98A)">DK</span>
+            <span class="avatar" style="background:rgba(29,30,44,.35)">+2</span>
+          </div>
+        </div>
+
+        <div class="msgs">
+          <div class="m-peer">
+            <div class="u-name">Richard · 11:42</div>
+            Wo stehen wir mit dem 3CX-Testtermin? Der Kunde fragt nach.
+          </div>
+
+          <div class="m-user">
+            <div class="u-name">Du · 11:44</div>
+            @Enni was ist der letzte Stand aus den Workshop-Notizen?
+          </div>
+
+          <div class="m-agent">
+            <div class="who"><span class="enni-dot">E</span><b>Enni</b> · antwortet im Pod, liest nur Pod-Quellen</div>
+
+            <div class="think" id="think-2">
+              <button class="think-head" data-think="think-2"><span class="chev">▶</span>Gedanken · 1 Tool-Aufruf</button>
+              <div class="think-body" data-think="think-2">
+                <p>Frage nach dem 3CX-Stand im Dello-Pod. Ich lese nur Quellen, die für alle Pod-Mitglieder freigegeben sind.</p>
+                <button class="tool-row" data-tool="wiki2"><span class="t-ic">📖</span><code>wiki.read_page</code><span class="t-q">Dello POC / Workshop-Notizen</span><span class="arr">›</span></button>
+                <p>Notizen vom 25.06. nennen KW 28 als Ziel, ohne festen Termin. Die offene ELO-Masken-Frage hängt am selben Ansprechpartner — ich schlage vor, beides zu bündeln.</p>
+                <div class="think-done">✓ Fertig</div>
+              </div>
+            </div>
+
+            <div class="body">
+              <p>Laut Workshop-Notizen vom 25.06.: 3CX-Test war mit Luis für KW&nbsp;28 angepeilt, ein fester Termin steht noch nicht. Offen ist außerdem die Frage, was am 30.06. an der ELO-Maske umgestellt wurde. Vorschlag: beide Punkte in einer Mail an Luis bündeln — soll ich einen Entwurf machen?</p>
+            </div>
+
+            <div class="m-meta">
+              <span class="cost">0,02 €</span>
+              <span>Quelle: <a class="src-link" href="#" onclick="return false">Wiki: Workshop-Notizen</a></span>
+              <button aria-label="Hilfreich">👍</button>
+              <button aria-label="Nicht hilfreich">👎</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="composer">
+          <div class="box">
+            <input type="text" placeholder="Nachricht an den Pod … (@Enni holt ihn dazu)" aria-label="Nachricht">
+            <button class="send" aria-label="Senden">↑</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== WIKI ========== -->
+    <section class="view" id="v-wiki">
+      <div class="wiki-grid">
+        <aside class="wiki-side">
+          <div class="ws-sec">Unternehmen</div>
+          <button class="ws-item"><span class="ic">🏠</span>Start</button>
+          <button class="ws-item"><span class="ic">📖</span>Handbuch</button>
+          <button class="ws-item"><span class="ic">🧭</span>Onboarding</button>
+          <div class="ws-sec">Projekte</div>
+          <button class="ws-item on"><span class="ic">📁</span>Dello POC</button>
+          <button class="ws-item sub">Projektplan</button>
+          <button class="ws-item sub">Workshop-Notizen</button>
+          <button class="ws-item"><span class="ic">📁</span>Partner-Portal v2</button>
+          <div class="ws-sec">Abteilungen</div>
+          <button class="ws-item"><span class="ic">📊</span>Sales</button>
+          <button class="ws-item"><span class="ic">🛠️</span>Implementation</button>
+          <button class="ws-item"><span class="ic">👥</span>People</button>
+          <button class="ws-new">+ Neue Seite</button>
+        </aside>
+
+        <article class="doc">
+          <div class="doc-crumb">Projekte / Dello POC / <b>Projektplan</b></div>
+          <h1>Dello POC — Projektplan</h1>
+          <div class="doc-meta">
+            <span class="mention"><span class="mini" style="background:#4A4D66">AS</span>Aleksa</span>
+            <span class="mention"><span class="mini" style="background:#3E6B8F">RL</span>Richard</span>
+            <span class="tagchip">POC</span>
+            <span class="tagchip">Utilities</span>
+            <span>zuletzt bearbeitet heute, 09:12</span>
+          </div>
+
+          <div class="enni-block">
+            <div class="eb-top"><span class="enni-dot" style="width:20px;height:20px;font-size:9px">E</span><b>Enni · Zusammenfassung</b> · aktualisiert sich, wenn sich die Seite ändert</div>
+            <p>POC läuft in Woche 6 von 8. Mail-Kanal produktiv, ELO-Antwortentwürfe stabil seit dem Regressionstest am 25.06. Offen: 3CX-Testtermin und die OTRS-Rechte für den Schreibzugriff. Größtes Risiko: Kundenseitige Freigabe für Phase 2 steht noch aus.</p>
+          </div>
+
+          <h3>Ziel</h3>
+          <p>Acht Wochen POC für den E-Mail-Kanal: Eingehende Anfragen automatisch kategorisieren, Antwortentwürfe aus OTRS-Historie und ELO-Dokumenten erzeugen, Übergabe an <span class="inline-mention">@Service-Team</span> bei niedriger Confidence. Woche 10–12 ist bereits als Produktiv-Rollout abgegrenzt.</p>
+
+          <h3>Phasen</h3>
+          <div class="block-table">
+            <table>
+              <thead><tr><th>Phase</th><th>Zeitraum</th><th>Owner</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr><td>0 · Vorbereitung &amp; Zugänge</td><td>Woche 1</td><td><span class="mention"><span class="mini" style="background:#4A4D66">AS</span>Aleksa</span></td><td><span class="status done">Erledigt</span></td></tr>
+                <tr><td>1 · Mail-Pilot aufsetzen</td><td>Woche 2–3</td><td><span class="mention"><span class="mini" style="background:#4A4D66">AS</span>Aleksa</span></td><td><span class="status done">Erledigt</span></td></tr>
+                <tr><td>2 · OTRS + ELO anbinden</td><td>Woche 4–6</td><td><span class="mention"><span class="mini" style="background:#4A4D66">AS</span>Aleksa</span></td><td><span class="status run">Läuft</span></td></tr>
+                <tr><td>3 · Qualitäts-Review mit Kunde</td><td>Woche 7</td><td><span class="mention"><span class="mini" style="background:#3E6B8F">RL</span>Richard</span></td><td><span class="status open">Offen</span></td></tr>
+                <tr><td>4 · Abschluss &amp; Rollout-Entscheid</td><td>Woche 8</td><td><span class="mention"><span class="mini" style="background:#3E6B8F">RL</span>Richard</span></td><td><span class="status risk">Freigabe offen</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>Architektur</h3>
+          <figure class="imgblock"><figcaption>architektur-skizze.png · eingefügt von Aleksa</figcaption></figure>
+
+          <h3>Dateien</h3>
+          <div class="files">
+            <span class="file"><span class="f-ic">📄</span><span>Kickoff-Protokoll.pdf<div class="f-sub">2,1 MB · 08.06.</div></span></span>
+            <span class="file"><span class="f-ic">📊</span><span>Aufwandsschätzung.xlsx<div class="f-sub">340 KB · 12.06.</div></span></span>
+            <span class="file"><span class="f-ic">🎙️</span><span>Workshop-Transkript.txt<div class="f-sub">86 KB · 25.06.</div></span></span>
+          </div>
+
+          <button class="addblock">+ Block hinzufügen — Text, Tabelle, Bild, Datei, Projektplan …</button>
+        </article>
+      </div>
+    </section>
+
+    <!-- ========== CONNECTORS ========== -->
+    <section class="view" id="v-conn">
+      <div class="page-head">
+        <div class="eyebrow">Connectors</div>
+        <h2>Ennis Werkzeuge und Quellen.</h2>
+        <p>Persönliche Zugänge, wo möglich — Aktionen laufen als du, Rechte vererben sich automatisch.</p>
+      </div>
+      <div class="conn-grid">
+        <div class="glass conn">
+          <div class="c-top"><span class="c-ic">📊</span><span class="c-name">Attio</span><span class="c-state ok"><span class="dot-s"></span>Verbunden</span></div>
+          <p class="c-desc">CRM — Companies, Notizen, Call-Recordings. Reads sind frei, Writes brauchen Freigabe.</p>
+          <div class="c-foot">Persönliche Anmeldung · OAuth <button class="btn quiet">Verwalten</button></div>
+        </div>
+        <div class="glass conn">
+          <div class="c-top"><span class="c-ic">💬</span><span class="c-name">Slack</span><span class="c-state ok"><span class="dot-s"></span>Verbunden</span></div>
+          <p class="c-desc">Nur Lesen für Wissens-Sync (#issues, #ai-implementation). Enni postet nicht in Channels.</p>
+          <div class="c-foot">Workspace-Anmeldung · read-only <button class="btn quiet">Verwalten</button></div>
+        </div>
+        <div class="glass conn">
+          <div class="c-top"><span class="c-ic">🦊</span><span class="c-name">GitLab</span><span class="c-state ok"><span class="dot-s"></span>Verbunden</span></div>
+          <p class="c-desc">Issues und Releases für Digests und Post-Mortems. Kein Schreibzugriff.</p>
+          <div class="c-foot">Workspace-Anmeldung · read-only <button class="btn quiet">Verwalten</button></div>
+        </div>
+        <div class="glass conn">
+          <div class="c-top"><span class="c-ic">📄</span><span class="c-name">Notion</span><span class="c-state mig"><span class="dot-s"></span>Migration läuft</span></div>
+          <p class="c-desc">Bestandsinhalte werden ins Wiki übernommen. Danach wird Notion abgelöst.</p>
+          <div class="c-foot">42 von 118 Seiten migriert <button class="btn quiet">Status</button></div>
+        </div>
+        <div class="glass conn">
+          <div class="c-top"><span class="c-ic">✉️</span><span class="c-name">Gmail</span><span class="c-state off"><span class="dot-s"></span>Nicht verbunden</span></div>
+          <p class="c-desc">Mail-Entwürfe direkt aus Konversationen. Senden bleibt immer bei dir.</p>
+          <div class="c-foot">Persönliche Anmeldung <button class="btn dark" style="padding:6px 14px;font-size:12px">Verbinden</button></div>
+        </div>
+        <div class="glass conn" style="border-style:dashed;background:rgba(255,255,255,.25);align-items:center;justify-content:center;text-align:center;color:var(--ink-3);min-height:150px">
+          <div style="font-size:13px">+ Connector hinzufügen<br><span style="font-size:11.5px">jeder MCP-Server per URL</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== ADMIN ========== -->
+    <section class="view" id="v-admin">
+      <div class="page-head">
+        <div class="eyebrow">Admin · Juli</div>
+        <h2>Transparent, nicht überwachend.</h2>
+        <p>Kosten stehen an jeder Antwort. Analytics sind metadata-only, Inhalte werden nie ausgewertet.</p>
+      </div>
+
+      <div class="cost-shell">
+        <div class="kpis">
+          <div class="glass kpi">
+            <div class="k-lbl">Gesamt</div>
+            <div class="k-val">184 <small>/ 400 €</small></div>
+            <div class="k-sub">im Plan</div>
+            <div class="capbar"><i style="width:46%"></i></div>
+          </div>
+          <div class="glass kpi">
+            <div class="k-lbl">Routinen</div>
+            <div class="k-val">42 <small>/ 100 €</small></div>
+            <div class="k-sub">geplante Enni-Aufgaben, Owner-Pflicht</div>
+            <div class="capbar"><i style="width:42%"></i></div>
+          </div>
+          <div class="glass kpi">
+            <div class="k-lbl">Aktive Nutzer:innen</div>
+            <div class="k-val">17 <small>/ 20</small></div>
+            <div class="k-sub">letzte 7 Tage</div>
+            <div class="capbar"><i style="width:85%"></i></div>
+          </div>
+        </div>
+
+        <div class="glass list-panel" style="margin-bottom:14px">
+          <h3>Routinen — was Enni geplant erledigt</h3>
+          <div class="row"><div><div class="r-name">Weekly Digest</div><div class="r-sub">freitags 16:00 · #issues + Releases → Report · Owner: Diana</div></div><div></div><div class="r-val">35,90 €</div></div>
+          <div class="row"><div><div class="r-name">Wiki-Zusammenfassungen aktualisieren</div><div class="r-sub">bei Seitenänderung · Owner: Aleksa</div></div><div></div><div class="r-val">4,10 €</div></div>
+          <div class="row"><div><div class="r-name">Attio-Sync-Check</div><div class="r-sub">täglich 07:00 · neue Notizen → Wissens-Vorschläge · Owner: Mehmet</div></div><div></div><div class="r-val">2,20 €</div></div>
+        </div>
+
+        <div class="glass list-panel" style="margin-bottom:14px">
+          <h3>Mitglieder</h3>
+          <div class="row"><div><div class="r-name">Aleksa Spalevic</div><div class="r-sub">Implementation</div></div><span class="role admin">Admin</span><div></div></div>
+          <div class="row"><div><div class="r-name">Richard Lohwasser</div><div class="r-sub">Geschäftsführung</div></div><span class="role admin">Admin</span><div></div></div>
+          <div class="row"><div><div class="r-name">Diana K.</div><div class="r-sub">Operations</div></div><span class="role">Builder</span><div></div></div>
+          <div class="row"><div><div class="r-name">Mehmet Y.</div><div class="r-sub">Sales</div></div><span class="role">Member</span><div></div></div>
+          <div class="row"><div><div class="r-name">+ 16 weitere</div><div class="r-sub">alle via Google-SSO</div></div><div></div><div></div></div>
+        </div>
+
+        <div class="glass list-panel audit">
+          <h3>Audit-Log</h3>
+          <div class="row"><span class="t">14:03</span><div><div class="r-name">Wissens-Update übernommen: Kunden / Jungborn</div><div class="r-sub">2 Zeilen ergänzt · Diff-Freigabe</div></div><span class="who-tag ki">KI</span><span class="t">Aleksa</span></div>
+          <div class="row"><span class="t">13:47</span><div><div class="r-name">attio.create_note freigegeben</div><div class="r-sub">Attio · Jungborn</div></div><span class="who-tag ki">KI</span><span class="t">Aleksa</span></div>
+          <div class="row"><span class="t">13:12</span><div><div class="r-name">Seite bearbeitet: Dello POC / Projektplan</div><div class="r-sub">Phasen-Tabelle · Status geändert</div></div><span class="who-tag hu">Mensch</span><span class="t">Aleksa</span></div>
+          <div class="row"><span class="t">11:30</span><div><div class="r-name">Pod erstellt: Dello POC (Restricted)</div><div class="r-sub">5 Mitglieder eingeladen</div></div><span class="who-tag hu">Mensch</span><span class="t">Aleksa</span></div>
+        </div>
+
+        <p class="footnote">Jede Aktion trägt Mensch/KI-Attribution. Enni läuft immer mit den Rechten der Person, die fragt — in Pods liest er nur, was alle Mitglieder sehen dürfen.</p>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ================= TOOL DETAIL PANEL ================= -->
+<aside class="tool-panel" id="tool-panel" aria-label="Tool-Detail">
+  <div class="tp-head">
+    <span class="tp-t">Tool-Detail</span>
+    <button class="tp-close" id="tp-close" aria-label="Schließen">✕</button>
+  </div>
+  <div class="tp-title"><span id="tp-ic">📊</span><code id="tp-name">attio.search_records</code><span class="tp-time" id="tp-time">1,1 s</span></div>
+  <div class="tp-sec">Inputs</div>
+  <div class="tp-block" id="tp-inputs"></div>
+  <div class="tp-sec">Output</div>
+  <div class="tp-block"><div class="tp-out" id="tp-output"></div></div>
+  <div class="tp-foot">Ausgeführt mit deinen Zugangsdaten · im Audit-Log attribuiert</div>
+</aside>
+
+<!-- ================= POD MODAL ================= -->
+<div class="overlay" id="pod-overlay">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="pm-title">
+    <h3 id="pm-title">Neuen Pod erstellen</h3>
+    <label for="pm-name">Pod-Name</label>
+    <input type="text" id="pm-name" placeholder="z. B. STAWAG Rollout">
+    <label>Zugriff</label>
+    <div class="seg" id="pm-seg">
+      <button class="on" data-acc="open">🌐 Open</button>
+      <button data-acc="restricted">🔒 Restricted</button>
+    </div>
+    <p class="seg-hint" id="pm-hint">Alle in der Organisation können den Pod sehen und beitreten.</p>
+    <div class="m-actions">
+      <button class="btn quiet" id="pm-cancel">Abbrechen</button>
+      <button class="btn dark" id="pm-create">Erstellen</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // rail navigation
+  const railBtns = document.querySelectorAll('.rail-btn');
+  const views = { chat:'v-chat', wiki:'v-wiki', conn:'v-conn', admin:'v-admin' };
+  railBtns.forEach(b => b.addEventListener('click', () => {
+    railBtns.forEach(x => x.classList.toggle('active', x === b));
+    Object.entries(views).forEach(([k,id]) => document.getElementById(id).classList.toggle('active', k === b.dataset.v));
+    closePanel();
+    window.scrollTo({top:0});
+  }));
+
+  // chat switching (private vs pod)
+  const chatPriv = document.getElementById('chat-priv');
+  const chatPod = document.getElementById('chat-pod');
+  function wireChatItem(item){
+    item.addEventListener('click', () => {
+      document.querySelectorAll('.sb-scroll .sb-item').forEach(x => x.classList.toggle('on', x === item));
+      const isPod = item.dataset.chat === 'pod';
+      chatPriv.style.display = isPod ? 'none' : 'flex';
+      chatPod.style.display = isPod ? 'flex' : 'none';
+      railBtns.forEach(x => x.classList.toggle('active', x.dataset.v === 'chat'));
+      Object.entries(views).forEach(([k,id]) => document.getElementById(id).classList.toggle('active', k === 'chat'));
+      closePanel();
+      window.scrollTo({top:0});
+    });
+  }
+  document.querySelectorAll('.sb-item[data-chat]').forEach(wireChatItem);
+
+  // thinking expand/collapse
+  document.querySelectorAll('[data-think]').forEach(el => {
+    el.addEventListener('click', e => {
+      if (e.target.closest('.tool-row')) return; // tool click opens panel, not toggle
+      const think = document.getElementById(el.dataset.think);
+      think.classList.toggle('open');
+    });
+  });
+
+  // tool detail panel
+  const TOOLS = {
+    attio: { ic:'📊', name:'attio.search_records', time:'1,1 s',
+      inputs:[{k:'query', v:'"Jungborn"'},{k:'max_results', v:'5'}],
+      output:'1 Company gefunden\n\nJungborn (Partner: Logen.AI)\n· 4 Notizen, neueste 03.07.\n· Owner: Mehmet Y.\n· Letzte Notiz: "Kaskaden-Check\n  abgeschlossen, Angebot durch\n  Sales als nächster Schritt."' },
+    wiki: { ic:'📖', name:'wiki.read_page', time:'0,3 s',
+      inputs:[{k:'path', v:'Kunden / Jungborn'}],
+      output:'Seite geladen (Stand 26.06.)\n\nAbschnitt "Status":\n"Kaskaden-Frage von Mehmet\noffen, techn. Prüfung läuft."\n\n→ Kaskaden-Ergebnis vom 03.07.\n  fehlt auf der Seite.' },
+    wiki2: { ic:'📖', name:'wiki.read_page', time:'0,3 s',
+      inputs:[{k:'path', v:'Dello POC / Workshop-Notizen'}],
+      output:'Seite geladen (Stand 25.06.)\n\n"3CX-Test mit Luis für KW 28\nangepeilt, Termin offen.\nELO-Maske: Klärung mit Luis/Ben,\nwas am 30.06. umgestellt wurde."' },
+  };
+  const panel = document.getElementById('tool-panel');
+  function openPanel(id){
+    const t = TOOLS[id]; if (!t) return;
+    document.getElementById('tp-ic').textContent = t.ic;
+    document.getElementById('tp-name').textContent = t.name;
+    document.getElementById('tp-time').textContent = t.time;
+    document.getElementById('tp-inputs').innerHTML = t.inputs.map(i =>
+      `<div class="tp-kv"><span class="k">${i.k}</span><code>${i.v}</code></div>`).join('');
+    document.getElementById('tp-output').textContent = t.output;
+    panel.classList.add('open');
+  }
+  function closePanel(){ panel.classList.remove('open'); }
+  document.querySelectorAll('.tool-row').forEach(r => r.addEventListener('click', e => {
+    e.stopPropagation();
+    // ensure the thinking chain stays/opens
+    const think = r.closest('.think'); if (think) think.classList.add('open');
+    openPanel(r.dataset.tool);
+  }));
+  document.getElementById('tp-close').addEventListener('click', closePanel);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closePanel(); });
+
+  // pod modal
+  const overlay = document.getElementById('pod-overlay');
+  const segBtns = document.querySelectorAll('#pm-seg button');
+  const hint = document.getElementById('pm-hint');
+  let acc = 'open';
+  document.getElementById('new-pod').addEventListener('click', () => { overlay.classList.add('open'); document.getElementById('pm-name').focus(); });
+  document.getElementById('pm-cancel').addEventListener('click', () => overlay.classList.remove('open'));
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.remove('open'); });
+  segBtns.forEach(b => b.addEventListener('click', () => {
+    segBtns.forEach(x => x.classList.toggle('on', x === b));
+    acc = b.dataset.acc;
+    hint.textContent = acc === 'open'
+      ? 'Alle in der Organisation können den Pod sehen und beitreten.'
+      : 'Nur eingeladene Mitglieder haben Zugriff auf den Pod.';
+  }));
+  document.getElementById('pm-create').addEventListener('click', () => {
+    const name = document.getElementById('pm-name').value.trim() || 'Neuer Pod';
+    const btn = document.createElement('button');
+    btn.className = 'sb-item pod-item';
+    btn.dataset.chat = 'pod';
+    btn.innerHTML = `<span class="ic">⬡</span>${name}<span class="lock">${acc === 'open' ? '🌐' : '🔒'}</span>`;
+    wireChatItem(btn);
+    document.getElementById('pod-list').appendChild(btn);
+    overlay.classList.remove('open');
+    document.getElementById('pm-name').value = '';
+  });
+</script>
