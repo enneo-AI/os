@@ -3,14 +3,16 @@ import { wikiToolDefinitions, runWikiTool } from './tools/wiki.js'
 import { gitlabToolDefinitions, runGitlabTool } from './tools/gitlab.js'
 
 const anthropic = new Anthropic()
-const MODEL = process.env.ENNI_MODEL || 'claude-opus-4-8'
+const DEFAULT_MODEL = process.env.ENNI_MODEL || 'claude-opus-4-8'
+export const ALLOWED_MODELS = ['claude-opus-4-8', 'claude-sonnet-5', 'claude-haiku-4-5']
 const MAX_TOOL_ITERATIONS = 12
 
 const SYSTEM_PROMPT = `Du bist Enni, der interne AI-Assistent des enneo-Teams (enneo GmbH, Berlin — AI-Agenten für Energieversorger).
 
 # Arbeitsweise
 - Antworte auf Deutsch, außer der Nutzer schreibt Englisch.
-- Firmenwissen lebt im Wiki. Bei Fragen zu enneo-internen Themen (Prozesse, Kunden, Produkte, Team): IMMER zuerst wiki_search aufrufen, bevor du aus dem Gedächtnis antwortest.
+- Firmenwissen lebt im Wiki. Bei Fragen zu enneo-internen Themen (Prozesse, Kunden, Produkte, Team): IMMER zuerst wiki_semantic_search aufrufen, bevor du aus dem Gedächtnis antwortest. Die gelieferten Abschnitte reichen meist — lies nur dann eine ganze Seite (wiki_read_page), wenn die Abschnitte wirklich nicht genügen.
+- wiki_search (Stichwort) und wiki_list_pages nutzt du für exakte Begriffe, Aufzählungen oder wenn du wissen willst, was es überhaupt gibt.
 - Bei Fragen zu Code, Implementierungen oder technischen Details: nutze die GitLab-Tools (Projekt suchen → Code suchen → Datei lesen).
 - Wenn du etwas im Wiki nicht findest, sag das ehrlich. Erfinde keine internen Fakten.
 - Sei direkt und knapp. Keine Floskeln.
@@ -37,7 +39,23 @@ async function executeTool(name, input) {
  * `emit(event)` streamt Zwischenstände ans Frontend (SSE).
  * Rückgabe: { text, thinking, toolCalls, usage, model }
  */
-export async function runEnniTurn(history, emit) {
+// Prompt-Caching: genau EIN Breakpoint auf dem letzten Content-Block der letzten Message.
+// Alte Marker vorher entfernen (max. 4 erlaubt, sonst 400 nach mehreren Iterationen).
+function setCacheBreakpoint(messages) {
+  for (const m of messages) {
+    if (Array.isArray(m.content)) for (const b of m.content) delete b.cache_control
+  }
+  const last = messages[messages.length - 1]
+  if (!last) return
+  if (typeof last.content === 'string') {
+    last.content = [{ type: 'text', text: last.content, cache_control: { type: 'ephemeral' } }]
+  } else if (Array.isArray(last.content) && last.content.length) {
+    last.content[last.content.length - 1].cache_control = { type: 'ephemeral' }
+  }
+}
+
+export async function runEnniTurn(history, emit, modelOverride) {
+  const MODEL = ALLOWED_MODELS.includes(modelOverride) ? modelOverride : DEFAULT_MODEL
   const messages = [...history]
   const totalUsage = {
     input_tokens: 0,
@@ -50,6 +68,7 @@ export async function runEnniTurn(history, emit) {
   let finalText = ''
 
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
+    setCacheBreakpoint(messages)
     const stream = anthropic.messages.stream({
       model: MODEL,
       max_tokens: 16000,

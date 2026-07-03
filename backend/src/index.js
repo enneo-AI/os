@@ -1,7 +1,7 @@
 import express from 'express'
 import cors from 'cors'
 import { db, getUserFromRequest } from './db.js'
-import { runEnniTurn } from './agent.js'
+import { runEnniTurn, ALLOWED_MODELS } from './agent.js'
 import { logUsage } from './usage.js'
 
 const app = express()
@@ -21,8 +21,9 @@ app.post('/api/chat', async (req, res) => {
   const user = await getUserFromRequest(req)
   if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
 
-  const { conversation_id, message } = req.body || {}
+  const { conversation_id, message, model } = req.body || {}
   if (!message?.trim()) return res.status(400).json({ error: 'message fehlt' })
+  if (model && !ALLOWED_MODELS.includes(model)) return res.status(400).json({ error: 'Unbekanntes Modell' })
 
   // Conversation anlegen oder laden (Ownership prüfen)
   let convId = conversation_id
@@ -67,7 +68,7 @@ app.post('/api/chat', async (req, res) => {
   emit({ type: 'conversation', conversation_id: convId })
 
   try {
-    const result = await runEnniTurn(history, emit)
+    const result = await runEnniTurn(history, emit, model)
 
     // Assistant-Message inkl. Gedankenkette + Tool-Calls persistieren
     const { data: msg } = await db

@@ -281,7 +281,7 @@ async function send() {
     const res = await fetch(`${BACKEND_URL}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
-      body: JSON.stringify({ conversation_id: currentConv?.id, message: text }),
+      body: JSON.stringify({ conversation_id: currentConv?.id, message: text, model: $('model-select').value }),
     })
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`)
 
@@ -675,5 +675,9 @@ async function refreshCosts() {
   $('k-month').innerHTML = `${sum(monthStart).toLocaleString('de-DE', { maximumFractionDigits: 2 })} <small>€</small>`
   $('k-count').textContent = rows.length
 }
+
+// Modell-Wahl merken
+$('model-select').value = localStorage.getItem('enni-model') || 'claude-opus-4-8'
+$('model-select').addEventListener('change', () => localStorage.setItem('enni-model', $('model-select').value))
 
 init()

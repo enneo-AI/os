@@ -1,6 +1,33 @@
 import { db } from '../db.js'
 
+// Query-Embedding über die embed Edge Function (gte-small, kostenlos)
+async function embedQuery(text) {
+  const res = await fetch(`${process.env.SUPABASE_URL}/functions/v1/embed`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ texts: [text] }),
+  })
+  if (!res.ok) throw new Error(`embed ${res.status}`)
+  return (await res.json()).embeddings[0]
+}
+
 export const wikiToolDefinitions = [
+  {
+    name: 'wiki_semantic_search',
+    description:
+      'Semantische Suche über das gesamte Firmenwissen (RAG). Liefert die relevantesten Abschnitte, nicht ganze Seiten. IMMER dein erstes Werkzeug bei Wissens- und Verständnisfragen. Nicht geeignet zum Zählen oder für "alle X auflisten" — dafür wiki_search/wiki_list_pages.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Die Frage oder das Thema in natürlicher Sprache' },
+      },
+      required: ['query'],
+      additionalProperties: false,
+    },
+  },
   {
     name: 'wiki_list_pages',
     description:
@@ -35,6 +62,19 @@ export const wikiToolDefinitions = [
 ]
 
 export async function runWikiTool(name, input) {
+  if (name === 'wiki_semantic_search') {
+    const embedding = await embedQuery(input.query)
+    const { data, error } = await db.rpc('match_wiki_chunks', {
+      query_embedding: JSON.stringify(embedding),
+      match_count: 8,
+    })
+    if (error) throw new Error(error.message)
+    if (!data?.length) return `Keine relevanten Abschnitte für "${input.query}" gefunden.`
+    return data
+      .map((c) => `[${c.slug} · Relevanz ${c.similarity.toFixed(2)}]\n${c.content}`)
+      .join('\n\n---\n\n')
+  }
+
   if (name === 'wiki_list_pages') {
     const { data, error } = await db
       .from('wiki_pages')
