@@ -1,0 +1,4 @@
+# Netlify deployt bei jedem Push auf main (GitHub-Connect).
+# Die App ist statisches HTML/JS ohne Build-Schritt — published wird der frontend-Ordner.
+[build]
+  publish = "frontend"
