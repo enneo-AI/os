@@ -1,6 +1,6 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-03 (abends — Schema live)
+**Zuletzt aktualisiert:** 2026-07-05 (Session-Ende — MVP komplett live auf https://enneo-os.netlify.app)
 
 ## Erledigt
 
@@ -31,6 +31,15 @@
 8. [x] **Composer-Redesign + Anhänge + Diktat (2026-07-05):** Composer als große Glass-Karte im Navigations-Stil (Chips-Zeile, Autosize-Textarea bis 180px, Tasten-Leiste: 📎 Anhang / 🎙 Diktat / Kontext-Ring [immer sichtbar] / Modell-Taste / erhabener Senden-Button). **Anhänge:** Excel, CSV, JPEG, PNG, PDF — max. 4 Dateien à 10 MB; Bilder als image-Block, PDF als document-Block, CSV als Text, Excel wird im Backend via `xlsx` zu CSV konvertiert (`backend/src/attachments.js`); Datei-Inhalt geht nur im Upload-Turn ans Modell, im Verlauf bleibt Marker + `messages.attachments` (Metadaten, Migration 0005) — bewusst gegen Kosten-Explosion. **Diktat:** Web Speech API (Chrome/Edge/Safari; Firefox nicht), Default Deutsch, Sprachwechsel DE/EN über Link im Hinweis unterm Composer, rote Puls-Animation bei Aufnahme. **E2E getestet:** CSV-Upload über die UI (Enni beantwortet Frage zur Datei korrekt), Bild-Pfad via API (Farb-Erkennung). Diktat nur Code-Review (Mikro in Headless nicht testbar — Aleksa bitte einmal real klicken).
 
 9. [x] **Pods — Projekt-Räume nach Dust-Muster (2026-07-05):** Migration `0006` (pods, pod_members, pod_tasks, pod_files, conversations.pod_id, messages.author_id, `pod-files` Storage-Bucket, `is_pod_visible()` SECURITY DEFINER). **Pod-Seite mit 4 Tabs:** Konversationen (geteilt — jeder im Pod liest/schreibt mit, Peer-Messages zeigen Absender-Namen), Aufgaben (anlegen, abhaken, **▶ "Enni arbeiten lassen"** öffnet Modal mit optionaler Nachricht → startet Pod-Konversation und verlinkt sie mit dem Task = Audit-Trail), Dateien (Upload in `pod-files`, Download via Signed-URL), Einstellungen (Name/Beschreibung/**Instructions for Agents**/Open-Toggle). Sidebar-Pods-Liste + "＋"-Modal (Open/Restricted + Mitglieder). **Backend:** Pod-Konversationen laufen mit Absender-Attribution im Verlauf + Pod-Instructions als zweiter System-Block. **E2E verifiziert:** Pod anlegen → Instructions speichern → Aufgabe anlegen → ▶ → Enni antwortet im Pod-Kontext, Task auf in_progress + Konv-Link in DB bestätigt. **RLS-Bug gefixt:** pods-SELECT-Policy inline statt `is_pod_visible(id)` (Selbst-Requery sieht INSERT..RETURNING-Zeile nicht). Test-Pod "STAWAG Projekt" bleibt für die Demo stehen. **Noch offen:** Enni greift in Pod-Konversationen noch NICHT automatisch auf Pod-Dateien zu (Datei-Bibliothek ist bisher nur Ablage/Download; Anbindung an den Tool-Layer = nächster Schritt); Realtime-Updates (andere sehen neue Messages erst nach Reload).
+
+10. [x] **SPA-Routing (2026-07-05):** echte URLs `/chat`, `/chat/:id`, `/spaces`, `/spaces/tools`, `/spaces/connections`, `/admin`, `/pod/:id` — History-API-Router in app.js (`syncUrl`/`route`), Netlify-Redirects in `netlify.toml` + `frontend/_redirects`. Zurück-Button + Deep-Links E2E verifiziert, alle Routen live 200.
+
+## Als Nächstes (Priorität vor der Founder-Demo Mi 08.07.)
+
+1. [ ] **Wissens-Update-Loop (Punkt 5 unten — der Kern-Differenzierer!):** Enni schlägt nach Konversationen Wiki-Diffs vor (`knowledge_updates`-Tabelle existiert seit 0001), Mensch reviewt/übernimmt, Audit-Eintrag. UI: Learn-Card im Chat (siehe mockup-v5 „WISSENS-UPDATE") + Review-Liste.
+2. [ ] **Demo-Vorbereitung:** Demo-Drehbuch (Kosten-Story: Euro pro Antwort → Modellwahl → RAG → Compaction; Pods mit Task-▶; Spaces), Passwort-Änderungs-UI oder neues Passwort für Aleksa.
+3. [ ] Enni-Tool-Layer: Space-Rechte durchsetzen + Pod-Dateien lesbar machen.
+4. [ ] Realtime (Supabase Realtime auf messages für Pod-Konversationen).
 
 ## Offene Entscheidungen
 

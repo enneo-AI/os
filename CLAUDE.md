@@ -1,29 +1,50 @@
 # enneo OS — Projekt-Kontext für Claude-Code-Sessions
 
-**Was:** Internes AI-Workbench-System für das enneo-Team. Ein Agent (Enni) + Wiki (Notion-Ersatz) + Connectors + Admin. Owner: Aleksa (AI Implementation Manager bei enneo). Status: MVP-Bau vor dem Founder-Pitch — noch nicht mit Richard/Kyung besprochen.
+**Was:** Internes AI-Workbench-System für das enneo-Team (~20 MA). Ein Agent (Enni) + Wiki/Spaces (Notion-Ersatz) + Pods (Projekt-Räume) + Admin. Owner: Aleksa (AI Implementation Manager bei enneo). **Stand: MVP komplett LIVE** — Founder-Pitch Mi 08.07.2026 (Firmenreise Georgien), noch nicht mit Richard/Kyung besprochen.
 
-**Rolle dieser Codebase:** Das Repo gehört der enneo-AI GitHub-Org. Alle Inhalte sind enneo-vertraulich (§ 9 Rahmenvertrag) — keine Kundendaten committen, keine Secrets committen.
+**Rolle dieser Codebase:** Repo gehört der enneo-AI GitHub-Org. Alles enneo-vertraulich (§ 9 Rahmenvertrag) — keine Kundendaten committen, keine Secrets committen. Detaillierter Verlauf + offene Punkte: `HANDOFF.md` (immer zuerst lesen!).
 
-## Infrastruktur
+## Live-System
 
-| Was | Wert |
-|---|---|
-| Supabase-Projekt | `enneo OS` · ref `aiwhomrvspfxotkllngz` · eu-central-1 · Org "Enneo AI" |
-| Supabase-PAT | `~/.supabase/access-token-enneo-companyos` (Backup: claude-team `ai-team/agents/enni-enneo/.env`) |
-| GitHub-Auth | macOS Keychain, eigener Eintrag für enneo-AI (username `x-access-token`, fine-grained PAT, nur dieses Repo) |
-| Anon/Service-Keys | nie lokal cachen — live via Management API: `curl -s -H "Authorization: Bearer $(cat ~/.supabase/access-token-enneo-companyos)" https://api.supabase.com/v1/projects/aiwhomrvspfxotkllngz/api-keys` |
+| Komponente | Wo | Deploy |
+|---|---|---|
+| Frontend | `https://enneo-os.netlify.app` | **automatisch bei git push** (GitHub-Connect, `netlify.toml`: publish=frontend + SPA-Redirects) |
+| Backend | `https://enneo-os-backend-production.up.railway.app` | **NUR manuell:** `cd backend && ~/.railway/bin/railway up --detach --service enneo-os-backend` (Railway-Projekt `4be1c83c-…` auf Aleksas Account, Login via `railway login --browserless`) |
+| DB/Auth/Storage | Supabase `aiwhomrvspfxotkllngz` (eu-central-1, Org "Enneo AI") | Migrations: SQL in `supabase/migrations/` + via Management API `POST /v1/projects/{ref}/database/query` einspielen |
+| Edge Function | `embed` (gte-small Embeddings, 384 Dim.) | `SUPABASE_ACCESS_TOKEN=$(cat ~/.supabase/access-token-enneo-companyos) ~/.local/bin/supabase functions deploy embed --project-ref aiwhomrvspfxotkllngz` |
+
+**Login (MVP Email+Passwort, Microsoft-SSO Phase 2):** `aleksa@enneo.ai`, Passwort hat Aleksa. Test-JWT für curl: via `POST {SUPABASE}/auth/v1/token?grant_type=password` mit Anon-Key.
+
+**Secrets/Keys:** Supabase-PAT `~/.supabase/access-token-enneo-companyos`. Anon/Service-Keys live via Management API ziehen (`?reveal=true`), nie cachen. Railway-Env-Vars: ANTHROPIC_API_KEY (Aleksas persönlicher, MVP-only), SUPABASE_URL/SERVICE_ROLE_KEY, GITLAB_TOKEN (Aleksas PAT „aleksa-enneo" aus macOS-Keychain `security find-internet-password -s gitlab.com -w`, gültig 2027-04), GITLAB_BASE_URL=https://gitlab.com, FRONTEND_ORIGIN, ENNI_MODEL, EUR_PER_USD.
+
+## Architektur (Kurzform)
+
+- **Frontend** `frontend/`: Vanilla HTML+JS ohne Build (esm.sh für supabase-js/marked/DOMPurify). Konfiguration in `config.js` (Anon-Key ist public). SPA-Routing über History API: `/chat`, `/chat/:id`, `/spaces`, `/spaces/tools`, `/spaces/connections`, `/admin`, `/pod/:id`.
+- **Backend** `backend/`: Node 22 + Express + `@anthropic-ai/sdk` (manueller Tool-Loop, KEIN Agent-SDK — Begründung in `backend/README.md`). SSE-Streaming. Endpoints: `POST /api/chat` (message, conversation_id?, model?, attachments?, pod_id?), `POST /api/compact`, `GET /health`.
+- **Enni-Tools:** `wiki_semantic_search` (RAG, pgvector Top-8-Chunks — IMMER zuerst), `wiki_search`/`wiki_list_pages`/`wiki_read_page`, GitLab read-only (`gitlab_search_projects/_search_code/_read_file/_list_merge_requests`).
+- **Modelle:** User wählt im Chat-Dropdown (Opus 4.8 Default / Sonnet 5 / Haiku 4.5). Haiku kann KEIN adaptive thinking — Parameter wird modellabhängig gesetzt. Kosten pro Antwort in `llm_usage` (cost_eur), Preise in `backend/src/usage.js`.
+- **Kontext:** Prompt-Caching (wandernder Breakpoint im Tool-Loop, alte Marker löschen — max. 4!). Compaction nach Dust: Ring im Composer, 33/70/80-Schwellen, `role='compaction'`-Anker, Haiku fasst zusammen.
+- **Anhänge:** Excel/CSV/JPEG/PNG/PDF (max 4×10MB); Excel→CSV via `xlsx` in `backend/src/attachments.js`; Inhalt geht NUR im Upload-Turn ans Modell (Kosten!), Verlauf behält Marker + `messages.attachments`-Metadaten.
+- **Diktat:** Web Speech API (Chrome/Edge/Safari), DE/EN-Umschalter unterm Composer.
+
+## Datenmodell (Migrations 0001–0006)
+
+`profiles` (is_admin) · `conversations` (user_id, pod_id) · `messages` (role inkl. compaction, thinking, tool_calls, attachments, author_id) · `llm_usage` · `wiki_pages` (space_id) · `wiki_chunks` (pgvector 384, RPC `match_wiki_chunks`) · `knowledge_updates` (Diff-Loop, **noch ungenutzt — Punkt 5 im HANDOFF**) · `spaces`/`space_members`/`space_connections` (Dust-Spaces) · `pods`/`pod_members`/`pod_tasks`/`pod_files` (+ Storage-Bucket `pod-files`) · Helper `is_pod_visible()` SECURITY DEFINER.
+
+**RLS-Falle (2× gestolpert):** Neue Tabellen brauchen GRANTs (`grant … to authenticated/service_role`). Und: SELECT-Policies dürfen für die eigene Tabelle KEINE Security-Definer-Selbst-Requery-Funktion nutzen (INSERT..RETURNING sieht die Zeile sonst nicht) — inline schreiben.
+
+## Bekannte Grenzen / nächste Schritte (Details in HANDOFF)
+
+1. **Wissens-Update-Loop** (Enni schlägt Wiki-Diffs vor, Mensch gibt frei) — Kern-Differenzierer, Tabelle existiert, Flow fehlt. **Wichtigster nächster Schritt vor der Demo.**
+2. Enni respektiert Space-Rechte noch nicht im Tool-Layer (Restricted-Space-Wissen wäre für alle abfragbar, aktuell liegt aber alles in Company Data = open).
+3. Pod-Dateien sind Ablage — Enni liest sie noch nicht als Tool.
+4. Kein Realtime (Pod-Messages erst nach Reload sichtbar).
+5. RAG-Re-Index nach Wiki-Änderungen manuell (Script-Pattern in HANDOFF §6; Embed-Function-Limit: max. 2 lange Texte pro Call).
+6. Crawl-Qualität mancher Doku-Seiten (Navigations-Reste) — Re-Crawl irgendwann.
 
 ## Arbeitsweise
 
-- Aleksa ist non-technical — Erklärungen kurz, deutsch, ein Schritt nach dem anderen
-- Kein lokales Node.js voraussetzen: Deploy via git push + Supabase Management API; DB-Änderungen als SQL-Migrations über die Management API (`POST /v1/projects/{ref}/database/query`)
-- Design-Referenz ist `design/mockup-v5.html` — Look ist final validiert (helles Premium-Glass, flache Sidebar, Gedankenkette mit Tool-Detail-Panel, KEINE unnötigen Container). Bei UI-Arbeit zuerst dort nachsehen.
-- Konzept-Herkunft: Dust.tt-Analyse + eigene Architektur-Entscheidungen, dokumentiert in `docs/konzept.md`
-
-## Kern-Prinzipien (bei jeder Änderung einhalten)
-
-1. Ein Agent (Enni) — Skills lazy-loaded, Routinen mit Owner statt Agent-Personas
-2. Enni läuft mit den Rechten der fragenden Person (personal Credentials)
-3. Wissens-Änderungen nur als Diff mit menschlicher Freigabe, nie Auto-Apply
-4. Jede Aktion im Audit-Log mit Mensch/KI-Attribution; `llm_usage` pro Antwort
-5. Kein Slack-Nachbau (News/Alerts/Kommunikation bleiben in Slack)
+- Aleksa ist non-technical — kurz, deutsch, ein Schritt nach dem anderen.
+- Kein lokales Node voraussetzen. Frontend-Preview: `npx http-server frontend -p 5173` (Port 5173 ist im Backend-CORS).
+- Design-Referenz `design/mockup-v5.html` + Dust.tt als IA-Vorbild (Enni-Research: claude-team `ai-team/agents/enni-enneo/knowledge/company-os-dust-research.md`).
+- Kern-Prinzipien: EIN Agent · Rechte der fragenden Person · Wissens-Änderungen nur als Diff mit Freigabe · Kosten transparent an jeder Antwort · kein Slack-Nachbau.
