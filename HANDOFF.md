@@ -2,6 +2,10 @@
 
 **Zuletzt aktualisiert:** 2026-07-05 (Session-Ende — MVP komplett live auf https://enneo-os.netlify.app)
 
+### Was wurde in dieser Session gemacht (2026-07-03 → 2026-07-05)
+
+Komplettes MVP von null auf live (Details in den nummerierten Punkten unten): DB-Schema + RLS → Backend (Anthropic-SDK-Tool-Loop, Railway via CLI) → Wiki-Seeding (303 Seiten aus Ennis KB) → GitLab-Connector (Keychain-PAT) → Frontend nach mockup-v5 → Dust-IA (expandierende Icon-Nav, kontextuelle Sidebar, Spaces mit echtem DB-Modell) → Kosten-Optimierung (pgvector-RAG 1.303 Chunks, Prompt-Caching, Modell-Dropdown; 0,23 € → 0,04 €/Frage) → Context-Compaction (Ring, 33/70/80) → Composer-Redesign (Anhänge Excel/CSV/Bild/PDF, Diktat DE/EN) → **Pods** (geteilte Konversationen, Aufgaben mit ▶-Enni-Start, Dateien, Instructions for Agents) → SPA-Routing + Netlify-GitHub-Auto-Deploy. Neo-Roboter aus ops-fe als Enni-Avatar. Login-User `aleksa@enneo.ai` angelegt (Passwort NICHT im Repo — hat Aleksa). Einstieg für neue Sessions: `CLAUDE.md`.
+
 ## Erledigt
 
 - [x] Konzept + Dust.tt-Research (claude-team: `ai-team/agents/enni-enneo/knowledge/company-os-dust-research.md` + knowledge.md §89)
