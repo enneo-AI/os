@@ -63,14 +63,14 @@ async function showApp() {
   const name = session.user.user_metadata?.full_name || session.user.email
   $('f-name').textContent = name.split(' ')[0]
   $('f-avatar').textContent = name.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase()
-  await Promise.all([loadConversations(), refreshCosts()])
+  await Promise.all([loadConversations(), loadPods(), refreshCosts()])
   newConversation()
 }
 
 // Rail-Navigation — Sidebar-Inhalt wechselt mit dem Bereich
 const views = {
   chat: 'v-chat', wiki: 'v-wiki', conn: 'v-conn', admin: 'v-admin',
-  connected: 'v-connected', pagelist: 'v-pagelist', 'admin-conn': 'v-admin-conn',
+  connected: 'v-connected', pagelist: 'v-pagelist', 'admin-conn': 'v-admin-conn', pod: 'v-pod',
 }
 const sidebars = { chat: 'sb-chat', wiki: 'sb-spaces', admin: 'sb-admin' }
 
@@ -112,6 +112,8 @@ async function loadConversations() {
   const { data } = await sb
     .from('conversations')
     .select('id, title, updated_at')
+    .is('pod_id', null)
+    .eq('user_id', session.user.id)
     .order('updated_at', { ascending: false })
     .limit(50)
   const list = $('conv-list')
@@ -136,25 +138,33 @@ function newConversation() {
   activateChatView()
   $('composer-input').focus()
 }
-$('new-chat').addEventListener('click', newConversation)
+$('new-chat').addEventListener('click', () => {
+  convPod = null
+  newConversation()
+})
 
 async function openConversation(c) {
   currentConv = c
-  $('chat-title').textContent = c.title || 'Ohne Titel'
+  convPod = c.pod_id ? podsList.find((p) => p.id === c.pod_id) || convPod : null
+  $('chat-title').textContent = (convPod ? `⬡ ${convPod.name} · ` : '') + (c.title || 'Ohne Titel')
   activateChatView()
   document.querySelectorAll('#conv-list .sb-item').forEach((x) =>
     x.classList.toggle('on', x.querySelector('.txt')?.textContent === (c.title || 'Ohne Titel'))
   )
-  const [{ data: msgs }, { data: usage }] = await Promise.all([
+  const [{ data: msgs }, { data: usage }, profs] = await Promise.all([
     sb.from('messages').select('*').eq('conversation_id', c.id).order('created_at'),
     sb.from('llm_usage').select('message_id, cost_eur').eq('conversation_id', c.id),
+    allProfiles(),
   ])
   costByMessage = Object.fromEntries((usage || []).map((u) => [u.message_id, Number(u.cost_eur)]))
   const box = $('msgs')
   box.innerHTML = ''
   for (const m of msgs || []) {
-    if (m.role === 'user') box.appendChild(renderUser(m.content, m.attachments))
-    else if (m.role === 'assistant')
+    if (m.role === 'user') {
+      if (convPod && m.author_id && m.author_id !== session.user.id)
+        box.appendChild(renderPeer(profName(profs, m.author_id), m.content, m.attachments))
+      else box.appendChild(renderUser(m.content, m.attachments))
+    } else if (m.role === 'assistant')
       box.appendChild(renderAgent(m.content, m.thinking, m.tool_calls || [], costByMessage[m.id]))
     else if (m.role === 'compaction') box.appendChild(renderCompactionMarker(m.content))
   }
@@ -174,6 +184,28 @@ function renderUser(text, attachments) {
     for (const a of attachments) {
       const chip = document.createElement('span')
       chip.style.cssText = 'font-size:11px;font-weight:600;background:rgba(255,255,255,.16);border-radius:999px;padding:3px 10px'
+      chip.textContent = `📎 ${a.name}`
+      row.appendChild(chip)
+    }
+    el.appendChild(row)
+  }
+  return el
+}
+
+function renderPeer(name, text, attachments) {
+  const el = document.createElement('div')
+  el.className = 'm-peer'
+  const nameEl = document.createElement('div')
+  nameEl.className = 'u-name'
+  nameEl.textContent = name
+  el.appendChild(nameEl)
+  el.appendChild(document.createTextNode(text))
+  if (attachments?.length) {
+    const row = document.createElement('div')
+    row.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin-top:8px'
+    for (const a of attachments) {
+      const chip = document.createElement('span')
+      chip.style.cssText = 'font-size:11px;font-weight:600;background:rgba(29,30,44,.06);border-radius:999px;padding:3px 10px'
       chip.textContent = `📎 ${a.name}`
       row.appendChild(chip)
     }
@@ -330,6 +362,280 @@ function renderCompactionMarker(summary) {
   el.querySelector('.cm-pill').addEventListener('click', () => el.classList.toggle('open'))
   return el
 }
+
+// ============================================================ Pods (Dust-Muster)
+let podsList = []
+let activePod = null      // Pod, dessen Seite gerade offen ist
+let convPod = null        // Pod-Kontext der aktuellen/neuen Konversation
+let pendingTaskId = null  // Task, der nach dem Senden mit der Konversation verlinkt wird
+let profilesCache = null
+
+async function allProfiles() {
+  if (!profilesCache) {
+    const { data } = await sb.from('profiles').select('id, display_name, email')
+    profilesCache = data || []
+  }
+  return profilesCache
+}
+const profName = (list, id) => {
+  const p = list.find((x) => x.id === id)
+  return p ? p.display_name || p.email : '—'
+}
+
+async function loadPods() {
+  const [{ data: pods }, { data: members }] = await Promise.all([
+    sb.from('pods').select('*').order('created_at'),
+    sb.from('pod_members').select('pod_id, user_id'),
+  ])
+  podsList = (pods || []).map((p) => ({
+    ...p,
+    members: (members || []).filter((m) => m.pod_id === p.id).map((m) => m.user_id),
+  }))
+  const list = $('pod-list')
+  list.innerHTML = ''
+  for (const p of podsList) {
+    const btn = document.createElement('button')
+    btn.className = 'sb-item' + (activePod?.id === p.id ? ' on' : '')
+    btn.innerHTML = `<span class="ic">⬡</span><span class="txt">${esc(p.name)}</span><span style="margin-left:auto;font-size:10px;color:var(--ink-3)">${p.open ? '🌐' : '🔒'}</span>`
+    btn.addEventListener('click', () => openPod(p))
+    list.appendChild(btn)
+  }
+  if (!podsList.length)
+    list.innerHTML = '<div class="sb-item" style="cursor:default;color:var(--ink-3)"><span class="txt">Noch keine Pods — leg einen an (＋)</span></div>'
+}
+
+async function openPod(pod, tab = 'convs') {
+  activePod = pod
+  convPod = null
+  $('pod-title').textContent = pod.name
+  $('pod-sub').textContent = pod.description || 'Pod · gemeinsamer Kontext für alle Mitglieder'
+  $('pod-badge').textContent = pod.open ? '🌐 Open' : '🔒 Restricted'
+  $('pod-badge').classList.toggle('restricted', !pod.open)
+  const profs = await allProfiles()
+  const row = $('pod-members-row')
+  row.innerHTML = ''
+  const ids = pod.open ? profs.map((p) => p.id) : [...new Set([pod.created_by, ...pod.members])].filter(Boolean)
+  ids.slice(0, 5).forEach((id) => {
+    const name = profName(profs, id)
+    row.insertAdjacentHTML('beforeend', `<span class="avatar" title="${esc(name)}">${esc(name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase())}</span>`)
+  })
+  if (ids.length > 5) row.insertAdjacentHTML('beforeend', `<span class="avatar" style="background:rgba(29,30,44,.35)">+${ids.length - 5}</span>`)
+  document.querySelectorAll('#pod-list .sb-item').forEach((x) => x.classList.toggle('on', x.querySelector('.txt')?.textContent === pod.name))
+  document.querySelectorAll('#conv-list .sb-item').forEach((x) => x.classList.remove('on'))
+  switchPodTab(tab)
+  activateArea('chat', 'pod')
+}
+
+function switchPodTab(tab) {
+  document.querySelectorAll('.pt-btn').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab))
+  for (const t of ['convs', 'tasks', 'files', 'settings']) $('ptab-' + t).hidden = t !== tab
+  if (tab === 'convs') loadPodConvs()
+  if (tab === 'tasks') loadPodTasks()
+  if (tab === 'files') loadPodFiles()
+  if (tab === 'settings') fillPodSettings()
+}
+document.querySelectorAll('.pt-btn').forEach((b) => b.addEventListener('click', () => switchPodTab(b.dataset.tab)))
+
+// --- Tab: Konversationen
+async function loadPodConvs() {
+  const [{ data }, profs] = await Promise.all([
+    sb.from('conversations').select('id, title, updated_at, user_id, pod_id').eq('pod_id', activePod.id).order('updated_at', { ascending: false }),
+    allProfiles(),
+  ])
+  const list = $('pod-conv-list')
+  list.innerHTML = ''
+  for (const c of data || []) {
+    const row = document.createElement('div')
+    row.className = 'row'
+    row.style.cursor = 'pointer'
+    row.innerHTML = `<div><div class="r-name">💬 ${esc(c.title || 'Ohne Titel')}</div>
+      <div class="r-sub">gestartet von ${esc(profName(profs, c.user_id))}</div></div><div></div>
+      <span class="r-val">${new Date(c.updated_at).toLocaleDateString('de-DE')}</span>`
+    row.addEventListener('click', () => { convPod = activePod; openConversation(c) })
+    list.appendChild(row)
+  }
+  if (!(data || []).length)
+    list.innerHTML = '<div class="row"><div><div class="r-name">Noch keine Konversationen</div><div class="r-sub">Starte die erste — alle im Pod können mitlesen und mitschreiben.</div></div><div></div><div></div></div>'
+}
+$('pod-new-conv').addEventListener('click', () => {
+  convPod = activePod
+  newConversation()
+  $('chat-title').textContent = `Neue Konversation · ⬡ ${activePod.name}`
+})
+
+// --- Tab: Aufgaben
+async function loadPodTasks() {
+  const [{ data }, profs] = await Promise.all([
+    sb.from('pod_tasks').select('*').eq('pod_id', activePod.id).order('created_at', { ascending: false }),
+    allProfiles(),
+  ])
+  const list = $('pod-task-list')
+  list.innerHTML = ''
+  for (const t of data || []) {
+    const row = document.createElement('div')
+    row.className = 'row'
+    const statusPill = t.status === 'in_progress' ? '<span class="role admin">Enni arbeitet</span>' : t.status === 'done' ? '<span class="role" style="background:rgba(46,158,107,.12);color:var(--good)">Erledigt</span>' : '<span class="role">Offen</span>'
+    row.innerHTML = `
+      <div style="display:flex;align-items:center;gap:11px">
+        <input type="checkbox" class="task-check" ${t.status === 'done' ? 'checked' : ''}>
+        <div><div class="r-name task-title${t.status === 'done' ? ' done' : ''}">${esc(t.title)}</div>
+        <div class="r-sub">von ${esc(profName(profs, t.created_by))}${t.conversation_id ? ' · <a href="#" class="task-conv" style="color:var(--lila-deep)">zur Konversation</a>' : ''}</div></div>
+      </div>
+      <div>${statusPill}</div>
+      <button class="task-run" title="Enni an dieser Aufgabe arbeiten lassen">▶</button>`
+    row.querySelector('.task-check').addEventListener('change', async (e) => {
+      await sb.from('pod_tasks').update({ status: e.target.checked ? 'done' : 'open' }).eq('id', t.id)
+      loadPodTasks()
+    })
+    row.querySelector('.task-run').addEventListener('click', () => openTaskModal(t))
+    row.querySelector('.task-conv')?.addEventListener('click', async (e) => {
+      e.preventDefault()
+      const { data: c } = await sb.from('conversations').select('*').eq('id', t.conversation_id).maybeSingle()
+      if (c) { convPod = activePod; openConversation(c) }
+    })
+    list.appendChild(row)
+  }
+  if (!(data || []).length)
+    list.innerHTML = '<div class="row"><div><div class="r-name">Keine Aufgaben</div><div class="r-sub">Aufgaben kann jeder anlegen — und Enni per ▶ daran arbeiten lassen.</div></div><div></div><div></div></div>'
+}
+$('task-add-btn').addEventListener('click', addTask)
+$('task-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') addTask() })
+async function addTask() {
+  const title = $('task-input').value.trim()
+  if (!title) return
+  await sb.from('pod_tasks').insert({ pod_id: activePod.id, title, created_by: session.user.id })
+  $('task-input').value = ''
+  loadPodTasks()
+}
+
+let taskForModal = null
+function openTaskModal(task) {
+  taskForModal = task
+  $('tm-task-title').textContent = '⬡ ' + task.title
+  $('tm-message').value = ''
+  $('task-overlay').classList.add('open')
+}
+$('tm-cancel').addEventListener('click', () => $('task-overlay').classList.remove('open'))
+$('tm-start').addEventListener('click', async () => {
+  const custom = $('tm-message').value.trim()
+  $('task-overlay').classList.remove('open')
+  await sb.from('pod_tasks').update({ status: 'in_progress', assignee: session.user.id }).eq('id', taskForModal.id)
+  convPod = activePod
+  pendingTaskId = taskForModal.id
+  newConversation()
+  $('chat-title').textContent = `Aufgabe: ${taskForModal.title}`
+  $('composer-input').value = `Bitte arbeite an dieser Aufgabe aus dem Pod "${activePod.name}": ${taskForModal.title}` + (custom ? `\n\nZusätzlicher Kontext: ${custom}` : '')
+  autosize()
+  send()
+})
+
+// --- Tab: Dateien
+async function loadPodFiles() {
+  const [{ data }, profs] = await Promise.all([
+    sb.from('pod_files').select('*').eq('pod_id', activePod.id).order('created_at', { ascending: false }),
+    allProfiles(),
+  ])
+  const list = $('pod-file-list')
+  list.innerHTML = ''
+  for (const f of data || []) {
+    const row = document.createElement('div')
+    row.className = 'row'
+    row.innerHTML = `<div><div class="r-name">📄 ${esc(f.name)}</div>
+      <div class="r-sub">${f.media_type || ''} · ${(f.size / 1024 / 1024).toFixed(1)} MB · von ${esc(profName(profs, f.uploaded_by))}</div></div>
+      <a href="#" class="src-link f-dl" style="color:var(--lila-deep);font-size:12.5px">Herunterladen</a>
+      <button class="task-run f-del" title="Löschen">🗑</button>`
+    row.querySelector('.f-dl').addEventListener('click', async (e) => {
+      e.preventDefault()
+      const { data: signed } = await sb.storage.from('pod-files').createSignedUrl(f.storage_path, 300)
+      if (signed?.signedUrl) window.open(signed.signedUrl, '_blank')
+    })
+    row.querySelector('.f-del').addEventListener('click', async () => {
+      await sb.storage.from('pod-files').remove([f.storage_path])
+      await sb.from('pod_files').delete().eq('id', f.id)
+      loadPodFiles()
+    })
+    list.appendChild(row)
+  }
+  if (!(data || []).length)
+    list.innerHTML = '<div class="row"><div><div class="r-name">Noch keine Dateien</div><div class="r-sub">Die gemeinsame Bibliothek des Pods.</div></div><div></div><div></div></div>'
+}
+$('pod-file-btn').addEventListener('click', () => $('pod-file-input').click())
+$('pod-file-input').addEventListener('change', async () => {
+  for (const f of $('pod-file-input').files) {
+    if (f.size > 20 * 1024 * 1024) { alert(`${f.name} ist größer als 20 MB`); continue }
+    const path = `${activePod.id}/${Date.now()}-${f.name.replace(/[^\w.\-]+/g, '_')}`
+    const { error } = await sb.storage.from('pod-files').upload(path, f)
+    if (error) { alert('Upload-Fehler: ' + error.message); continue }
+    await sb.from('pod_files').insert({
+      pod_id: activePod.id, name: f.name, media_type: f.type, size: f.size,
+      storage_path: path, uploaded_by: session.user.id,
+    })
+  }
+  $('pod-file-input').value = ''
+  loadPodFiles()
+})
+
+// --- Tab: Einstellungen
+function fillPodSettings() {
+  $('pset-name').value = activePod.name
+  $('pset-desc').value = activePod.description || ''
+  $('pset-instructions').value = activePod.instructions || ''
+  $('pset-open').checked = activePod.open
+}
+$('pset-save').addEventListener('click', async () => {
+  const patch = {
+    name: $('pset-name').value.trim() || activePod.name,
+    description: $('pset-desc').value.trim(),
+    instructions: $('pset-instructions').value.trim(),
+    open: $('pset-open').checked,
+  }
+  const { error } = await sb.from('pods').update(patch).eq('id', activePod.id)
+  if (error) { alert('Fehler: ' + error.message); return }
+  Object.assign(activePod, patch)
+  await loadPods()
+  openPod(activePod, 'settings')
+})
+
+// --- Pod erstellen
+let pmOpen = true
+$('new-pod').addEventListener('click', async () => {
+  pmOpen = true
+  document.querySelectorAll('#pm-seg button').forEach((b) => b.classList.toggle('on', b.dataset.acc === 'open'))
+  $('pm-hint').textContent = 'Alle in der Organisation können den Pod sehen und beitreten.'
+  $('pm-members-wrap').style.display = 'none'
+  const profs = await allProfiles()
+  $('pm-members').innerHTML = profs
+    .map((m) => `<label class="check-row"><input type="checkbox" value="${m.id}" ${m.id === session.user.id ? 'checked disabled' : ''}><span>${esc(m.display_name || m.email)}</span><span class="cr-sub">${esc(m.email)}</span></label>`)
+    .join('')
+  $('pm-name').value = ''
+  $('pod-overlay').classList.add('open')
+  setTimeout(() => $('pm-name').focus(), 50)
+})
+document.querySelectorAll('#pm-seg button').forEach((b) =>
+  b.addEventListener('click', () => {
+    pmOpen = b.dataset.acc === 'open'
+    document.querySelectorAll('#pm-seg button').forEach((x) => x.classList.toggle('on', x === b))
+    $('pm-hint').textContent = pmOpen
+      ? 'Alle in der Organisation können den Pod sehen und beitreten.'
+      : 'Nur eingeladene Mitglieder haben Zugriff auf den Pod.'
+    $('pm-members-wrap').style.display = pmOpen ? 'none' : ''
+  })
+)
+$('pm-cancel').addEventListener('click', () => $('pod-overlay').classList.remove('open'))
+$('pm-create').addEventListener('click', async () => {
+  const name = $('pm-name').value.trim()
+  if (!name) return
+  const { data, error } = await sb
+    .from('pods').insert({ name, open: pmOpen, created_by: session.user.id }).select().single()
+  if (error) { alert('Fehler: ' + error.message); return }
+  if (!pmOpen) {
+    const ids = [...document.querySelectorAll('#pm-members input')].filter((i) => i.checked || i.disabled).map((i) => i.value)
+    if (ids.length) await sb.from('pod_members').insert(ids.map((uid) => ({ pod_id: data.id, user_id: uid })))
+  }
+  $('pod-overlay').classList.remove('open')
+  await loadPods()
+  openPod({ ...data, members: [] })
+})
 
 // ============================================================ Anhänge
 const ALLOWED_FILES = {
@@ -504,6 +810,7 @@ async function send() {
         message: text,
         model: $('model-select').value,
         attachments: attachments.length ? attachments : undefined,
+        pod_id: !currentConv && convPod ? convPod.id : undefined,
       }),
     })
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`)
@@ -522,7 +829,11 @@ async function send() {
         const ev = JSON.parse(part.slice(6))
 
         if (ev.type === 'conversation' && !currentConv) {
-          currentConv = { id: ev.conversation_id, title: text.slice(0, 80) }
+          currentConv = { id: ev.conversation_id, title: text.slice(0, 80), pod_id: convPod?.id || null }
+          if (pendingTaskId) {
+            sb.from('pod_tasks').update({ conversation_id: ev.conversation_id }).eq('id', pendingTaskId).then(() => {})
+            pendingTaskId = null
+          }
         } else if (ev.type === 'thinking_delta') {
           thinkingText += ev.text
           if (!thinkPara) {

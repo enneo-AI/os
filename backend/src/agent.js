@@ -54,8 +54,12 @@ function setCacheBreakpoint(messages) {
   }
 }
 
-export async function runEnniTurn(history, emit, modelOverride) {
+export async function runEnniTurn(history, emit, modelOverride, extraSystem = null) {
   const MODEL = ALLOWED_MODELS.includes(modelOverride) ? modelOverride : DEFAULT_MODEL
+  const systemBlocks = [
+    { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
+    ...(extraSystem ? [{ type: 'text', text: extraSystem }] : []),
+  ]
   const messages = [...history]
   const totalUsage = {
     input_tokens: 0,
@@ -73,7 +77,7 @@ export async function runEnniTurn(history, emit, modelOverride) {
     const stream = anthropic.messages.stream({
       model: MODEL,
       max_tokens: 16000,
-      system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+      system: systemBlocks,
       ...(supportsThinking ? { thinking: { type: 'adaptive', display: 'summarized' } } : {}),
       tools: TOOLS,
       messages,

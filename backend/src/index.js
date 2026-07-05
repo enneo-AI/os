@@ -15,14 +15,35 @@ app.use(
 
 app.get('/health', (_req, res) => res.json({ ok: true }))
 
-// Verlauf ab dem letzten Compaction-Anker aufbauen (Dust-Muster)
-async function buildHistory(convId) {
+// Pod laden, wenn der User ihn sehen darf (open / Mitglied / Ersteller / Admin)
+async function podIfVisible(podId, userId) {
+  const { data: pod } = await db.from('pods').select('*').eq('id', podId).maybeSingle()
+  if (!pod) return null
+  if (pod.open || pod.created_by === userId) return pod
+  const { data: member } = await db
+    .from('pod_members').select('user_id').eq('pod_id', podId).eq('user_id', userId).maybeSingle()
+  if (member) return pod
+  const { data: prof } = await db.from('profiles').select('is_admin').eq('id', userId).maybeSingle()
+  return prof?.is_admin ? pod : null
+}
+
+// Verlauf ab dem letzten Compaction-Anker aufbauen (Dust-Muster).
+// In Pod-Konversationen werden User-Messages mit dem Autor-Namen geprefixt.
+async function buildHistory(convId, isPod = false) {
   const { data: all } = await db
     .from('messages')
-    .select('role, content')
+    .select('role, content, author_id')
     .eq('conversation_id', convId)
     .order('created_at')
   const msgs = all || []
+  let names = {}
+  if (isPod) {
+    const ids = [...new Set(msgs.map((m) => m.author_id).filter(Boolean))]
+    if (ids.length) {
+      const { data: profs } = await db.from('profiles').select('id, display_name, email').in('id', ids)
+      names = Object.fromEntries((profs || []).map((p) => [p.id, p.display_name || p.email]))
+    }
+  }
   let lastCompaction = -1
   msgs.forEach((m, i) => { if (m.role === 'compaction') lastCompaction = i })
   const history = []
@@ -34,7 +55,10 @@ async function buildHistory(convId) {
     history.push({ role: 'assistant', content: 'Verstanden — ich setze das Gespräch auf Basis dieser Zusammenfassung fort.' })
   }
   for (const m of msgs.slice(lastCompaction + 1)) {
-    if ((m.role === 'user' || m.role === 'assistant') && m.content) history.push({ role: m.role, content: m.content })
+    if ((m.role === 'user' || m.role === 'assistant') && m.content) {
+      const prefix = isPod && m.role === 'user' && names[m.author_id] ? `${names[m.author_id]}: ` : ''
+      history.push({ role: m.role, content: prefix + m.content })
+    }
   }
   return history
 }
@@ -56,19 +80,30 @@ app.post('/api/chat', async (req, res) => {
     return res.status(400).json({ error: err.message })
   }
 
-  // Conversation anlegen oder laden (Ownership prüfen)
+  // Conversation anlegen oder laden — eigene ODER sichtbare Pod-Konversation
   let convId = conversation_id
+  let pod = null
   if (convId) {
     const { data } = await db
       .from('conversations')
-      .select('id, user_id')
+      .select('id, user_id, pod_id')
       .eq('id', convId)
       .maybeSingle()
-    if (!data || data.user_id !== user.id) return res.status(404).json({ error: 'Conversation nicht gefunden' })
+    if (!data) return res.status(404).json({ error: 'Conversation nicht gefunden' })
+    if (data.pod_id) {
+      pod = await podIfVisible(data.pod_id, user.id)
+      if (!pod) return res.status(404).json({ error: 'Kein Zugriff auf diesen Pod' })
+    } else if (data.user_id !== user.id) {
+      return res.status(404).json({ error: 'Conversation nicht gefunden' })
+    }
   } else {
+    if (req.body.pod_id) {
+      pod = await podIfVisible(req.body.pod_id, user.id)
+      if (!pod) return res.status(404).json({ error: 'Kein Zugriff auf diesen Pod' })
+    }
     const { data, error } = await db
       .from('conversations')
-      .insert({ user_id: user.id, title: message.slice(0, 80) })
+      .insert({ user_id: user.id, title: (message || '').slice(0, 80), pod_id: pod?.id || null })
       .select('id')
       .single()
     if (error) return res.status(500).json({ error: error.message })
@@ -77,7 +112,7 @@ app.post('/api/chat', async (req, res) => {
 
   // Verlauf ab letztem Compaction-Anker laden und User-Message persistieren.
   // Datei-Inhalte gehen nur in DIESEM Turn ans Modell; im Verlauf bleibt ein Text-Marker.
-  const prior = await buildHistory(convId)
+  const prior = await buildHistory(convId, !!pod)
   const meta = attachmentMeta(attachments)
   const storedText = meta.length
     ? `${message || ''}\n\n[Angehängte Dateien: ${meta.map((m) => m.name).join(', ')}]`.trim()
@@ -87,6 +122,7 @@ app.post('/api/chat', async (req, res) => {
     role: 'user',
     content: storedText,
     attachments: meta.length ? meta : null,
+    author_id: user.id,
   })
   const turnContent = fileBlocks.length
     ? [...fileBlocks, { type: 'text', text: message || 'Bitte analysiere die angehängten Dateien.' }]
@@ -102,7 +138,17 @@ app.post('/api/chat', async (req, res) => {
   emit({ type: 'conversation', conversation_id: convId })
 
   try {
-    const result = await runEnniTurn(history, emit, model)
+    // Pod-Kontext: Instructions for Agents + Absender-Attribution
+    let extraSystem = null
+    if (pod) {
+      const senderName = user.user_metadata?.full_name || user.email
+      extraSystem =
+        `Diese Konversation läuft im Pod "${pod.name}" — ein geteilter Projekt-Raum, mehrere Personen lesen mit. ` +
+        `User-Nachrichten sind mit dem Absender-Namen geprefixt; die aktuelle Nachricht kommt von ${senderName}.` +
+        (pod.description ? `\nPod-Beschreibung: ${pod.description}` : '') +
+        (pod.instructions ? `\n\nInstructions for Agents (gelten in diesem Pod):\n${pod.instructions}` : '')
+    }
+    const result = await runEnniTurn(history, emit, model, extraSystem)
 
     // Assistant-Message inkl. Gedankenkette + Tool-Calls persistieren
     const { data: msg } = await db

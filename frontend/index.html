@@ -335,6 +335,38 @@
   .role{font-size:10.5px;font-weight:650;padding:2px 10px;border-radius:999px;background:rgba(29,30,44,.06);color:var(--ink-2)}
   .role.admin{background:rgba(123,90,226,.1);color:var(--lila-deep)}
 
+  /* ---------- pod ---------- */
+  .pod-shell{max-width:860px;margin:0 auto;padding-bottom:50px}
+  .members{display:flex;margin-left:10px}
+  .members .avatar{width:24px;height:24px;font-size:9px;border:2px solid #FAF7F5;margin-left:-7px}
+  .members .avatar:first-child{margin-left:0}
+  .badge.restricted{color:var(--warn)}
+  .pod-tabs{display:flex;gap:3px;margin:6px 0 20px;padding:4px;border-radius:999px;width:fit-content;
+    background:rgba(29,30,44,.055);
+    box-shadow:inset 0 1px 3px rgba(29,30,44,.10), inset 0 0 0 1px rgba(29,30,44,.03), 0 1px 0 rgba(255,255,255,.7)}
+  .pt-btn{border:0;background:transparent;border-radius:999px;padding:7px 16px;font-size:12.5px;font-weight:620;color:var(--ink-3);transition:all .3s ease}
+  .pt-btn:hover{color:var(--ink-2)}
+  .pt-btn.on{color:var(--ink);background:linear-gradient(180deg, rgba(255,255,255,.68), rgba(255,255,255,.34));
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.75), 0 1px 2px rgba(29,30,44,.08), 0 3px 8px -2px rgba(29,30,44,.10)}
+  .task-add{display:flex;gap:10px;margin-bottom:14px}
+  .task-add input{flex:1;border:1px solid var(--hair);border-radius:12px;background:rgba(255,255,255,.7);padding:10px 14px;font-size:14px;outline:0}
+  .task-add input:focus{border-color:var(--lila)}
+  .task-check{width:17px;height:17px;accent-color:var(--good);flex:none;cursor:pointer}
+  .task-run{border:0;background:none;color:var(--ink-3);font-size:14px;padding:5px 8px;border-radius:8px;cursor:pointer}
+  .task-run:hover{color:var(--lila-deep);background:rgba(123,90,226,.08)}
+  .task-title.done{text-decoration:line-through;color:var(--ink-3)}
+  .pset-input{width:100%;border:1px solid var(--hair);border-radius:12px;background:rgba(255,255,255,.7);padding:10px 14px;font-size:14px;outline:0;margin-bottom:14px;font-family:inherit;resize:vertical}
+  .pset-input:focus{border-color:var(--lila)}
+  .toggle{position:relative;display:inline-block;width:40px;height:23px;flex:none}
+  .toggle input{opacity:0;width:0;height:0}
+  .toggle span{position:absolute;inset:0;border-radius:999px;background:rgba(29,30,44,.15);transition:.25s;cursor:pointer}
+  .toggle span::before{content:"";position:absolute;left:3px;top:3px;width:17px;height:17px;border-radius:50%;background:#fff;transition:.25s;box-shadow:0 1px 3px rgba(29,30,44,.25)}
+  .toggle input:checked + span{background:var(--good)}
+  .toggle input:checked + span::before{transform:translateX(17px)}
+  /* Peer-Messages (andere Personen im Pod) */
+  .m-peer{align-self:flex-start;max-width:78%;background:rgba(255,255,255,.75);border:1px solid var(--edge);border-radius:20px 20px 20px 6px;padding:12px 18px;font-size:14px;white-space:pre-wrap;word-break:break-word}
+  .m-peer .u-name{font-size:11px;color:var(--ink-3);margin-bottom:3px;white-space:nowrap}
+
   /* ---------- modal ---------- */
   .overlay{position:fixed;inset:0;z-index:100;display:none;align-items:center;justify-content:center;background:rgba(29,30,44,.25);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
   .overlay.open{display:flex}
@@ -410,8 +442,8 @@
     <div class="sb-ctx" id="sb-chat">
       <button class="sb-new" id="new-chat">＋ Neue Konversation</button>
       <div class="sb-scroll">
-        <div class="sb-sec">Pods</div>
-        <div class="sb-item" style="cursor:default;color:var(--ink-3)"><span class="ic">⬡</span><span class="txt">Team-Pods folgen in Phase 2</span></div>
+        <div class="sb-sec">Pods <button class="sec-add" id="new-pod" title="Neuer Pod">＋</button></div>
+        <div id="pod-list"></div>
         <div class="sb-sec">Konversationen</div>
         <div id="conv-list"></div>
       </div>
@@ -496,6 +528,66 @@
             </div>
           </div>
           <div class="ctx-hint" id="ctx-hint" hidden></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- POD -->
+    <section class="view" id="v-pod">
+      <div class="pod-shell">
+        <div class="chat-head" style="padding-top:22px">
+          <span style="font-size:20px;width:26px;text-align:center;flex:none">⬡</span>
+          <div>
+            <div class="t" id="pod-title">Pod</div>
+            <div style="font-size:12px;color:var(--ink-3)" id="pod-sub">Pod · gemeinsamer Kontext für alle Mitglieder</div>
+          </div>
+          <span class="badge" id="pod-badge" style="margin-left:auto">🌐 Open</span>
+          <div class="members" id="pod-members-row"></div>
+        </div>
+        <div class="pod-tabs" id="pod-tabs">
+          <button class="pt-btn on" data-tab="convs">Konversationen</button>
+          <button class="pt-btn" data-tab="tasks">Aufgaben</button>
+          <button class="pt-btn" data-tab="files">Dateien</button>
+          <button class="pt-btn" data-tab="settings">Einstellungen</button>
+        </div>
+
+        <div class="pod-tab" id="ptab-convs">
+          <button class="sb-new" id="pod-new-conv" style="max-width:320px;margin-bottom:14px">＋ Neue Pod-Konversation</button>
+          <div class="glass list-panel"><div id="pod-conv-list"></div></div>
+        </div>
+
+        <div class="pod-tab" id="ptab-tasks" hidden>
+          <div class="task-add">
+            <input type="text" id="task-input" placeholder="Aufgabe hinzufügen …">
+            <button class="btn dark" id="task-add-btn">Hinzufügen</button>
+          </div>
+          <div class="glass list-panel"><div id="pod-task-list"></div></div>
+        </div>
+
+        <div class="pod-tab" id="ptab-files" hidden>
+          <input type="file" id="pod-file-input" multiple hidden>
+          <button class="sb-new" id="pod-file-btn" style="max-width:320px;margin-bottom:14px">＋ Datei hochladen</button>
+          <div class="glass list-panel"><div id="pod-file-list"></div></div>
+        </div>
+
+        <div class="pod-tab" id="ptab-settings" hidden>
+          <div class="glass list-panel" style="padding:20px 26px">
+            <h3>Name</h3>
+            <input type="text" id="pset-name" class="pset-input">
+            <h3>Beschreibung</h3>
+            <textarea id="pset-desc" class="pset-input" rows="2" placeholder="Worum geht es in diesem Pod?"></textarea>
+            <h3>Instructions for Agents</h3>
+            <div style="font-size:12px;color:var(--ink-3);margin:-4px 0 8px">Gilt für Enni in allen Konversationen dieses Pods.</div>
+            <textarea id="pset-instructions" class="pset-input" rows="6" placeholder="z. B. Antworte knapp. Der Kunde heißt STAWAG. Ansprechpartner ist …"></textarea>
+            <div class="row" style="margin-top:10px">
+              <div><div class="r-name">🌐 Open to everyone</div><div class="r-sub">Alle in der Organisation können den Pod sehen und beitreten.</div></div>
+              <div></div>
+              <label class="toggle"><input type="checkbox" id="pset-open"><span></span></label>
+            </div>
+            <div style="display:flex;justify-content:flex-end;margin:14px 0 10px">
+              <button class="btn dark" id="pset-save">Speichern</button>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -668,6 +760,43 @@
     <div class="m-actions">
       <button class="btn quiet" id="sm-cancel">Abbrechen</button>
       <button class="btn dark" id="sm-create">Erstellen</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= POD MODAL ================= -->
+<div class="overlay" id="pod-overlay">
+  <div class="modal" role="dialog" aria-modal="true">
+    <h3>Neuen Pod erstellen</h3>
+    <label for="pm-name">Name</label>
+    <input type="text" id="pm-name" placeholder="z. B. STAWAG Projekt">
+    <label>Zugriff</label>
+    <div class="seg" id="pm-seg">
+      <button class="on" data-acc="open">🌐 Open</button>
+      <button data-acc="restricted">🔒 Restricted</button>
+    </div>
+    <p class="seg-hint" id="pm-hint">Alle in der Organisation können den Pod sehen und beitreten.</p>
+    <div id="pm-members-wrap" style="display:none">
+      <label>Mitglieder</label>
+      <div id="pm-members" style="max-height:180px;overflow-y:auto;margin-bottom:18px"></div>
+    </div>
+    <div class="m-actions">
+      <button class="btn quiet" id="pm-cancel">Abbrechen</button>
+      <button class="btn dark" id="pm-create">Erstellen</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= TASK START MODAL ================= -->
+<div class="overlay" id="task-overlay">
+  <div class="modal" role="dialog" aria-modal="true">
+    <h3>Enni an der Aufgabe arbeiten lassen</h3>
+    <div style="font-size:13px;color:var(--ink-2);margin-bottom:14px" id="tm-task-title"></div>
+    <label for="tm-message">(Optional) Nachricht an Enni</label>
+    <textarea id="tm-message" class="pset-input" rows="3" placeholder="Zusätzlicher Kontext oder Anweisungen …"></textarea>
+    <div class="m-actions">
+      <button class="btn quiet" id="tm-cancel">Abbrechen</button>
+      <button class="btn dark" id="tm-start">Start working</button>
     </div>
   </div>
 </div>
