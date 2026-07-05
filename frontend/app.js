@@ -64,7 +64,7 @@ async function showApp() {
   $('f-name').textContent = name.split(' ')[0]
   $('f-avatar').textContent = name.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase()
   await Promise.all([loadConversations(), loadPods(), refreshCosts()])
-  newConversation()
+  route()
 }
 
 // Rail-Navigation — Sidebar-Inhalt wechselt mit dem Bereich
@@ -80,7 +80,42 @@ function activateArea(area, view = area) {
   Object.entries(sidebars).forEach(([k, id]) => ($(id).hidden = k !== area))
   closePanel()
   window.scrollTo({ top: 0 })
+  syncUrl(area, view)
 }
+
+// URL synchron halten (echte Subpages: /chat, /spaces, /admin, /pod/…, /chat/…)
+function syncUrl(area, view) {
+  let path = '/chat'
+  if (view === 'pod' && activePod) path = `/pod/${activePod.id}`
+  else if (area === 'chat') path = currentConv?.id ? `/chat/${currentConv.id}` : '/chat'
+  else if (area === 'wiki') path = view === 'conn' ? '/spaces/tools' : view === 'admin-conn' ? '/spaces/connections' : '/spaces'
+  else if (area === 'admin') path = '/admin'
+  if (location.pathname !== path) history.pushState({}, '', path)
+}
+
+// Beim Laden / Zurück-Button: URL → Ansicht
+async function route() {
+  const p = location.pathname
+  if (p.startsWith('/pod/')) {
+    const pod = podsList.find((x) => x.id === p.slice(5))
+    if (pod) return openPod(pod)
+  }
+  if (p.startsWith('/chat/')) {
+    const { data: c } = await sb.from('conversations').select('*').eq('id', p.slice(6)).maybeSingle()
+    if (c) return openConversation(c)
+  }
+  if (p.startsWith('/spaces')) {
+    activateArea('wiki', p === '/spaces/tools' ? 'conn' : p === '/spaces/connections' ? 'admin-conn' : 'wiki')
+    return loadSpacesTree()
+  }
+  if (p.startsWith('/admin')) {
+    activateArea('admin')
+    refreshCosts()
+    return loadMembers()
+  }
+  newConversation()
+}
+window.addEventListener('popstate', () => route())
 
 document.querySelectorAll('.rail-btn').forEach((b) =>
   b.addEventListener('click', () => {

@@ -2,3 +2,9 @@
 # Die App ist statisches HTML/JS ohne Build-Schritt — published wird der frontend-Ordner.
 [build]
   publish = "frontend"
+
+# SPA-Routing: alle Pfade (/chat, /spaces, /admin, /pod/…) laden die App
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
