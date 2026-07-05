@@ -2,10 +2,11 @@ import express from 'express'
 import cors from 'cors'
 import { db, getUserFromRequest } from './db.js'
 import { runEnniTurn, ALLOWED_MODELS } from './agent.js'
+import { attachmentsToBlocks, attachmentMeta } from './attachments.js'
 import { logUsage } from './usage.js'
 
 const app = express()
-app.use(express.json({ limit: '1mb' }))
+app.use(express.json({ limit: '30mb' })) // Anhänge kommen als Base64 im Body
 app.use(
   cors({
     origin: (process.env.FRONTEND_ORIGIN || 'http://localhost:5173').split(','),
@@ -45,9 +46,15 @@ app.post('/api/chat', async (req, res) => {
   const user = await getUserFromRequest(req)
   if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
 
-  const { conversation_id, message, model } = req.body || {}
-  if (!message?.trim()) return res.status(400).json({ error: 'message fehlt' })
+  const { conversation_id, message, model, attachments } = req.body || {}
+  if (!message?.trim() && !attachments?.length) return res.status(400).json({ error: 'message fehlt' })
   if (model && !ALLOWED_MODELS.includes(model)) return res.status(400).json({ error: 'Unbekanntes Modell' })
+  let fileBlocks = []
+  try {
+    fileBlocks = attachmentsToBlocks(attachments)
+  } catch (err) {
+    return res.status(400).json({ error: err.message })
+  }
 
   // Conversation anlegen oder laden (Ownership prüfen)
   let convId = conversation_id
@@ -68,10 +75,23 @@ app.post('/api/chat', async (req, res) => {
     convId = data.id
   }
 
-  // Verlauf ab letztem Compaction-Anker laden und User-Message persistieren
+  // Verlauf ab letztem Compaction-Anker laden und User-Message persistieren.
+  // Datei-Inhalte gehen nur in DIESEM Turn ans Modell; im Verlauf bleibt ein Text-Marker.
   const prior = await buildHistory(convId)
-  await db.from('messages').insert({ conversation_id: convId, role: 'user', content: message })
-  const history = [...prior, { role: 'user', content: message }]
+  const meta = attachmentMeta(attachments)
+  const storedText = meta.length
+    ? `${message || ''}\n\n[Angehängte Dateien: ${meta.map((m) => m.name).join(', ')}]`.trim()
+    : message
+  await db.from('messages').insert({
+    conversation_id: convId,
+    role: 'user',
+    content: storedText,
+    attachments: meta.length ? meta : null,
+  })
+  const turnContent = fileBlocks.length
+    ? [...fileBlocks, { type: 'text', text: message || 'Bitte analysiere die angehängten Dateien.' }]
+    : message
+  const history = [...prior, { role: 'user', content: turnContent }]
 
   // SSE-Stream öffnen
   res.setHeader('Content-Type', 'text/event-stream')

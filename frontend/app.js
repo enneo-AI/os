@@ -153,7 +153,7 @@ async function openConversation(c) {
   const box = $('msgs')
   box.innerHTML = ''
   for (const m of msgs || []) {
-    if (m.role === 'user') box.appendChild(renderUser(m.content))
+    if (m.role === 'user') box.appendChild(renderUser(m.content, m.attachments))
     else if (m.role === 'assistant')
       box.appendChild(renderAgent(m.content, m.thinking, m.tool_calls || [], costByMessage[m.id]))
     else if (m.role === 'compaction') box.appendChild(renderCompactionMarker(m.content))
@@ -164,10 +164,21 @@ async function openConversation(c) {
 }
 
 // ============================================================ Rendering
-function renderUser(text) {
+function renderUser(text, attachments) {
   const el = document.createElement('div')
   el.className = 'm-user'
   el.textContent = text
+  if (attachments?.length) {
+    const row = document.createElement('div')
+    row.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin-top:8px'
+    for (const a of attachments) {
+      const chip = document.createElement('span')
+      chip.style.cssText = 'font-size:11px;font-weight:600;background:rgba(255,255,255,.16);border-radius:999px;padding:3px 10px'
+      chip.textContent = `📎 ${a.name}`
+      row.appendChild(chip)
+    }
+    el.appendChild(row)
+  }
   return el
 }
 
@@ -258,7 +269,7 @@ function renderCtx() {
   const pct = ctxPct()
   const ring = $('ctx-ring')
   const hint = $('ctx-hint')
-  ring.hidden = pct < 5
+  ring.hidden = false
   const C = 81.7
   $('ctx-arc').style.strokeDashoffset = C - (C * pct) / 100
   $('ctx-pct').textContent = pct + '%'
@@ -320,20 +331,136 @@ function renderCompactionMarker(summary) {
   return el
 }
 
+// ============================================================ Anhänge
+const ALLOWED_FILES = {
+  'image/jpeg': 'JPG', 'image/png': 'PNG', 'application/pdf': 'PDF', 'text/csv': 'CSV',
+  'application/vnd.ms-excel': 'XLS',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
+}
+const extType = (name) => ({ csv: 'text/csv', xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg' }[name.split('.').pop().toLowerCase()])
+let pendingFiles = []
+
+$('attach-btn').addEventListener('click', () => $('file-input').click())
+$('file-input').addEventListener('change', () => {
+  for (const f of $('file-input').files) {
+    const type = ALLOWED_FILES[f.type] ? f.type : extType(f.name)
+    if (!type || !ALLOWED_FILES[type]) { showHint(`Dateityp nicht erlaubt: ${f.name}`); continue }
+    if (f.size > 10 * 1024 * 1024) { showHint(`${f.name} ist größer als 10 MB`); continue }
+    if (pendingFiles.length >= 4) { showHint('Maximal 4 Dateien pro Nachricht'); break }
+    pendingFiles.push({ file: f, type })
+  }
+  $('file-input').value = ''
+  renderChips()
+})
+
+function renderChips() {
+  const box = $('attach-chips')
+  box.hidden = !pendingFiles.length
+  box.innerHTML = ''
+  pendingFiles.forEach((p, i) => {
+    const chip = document.createElement('span')
+    chip.className = 'chip'
+    chip.innerHTML = `<span class="ftype">${ALLOWED_FILES[p.type]}</span>${esc(p.file.name)}<button class="x" title="Entfernen">✕</button>`
+    chip.querySelector('.x').addEventListener('click', () => { pendingFiles.splice(i, 1); renderChips() })
+    box.appendChild(chip)
+  })
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader()
+    r.onload = () => resolve(String(r.result).split(',')[1])
+    r.onerror = reject
+    r.readAsDataURL(file)
+  })
+}
+
+function showHint(text) {
+  const hint = $('ctx-hint')
+  hint.hidden = false
+  hint.className = 'ctx-hint'
+  hint.textContent = text
+  setTimeout(() => renderCtx(), 4000)
+}
+
+// ============================================================ Diktat (Web Speech API, DE/EN)
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition
+let recognition = null
+let dictating = false
+let dictBase = ''
+
+function sttLang() { return localStorage.getItem('enni-stt-lang') || 'de-DE' }
+
+$('mic-btn').addEventListener('click', () => {
+  if (!SpeechRec) { showHint('Diktat wird von diesem Browser nicht unterstützt (Chrome/Edge/Safari nutzen).'); return }
+  if (dictating) { recognition?.stop(); return }
+  recognition = new SpeechRec()
+  recognition.lang = sttLang()
+  recognition.continuous = true
+  recognition.interimResults = true
+  dictBase = $('composer-input').value ? $('composer-input').value.trim() + ' ' : ''
+  recognition.onresult = (e) => {
+    let text = ''
+    for (const res of e.results) text += res[0].transcript
+    $('composer-input').value = dictBase + text
+    autosize()
+  }
+  recognition.onend = () => {
+    dictating = false
+    $('mic-btn').classList.remove('recording')
+    renderCtx()
+  }
+  recognition.onerror = (e) => { if (e.error !== 'aborted') showHint('Diktat-Fehler: ' + e.error) }
+  recognition.start()
+  dictating = true
+  $('mic-btn').classList.add('recording')
+  const other = sttLang() === 'de-DE' ? 'en-US' : 'de-DE'
+  const hint = $('ctx-hint')
+  hint.hidden = false
+  hint.className = 'ctx-hint'
+  hint.innerHTML = `🎙️ Aufnahme läuft (${sttLang() === 'de-DE' ? 'Deutsch' : 'English'}) — Klick aufs Mikro stoppt · <a href="#" id="stt-switch" style="color:var(--lila-deep)">auf ${other === 'de-DE' ? 'Deutsch' : 'English'} wechseln</a>`
+  document.getElementById('stt-switch').addEventListener('click', (ev) => {
+    ev.preventDefault()
+    localStorage.setItem('enni-stt-lang', other)
+    recognition.stop()
+    setTimeout(() => $('mic-btn').click(), 300)
+  })
+})
+
+// ============================================================ Composer-Autosize
+function autosize() {
+  const t = $('composer-input')
+  t.style.height = 'auto'
+  t.style.height = Math.min(t.scrollHeight, 180) + 'px'
+}
+$('composer-input').addEventListener('input', autosize)
+
 // ============================================================ Senden + Streaming
 async function send() {
   const input = $('composer-input')
   const text = input.value.trim()
-  if (!text || streaming || compacting) return
+  if ((!text && !pendingFiles.length) || streaming || compacting) return
   if (ctxPct() >= 80) { renderCtx(); return } // Pflicht-Kompaktierung (Dust: 80%)
+  if (dictating) recognition?.stop()
   input.value = ''
+  autosize()
   streaming = true
   $('send-btn').disabled = true
 
+  // Anhänge einsammeln (Base64)
+  const files = pendingFiles
+  pendingFiles = []
+  renderChips()
+  const attachments = []
+  for (const p of files) {
+    attachments.push({ name: p.file.name, media_type: p.type, data: await fileToBase64(p.file) })
+  }
+  const attachMeta = files.map((p) => ({ name: p.file.name, media_type: p.type }))
+
   const box = $('msgs')
   box.querySelector('.empty')?.remove()
-  box.appendChild(renderUser(text))
-  if (!currentConv) $('chat-title').textContent = text.slice(0, 80)
+  box.appendChild(renderUser(text || 'Bitte analysiere die angehängten Dateien.', attachMeta))
+  if (!currentConv) $('chat-title').textContent = (text || attachMeta[0]?.name || '').slice(0, 80)
 
   // Live-Agent-Container
   const wrap = document.createElement('div')
@@ -372,7 +499,12 @@ async function send() {
     const res = await fetch(`${BACKEND_URL}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
-      body: JSON.stringify({ conversation_id: currentConv?.id, message: text, model: $('model-select').value }),
+      body: JSON.stringify({
+        conversation_id: currentConv?.id,
+        message: text,
+        model: $('model-select').value,
+        attachments: attachments.length ? attachments : undefined,
+      }),
     })
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`)
 
