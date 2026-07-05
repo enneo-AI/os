@@ -81,17 +81,16 @@
   .rail-btn:hover{color:var(--ink-2)}
   .rail-btn:active{transform:translateY(1px)}
   .rail-btn.active{
-    color:var(--lila-deep);
-    background:linear-gradient(180deg,#FFFFFF 0%,#F6F3FC 100%);
+    color:var(--ink);
+    background:linear-gradient(180deg, rgba(255,255,255,.68) 0%, rgba(255,255,255,.34) 100%);
     box-shadow:
-      inset 0 1px 0 rgba(255,255,255,.95),
-      inset 0 -1px 0 rgba(83,63,165,.06),
-      0 1px 2px rgba(29,30,44,.10),
-      0 4px 10px -2px rgba(83,63,165,.22),
-      0 10px 24px -8px rgba(83,63,165,.28);
+      inset 0 1px 0 rgba(255,255,255,.75),
+      inset 0 -1px 0 rgba(29,30,44,.04),
+      0 1px 2px rgba(29,30,44,.08),
+      0 3px 8px -2px rgba(29,30,44,.10);
   }
   .rail-btn.active svg{transform:scale(1.06)}
-  .rail-btn.active:active{transform:translateY(1px);box-shadow:inset 0 1px 0 rgba(255,255,255,.95), 0 1px 2px rgba(29,30,44,.08), 0 3px 8px -2px rgba(83,63,165,.18)}
+  .rail-btn.active:active{transform:translateY(1px);box-shadow:inset 0 1px 0 rgba(255,255,255,.7), 0 1px 2px rgba(29,30,44,.06)}
   .rail-btn.active .rl{grid-template-columns:1fr}
   .rail-btn.active .rl-in{opacity:1;transform:translateX(0);margin-left:7px;transition-delay:.06s}
   @media (prefers-reduced-motion: reduce){
@@ -191,6 +190,20 @@
   .composer .box{display:flex;gap:12px;align-items:center;background:var(--glass-strong);-webkit-backdrop-filter:blur(24px) saturate(1.5);backdrop-filter:blur(24px) saturate(1.5);border:1px solid var(--edge);border-radius:999px;padding:8px 8px 8px 22px;box-shadow:var(--shadow)}
   .composer input{border:0;outline:0;flex:1;background:none;font-size:14px}
   .composer input::placeholder{color:var(--ink-3)}
+  .ctx-ring{position:relative;width:34px;height:34px;border:0;background:none;padding:0;flex:none;cursor:pointer}
+  .ctx-ring svg{width:34px;height:34px;display:block}
+  .ctx-ring #ctx-arc{transition:stroke-dashoffset .5s ease, stroke .3s ease}
+  .ctx-ring #ctx-pct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:8.5px;font-weight:700;color:var(--ink-2);font-variant-numeric:tabular-nums}
+  .ctx-ring.warn #ctx-arc{stroke:var(--warn)}
+  .ctx-ring.high #ctx-arc{stroke:var(--high)}
+  .ctx-ring:hover{transform:scale(1.06)}
+  .ctx-hint{text-align:center;font-size:12px;color:var(--ink-3);margin-top:8px}
+  .ctx-hint b{color:var(--warn)}
+  .ctx-hint.blocked b{color:var(--high)}
+  .compact-marker{align-self:center;max-width:80%;text-align:center;margin:4px 0}
+  .compact-marker .cm-pill{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;color:var(--good);background:rgba(46,158,107,.08);border:1px solid rgba(46,158,107,.2);border-radius:999px;padding:5px 14px;cursor:pointer}
+  .compact-marker .cm-sum{display:none;margin-top:10px;text-align:left;font-size:12.5px;color:var(--ink-2);background:rgba(255,255,255,.55);border:1px solid var(--hair);border-radius:14px;padding:12px 16px;white-space:pre-wrap}
+  .compact-marker.open .cm-sum{display:block}
   .model-select{border:1px solid var(--hair);border-radius:999px;background:rgba(255,255,255,.6);padding:7px 10px;font-size:12px;font-weight:600;color:var(--ink-2);outline:0;cursor:pointer;flex:none;-webkit-appearance:none;appearance:none}
   .model-select:hover{color:var(--ink);border-color:rgba(29,30,44,.15)}
   .send{width:38px;height:38px;border-radius:50%;border:0;background:var(--lila);color:#fff;font-size:15px;display:inline-flex;align-items:center;justify-content:center;flex:none}
@@ -400,6 +413,14 @@
         <div class="composer">
           <div class="box">
             <input type="text" id="composer-input" placeholder="Frag Enni …" aria-label="Nachricht">
+            <button class="ctx-ring" id="ctx-ring" title="Kontext-Auslastung" hidden>
+              <svg viewBox="0 0 32 32">
+                <circle cx="16" cy="16" r="13" fill="none" stroke="rgba(29,30,44,.12)" stroke-width="3.5"/>
+                <circle id="ctx-arc" cx="16" cy="16" r="13" fill="none" stroke="var(--lila)" stroke-width="3.5"
+                  stroke-linecap="round" stroke-dasharray="81.7" stroke-dashoffset="81.7" transform="rotate(-90 16 16)"/>
+              </svg>
+              <span id="ctx-pct">0%</span>
+            </button>
             <select id="model-select" class="model-select" aria-label="Modell" title="KI-Modell wählen">
               <option value="claude-opus-4-8">Opus 4.8</option>
               <option value="claude-sonnet-5">Sonnet 5</option>
@@ -407,6 +428,7 @@
             </select>
             <button class="send" id="send-btn" aria-label="Senden">↑</button>
           </div>
+          <div class="ctx-hint" id="ctx-hint" hidden></div>
         </div>
       </div>
     </section>

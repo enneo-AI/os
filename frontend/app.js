@@ -131,6 +131,8 @@ function newConversation() {
   $('msgs').innerHTML = `<div class="empty"><div><span class="enni-dot">E</span></div>
     Hallo! Ich bin Enni. Frag mich zu enneo-Prozessen, Kunden, Produkt oder Code — ich schaue in Wiki und GitLab nach.</div>`
   document.querySelectorAll('#conv-list .sb-item').forEach((x) => x.classList.remove('on'))
+  ctxTokens = 0
+  renderCtx()
   activateChatView()
   $('composer-input').focus()
 }
@@ -154,7 +156,10 @@ async function openConversation(c) {
     if (m.role === 'user') box.appendChild(renderUser(m.content))
     else if (m.role === 'assistant')
       box.appendChild(renderAgent(m.content, m.thinking, m.tool_calls || [], costByMessage[m.id]))
+    else if (m.role === 'compaction') box.appendChild(renderCompactionMarker(m.content))
   }
+  ctxTokens = computeCtxTokens(msgs || [])
+  renderCtx()
   window.scrollTo({ top: document.body.scrollHeight })
 }
 
@@ -230,11 +235,97 @@ function renderAgent(text, thinking, toolCalls, cost) {
   return wrap
 }
 
+// ============================================================ Kontext-Kompaktierung (Dust-Muster)
+const CTX_BUDGET = 60000 // Token-Budget pro Konversation, danach Pflicht-Kompaktierung
+let ctxTokens = 0
+let compacting = false
+
+function computeCtxTokens(msgs) {
+  let lastCompaction = -1
+  msgs.forEach((m, i) => { if (m.role === 'compaction') lastCompaction = i })
+  let chars = lastCompaction >= 0 ? msgs[lastCompaction].content.length : 0
+  for (const m of msgs.slice(lastCompaction + 1)) {
+    if ((m.role === 'user' || m.role === 'assistant') && m.content) chars += m.content.length
+  }
+  return Math.round(chars / 4)
+}
+
+function ctxPct() {
+  return Math.min(100, Math.round((ctxTokens / CTX_BUDGET) * 100))
+}
+
+function renderCtx() {
+  const pct = ctxPct()
+  const ring = $('ctx-ring')
+  const hint = $('ctx-hint')
+  ring.hidden = pct < 5
+  const C = 81.7
+  $('ctx-arc').style.strokeDashoffset = C - (C * pct) / 100
+  $('ctx-pct').textContent = pct + '%'
+  ring.classList.toggle('warn', pct >= 70 && pct < 80)
+  ring.classList.toggle('high', pct >= 80)
+  ring.title = `Kontext: ${pct}% (${ctxTokens.toLocaleString('de-DE')} von ${CTX_BUDGET.toLocaleString('de-DE')} Tokens)` +
+    (pct >= 33 ? ' — klicken zum Komprimieren' : '')
+  if (compacting) {
+    hint.hidden = false
+    hint.innerHTML = 'Kontext wird komprimiert …'
+  } else if (pct >= 80) {
+    hint.hidden = false
+    hint.className = 'ctx-hint blocked'
+    hint.innerHTML = '<b>Kontext voll (80%+)</b> — bitte erst komprimieren: Klick auf den Ring.'
+  } else if (pct >= 70) {
+    hint.hidden = false
+    hint.className = 'ctx-hint'
+    hint.innerHTML = '<b>Kontext zu ' + pct + '% voll</b> — Komprimieren empfohlen (Klick auf den Ring).'
+  } else {
+    hint.hidden = true
+  }
+}
+
+async function compactNow() {
+  if (!currentConv || compacting) return
+  compacting = true
+  $('composer-input').disabled = true
+  $('composer-input').placeholder = 'Kontext wird komprimiert …'
+  renderCtx()
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/compact`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ conversation_id: currentConv.id }),
+    })
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`)
+    await openConversation(currentConv)
+    refreshCosts()
+  } catch (err) {
+    $('ctx-hint').hidden = false
+    $('ctx-hint').innerHTML = 'Komprimieren fehlgeschlagen: ' + esc(err.message) + ' — Verlauf bleibt vollständig.'
+  }
+  compacting = false
+  $('composer-input').disabled = false
+  $('composer-input').placeholder = 'Frag Enni …'
+  renderCtx()
+}
+
+$('ctx-ring').addEventListener('click', () => {
+  if (ctxPct() >= 33 && !compacting) compactNow()
+})
+
+function renderCompactionMarker(summary) {
+  const el = document.createElement('div')
+  el.className = 'compact-marker'
+  el.innerHTML = `<button class="cm-pill">✓ Kontext komprimiert <span style="opacity:.6">· Zusammenfassung anzeigen</span></button><div class="cm-sum"></div>`
+  el.querySelector('.cm-sum').textContent = summary
+  el.querySelector('.cm-pill').addEventListener('click', () => el.classList.toggle('open'))
+  return el
+}
+
 // ============================================================ Senden + Streaming
 async function send() {
   const input = $('composer-input')
   const text = input.value.trim()
-  if (!text || streaming) return
+  if (!text || streaming || compacting) return
+  if (ctxPct() >= 80) { renderCtx(); return } // Pflicht-Kompaktierung (Dust: 80%)
   input.value = ''
   streaming = true
   $('send-btn').disabled = true
@@ -355,6 +446,8 @@ async function send() {
 
   streaming = false
   $('send-btn').disabled = false
+  ctxTokens += Math.round((text.length + answerText.length) / 4)
+  renderCtx()
   loadConversations()
   refreshCosts()
   $('composer-input').focus()

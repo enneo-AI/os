@@ -69,11 +69,12 @@ export async function runEnniTurn(history, emit, modelOverride) {
 
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
     setCacheBreakpoint(messages)
+    const supportsThinking = !MODEL.startsWith('claude-haiku')
     const stream = anthropic.messages.stream({
       model: MODEL,
       max_tokens: 16000,
       system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-      thinking: { type: 'adaptive', display: 'summarized' },
+      ...(supportsThinking ? { thinking: { type: 'adaptive', display: 'summarized' } } : {}),
       tools: TOOLS,
       messages,
     })
@@ -131,4 +132,24 @@ export async function runEnniTurn(history, emit, modelOverride) {
   }
 
   return { text: finalText, thinking: thinkingText, toolCalls, usage: totalUsage, model: MODEL }
+}
+
+// Kontext-Kompaktierung: Haiku fasst den Verlauf zusammen (billig, ~Sekunden)
+export async function compactConversation(title, transcript) {
+  const model = 'claude-haiku-4-5'
+  const response = await anthropic.messages.create({
+    model,
+    max_tokens: 4000,
+    system:
+      'Du komprimierst den Verlauf einer Assistenz-Konversation zu einer dichten Zusammenfassung, mit der das Gespräch nahtlos fortgesetzt werden kann. Struktur: 1) Thema & Kontext, 2) Wichtige Fakten und Rechercheergebnisse (konkret, mit Namen/Zahlen/Quellen-Slugs), 3) Getroffene Entscheidungen, 4) Offene Punkte. Deutsch, präzise, keine Floskeln.',
+    messages: [
+      {
+        role: 'user',
+        content: `Konversationstitel: ${title || 'ohne Titel'}\n\nVerlauf:\n\n${transcript.slice(0, 400000)}`,
+      },
+    ],
+  })
+  const summary = response.content.find((b) => b.type === 'text')?.text || ''
+  if (!summary) throw new Error('Zusammenfassung leer')
+  return { summary, usage: response.usage, model }
 }
