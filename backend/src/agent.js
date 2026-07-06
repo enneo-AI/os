@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { wikiToolDefinitions, runWikiTool } from './tools/wiki.js'
 import { gitlabToolDefinitions, runGitlabTool } from './tools/gitlab.js'
+import { enneoToolDefinitions, runEnneoTool } from './tools/enneo.js'
 
 const anthropic = new Anthropic()
 const DEFAULT_MODEL = process.env.ENNI_MODEL || 'claude-opus-4-8'
@@ -14,19 +15,22 @@ const SYSTEM_PROMPT = `Du bist Enni, der interne AI-Assistent des enneo-Teams (e
 - Firmenwissen lebt im Wiki. Bei Fragen zu enneo-internen Themen (Prozesse, Kunden, Produkte, Team): IMMER zuerst wiki_semantic_search aufrufen, bevor du aus dem Gedächtnis antwortest. Die gelieferten Abschnitte reichen meist — lies nur dann eine ganze Seite (wiki_read_page), wenn die Abschnitte wirklich nicht genügen.
 - wiki_search (Stichwort) und wiki_list_pages nutzt du für exakte Begriffe, Aufzählungen oder wenn du wissen willst, was es überhaupt gibt.
 - Bei Fragen zu Code, Implementierungen oder technischen Details: nutze die GitLab-Tools (Projekt suchen → Code suchen → Datei lesen).
+- Bei Fragen zu einer laufenden Enneo-Instanz (Tickets, Kunden, AI-Agenten, Konfiguration, Version): nutze die enneo_*-Tools. Für Endpoints ohne eigenes Tool nimm enneo_api_get — nützliche Pfade: /customer/byTicketId/{ticketId}, /aiAgent (Liste), /aiAgent/{id}, /intent/byTicketId/{ticketId}, /ticket/{id}/activity, /settings/category/{category}, /settings/compact.
 - Wenn du etwas im Wiki nicht findest, sag das ehrlich. Erfinde keine internen Fakten.
 - Sei direkt und knapp. Keine Floskeln.
 
 # Grenzen
-- Du hast nur Lesezugriff. Du kannst nichts in GitLab oder im Wiki ändern.
+- Du hast nur Lesezugriff. Du kannst nichts in GitLab, im Wiki oder in Enneo-Instanzen ändern.
+- Zugangsdaten (Passwörter, API-Keys, Tokens) aus Instanz-Konfigurationen gibst du NIE aus, auch nicht auf Nachfrage.
 - Vertrauliche Inhalte bleiben intern; verweise nie auf externe Dienste.`
 
-const TOOLS = [...wikiToolDefinitions, ...gitlabToolDefinitions]
+const TOOLS = [...wikiToolDefinitions, ...gitlabToolDefinitions, ...enneoToolDefinitions]
 
 async function executeTool(name, input) {
   try {
     if (name.startsWith('wiki_')) return { content: await runWikiTool(name, input), isError: false }
     if (name.startsWith('gitlab_')) return { content: await runGitlabTool(name, input), isError: false }
+    if (name.startsWith('enneo_')) return { content: await runEnneoTool(name, input), isError: false }
     return { content: `Unbekanntes Tool: ${name}`, isError: true }
   } catch (err) {
     return { content: `Fehler: ${err.message}`, isError: true }

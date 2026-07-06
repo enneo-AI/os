@@ -975,6 +975,7 @@ document.addEventListener('keydown', (e) => {
 const CONNECTIONS = {
   wiki: { name: 'Wiki', sub: 'Internes Firmenwissen · eingebaut' },
   gitlab: { name: 'GitLab', sub: 'Code, Projekte, MRs · read-only' },
+  enneo: { name: 'Enneo-Plattform', sub: 'Tickets, Kunden, AI-Agenten, Settings · read-only' },
   google_drive: { name: 'Google Drive', sub: 'folgt in Phase 2', disabled: true },
   notion: { name: 'Notion', sub: 'folgt in Phase 2', disabled: true },
   slack: { name: 'Slack-Channels', sub: 'read-only Sync · folgt in Phase 2', disabled: true },
