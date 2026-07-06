@@ -156,7 +156,7 @@ async function loadConversations() {
   for (const c of data || []) {
     const btn = document.createElement('button')
     btn.className = 'sb-item' + (currentConv?.id === c.id ? ' on' : '')
-    btn.innerHTML = `<span class="ic">💬</span><span class="txt">${esc(c.title || 'Ohne Titel')}</span>`
+    btn.innerHTML = `<span class="txt">${esc(c.title || 'Ohne Titel')}</span>`
     btn.addEventListener('click', () => openConversation(c))
     list.appendChild(btn)
   }
@@ -181,7 +181,7 @@ $('new-chat').addEventListener('click', () => {
 async function openConversation(c) {
   currentConv = c
   convPod = c.pod_id ? podsList.find((p) => p.id === c.pod_id) || convPod : null
-  $('chat-title').textContent = (convPod ? `⬡ ${convPod.name} · ` : '') + (c.title || 'Ohne Titel')
+  $('chat-title').textContent = (convPod ? `${convPod.name} · ` : '') + (c.title || 'Ohne Titel')
   activateChatView()
   document.querySelectorAll('#conv-list .sb-item').forEach((x) =>
     x.classList.toggle('on', x.querySelector('.txt')?.textContent === (c.title || 'Ohne Titel'))
@@ -219,7 +219,7 @@ function renderUser(text, attachments) {
     for (const a of attachments) {
       const chip = document.createElement('span')
       chip.style.cssText = 'font-size:11px;font-weight:600;background:rgba(255,255,255,.16);border-radius:999px;padding:3px 10px'
-      chip.textContent = `📎 ${a.name}`
+      chip.textContent = a.name
       row.appendChild(chip)
     }
     el.appendChild(row)
@@ -241,7 +241,7 @@ function renderPeer(name, text, attachments) {
     for (const a of attachments) {
       const chip = document.createElement('span')
       chip.style.cssText = 'font-size:11px;font-weight:600;background:rgba(29,30,44,.06);border-radius:999px;padding:3px 10px'
-      chip.textContent = `📎 ${a.name}`
+      chip.textContent = a.name
       row.appendChild(chip)
     }
     el.appendChild(row)
@@ -253,8 +253,7 @@ function toolRow(call, idx) {
   const short = summarizeInput(call.input)
   const row = document.createElement('button')
   row.className = 'tool-row' + (call.is_error ? ' err' : '')
-  row.innerHTML = `<span class="t-ic">${call.name.startsWith('gitlab') ? '🦊' : '📖'}</span>
-    <code>${esc(call.name)}</code><span class="t-q">${esc(short)}</span><span class="arr">›</span>`
+  row.innerHTML = `<code>${esc(call.name)}</code><span class="t-q">${esc(short)}</span><span class="arr">›</span>`
   row.addEventListener('click', (e) => {
     e.stopPropagation()
     row.closest('.think')?.classList.add('open')
@@ -399,6 +398,8 @@ function renderCompactionMarker(summary) {
 }
 
 // ============================================================ Pods (Dust-Muster)
+// Dezentes Lock als einziges Listen-Icon: Restricted ist echte Information, alles andere spricht über Text.
+const LOCK_SVG = '<svg class="lock" viewBox="0 0 24 24" aria-label="Restricted"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'
 let podsList = []
 let activePod = null      // Pod, dessen Seite gerade offen ist
 let convPod = null        // Pod-Kontext der aktuellen/neuen Konversation
@@ -431,7 +432,7 @@ async function loadPods() {
   for (const p of podsList) {
     const btn = document.createElement('button')
     btn.className = 'sb-item' + (activePod?.id === p.id ? ' on' : '')
-    btn.innerHTML = `<span class="ic">⬡</span><span class="txt">${esc(p.name)}</span><span style="margin-left:auto;font-size:10px;color:var(--ink-3)">${p.open ? '🌐' : '🔒'}</span>`
+    btn.innerHTML = `<span class="txt">${esc(p.name)}</span>${p.open ? '' : LOCK_SVG}`
     btn.addEventListener('click', () => openPod(p))
     list.appendChild(btn)
   }
@@ -444,7 +445,7 @@ async function openPod(pod, tab = 'convs') {
   convPod = null
   $('pod-title').textContent = pod.name
   $('pod-sub').textContent = pod.description || 'Pod · gemeinsamer Kontext für alle Mitglieder'
-  $('pod-badge').textContent = pod.open ? '🌐 Open' : '🔒 Restricted'
+  $('pod-badge').textContent = pod.open ? 'Open' : 'Restricted'
   $('pod-badge').classList.toggle('restricted', !pod.open)
   const profs = await allProfiles()
   const row = $('pod-members-row')
@@ -483,7 +484,7 @@ async function loadPodConvs() {
     const row = document.createElement('div')
     row.className = 'row'
     row.style.cursor = 'pointer'
-    row.innerHTML = `<div><div class="r-name">💬 ${esc(c.title || 'Ohne Titel')}</div>
+    row.innerHTML = `<div><div class="r-name">${esc(c.title || 'Ohne Titel')}</div>
       <div class="r-sub">gestartet von ${esc(profName(profs, c.user_id))}</div></div><div></div>
       <span class="r-val">${new Date(c.updated_at).toLocaleDateString('de-DE')}</span>`
     row.addEventListener('click', () => { convPod = activePod; openConversation(c) })
@@ -495,7 +496,7 @@ async function loadPodConvs() {
 $('pod-new-conv').addEventListener('click', () => {
   convPod = activePod
   newConversation()
-  $('chat-title').textContent = `Neue Konversation · ⬡ ${activePod.name}`
+  $('chat-title').textContent = `Neue Konversation · ${activePod.name}`
 })
 
 // --- Tab: Aufgaben
@@ -546,7 +547,7 @@ async function addTask() {
 let taskForModal = null
 function openTaskModal(task) {
   taskForModal = task
-  $('tm-task-title').textContent = '⬡ ' + task.title
+  $('tm-task-title').textContent = task.title
   $('tm-message').value = ''
   $('task-overlay').classList.add('open')
 }
@@ -575,10 +576,10 @@ async function loadPodFiles() {
   for (const f of data || []) {
     const row = document.createElement('div')
     row.className = 'row'
-    row.innerHTML = `<div><div class="r-name">📄 ${esc(f.name)}</div>
+    row.innerHTML = `<div><div class="r-name">${esc(f.name)}</div>
       <div class="r-sub">${f.media_type || ''} · ${(f.size / 1024 / 1024).toFixed(1)} MB · von ${esc(profName(profs, f.uploaded_by))}</div></div>
       <a href="#" class="src-link f-dl" style="color:var(--lila-deep);font-size:12.5px">Herunterladen</a>
-      <button class="task-run f-del" title="Löschen">🗑</button>`
+      <button class="task-run f-del" title="Löschen">✕</button>`
     row.querySelector('.f-dl').addEventListener('click', async (e) => {
       e.preventDefault()
       const { data: signed } = await sb.storage.from('pod-files').createSignedUrl(f.storage_path, 300)
@@ -759,7 +760,7 @@ $('mic-btn').addEventListener('click', () => {
   const hint = $('ctx-hint')
   hint.hidden = false
   hint.className = 'ctx-hint'
-  hint.innerHTML = `🎙️ Aufnahme läuft (${sttLang() === 'de-DE' ? 'Deutsch' : 'English'}) — Klick aufs Mikro stoppt · <a href="#" id="stt-switch" style="color:var(--lila-deep)">auf ${other === 'de-DE' ? 'Deutsch' : 'English'} wechseln</a>`
+  hint.innerHTML = `Aufnahme läuft (${sttLang() === 'de-DE' ? 'Deutsch' : 'English'}) — Klick aufs Mikro stoppt · <a href="#" id="stt-switch" style="color:var(--lila-deep)">auf ${other === 'de-DE' ? 'Deutsch' : 'English'} wechseln</a>`
   document.getElementById('stt-switch').addEventListener('click', (ev) => {
     ev.preventDefault()
     localStorage.setItem('enni-stt-lang', other)
@@ -881,7 +882,7 @@ async function send() {
         } else if (ev.type === 'tool_use') {
           toolCount++
           thinkPara = null // nächster Thinking-Block wird neuer Absatz
-          const call = { name: ev.name, input: ev.input, output: '⏳ läuft …', is_error: false }
+          const call = { name: ev.name, input: ev.input, output: 'läuft …', is_error: false }
           const row = toolRow(call)
           pendingTools[ev.name + ':' + toolCount] = { call, row }
           pendingTools['last:' + ev.name] = { call, row }
@@ -955,7 +956,6 @@ $('composer-input').addEventListener('keydown', (e) => {
 // ============================================================ Tool-Panel
 const panel = $('tool-panel')
 function openPanel(call) {
-  $('tp-ic').textContent = call.name?.startsWith('gitlab') ? '🦊' : '📖'
   $('tp-name').textContent = call.name
   $('tp-time').textContent = call.duration_ms != null ? (call.duration_ms / 1000).toLocaleString('de-DE') + ' s' : ''
   $('tp-inputs').textContent = JSON.stringify(call.input, null, 2)
@@ -973,12 +973,12 @@ document.addEventListener('keydown', (e) => {
 // ============================================================ Spaces (Dust-Pattern)
 // Connections = Wissensquellen (lesen/indexieren). Aktionen laufen separat als Tools.
 const CONNECTIONS = {
-  wiki: { ic: '📖', name: 'Wiki', sub: 'Internes Firmenwissen · eingebaut' },
-  gitlab: { ic: '🦊', name: 'GitLab', sub: 'Code, Projekte, MRs · read-only' },
-  google_drive: { ic: '📁', name: 'Google Drive', sub: 'folgt in Phase 2', disabled: true },
-  notion: { ic: '📄', name: 'Notion', sub: 'folgt in Phase 2', disabled: true },
-  slack: { ic: '💬', name: 'Slack-Channels', sub: 'read-only Sync · folgt in Phase 2', disabled: true },
-  attio: { ic: '📊', name: 'Attio (Reads)', sub: 'folgt in Phase 2', disabled: true },
+  wiki: { name: 'Wiki', sub: 'Internes Firmenwissen · eingebaut' },
+  gitlab: { name: 'GitLab', sub: 'Code, Projekte, MRs · read-only' },
+  google_drive: { name: 'Google Drive', sub: 'folgt in Phase 2', disabled: true },
+  notion: { name: 'Notion', sub: 'folgt in Phase 2', disabled: true },
+  slack: { name: 'Slack-Channels', sub: 'read-only Sync · folgt in Phase 2', disabled: true },
+  attio: { name: 'Attio (Reads)', sub: 'folgt in Phase 2', disabled: true },
 }
 const FOLDER_GROUPS = [
   { label: 'Unternehmen', match: (s) => !s.includes('/') },
@@ -1014,10 +1014,10 @@ async function loadSpacesTree() {
   renderSpaceTree()
 }
 
-function treeItem({ chev, ic, label, cls = '', indent = false }) {
+function treeItem({ chev, label, cls = '', lock = false }) {
   const btn = document.createElement('button')
   btn.className = 'sb-item tree-item ' + cls
-  btn.innerHTML = `${chev != null ? `<span class="tree-chev">${chev ? '▶' : ''}</span>` : ''}<span class="ic">${ic}</span><span class="txt">${esc(label)}</span>`
+  btn.innerHTML = `${chev != null ? `<span class="tree-chev">${chev ? '▶' : ''}</span>` : ''}<span class="txt">${esc(label)}</span>${lock ? LOCK_SVG : ''}`
   return btn
 }
 
@@ -1030,7 +1030,7 @@ function renderSpaceTree() {
   for (const s of spacesList) {
     const target = s.restricted ? restrTree : openTree
     const isOpen = expanded.has(s.id)
-    const row = treeItem({ chev: true, ic: s.restricted ? '🔒' : '📚', label: s.name })
+    const row = treeItem({ chev: true, label: s.name, lock: s.restricted })
     if (isOpen) row.classList.add('open')
     row.addEventListener('click', () => {
       isOpen ? expanded.delete(s.id) : expanded.add(s.id)
@@ -1042,13 +1042,13 @@ function renderSpaceTree() {
     const kids = document.createElement('div')
     kids.className = 'tree-kids'
 
-    const cd = treeItem({ ic: '🔌', label: 'Connected Data' })
+    const cd = treeItem({ label: 'Connected Data' })
     cd.addEventListener('click', () => openConnectedData(s))
     kids.appendChild(cd)
 
     const spacePages = (wikiPages || []).filter((p) => p.space_id === s.id)
     const foldersKey = s.id + ':folders'
-    const folders = treeItem({ chev: true, ic: '📂', label: 'Folders' })
+    const folders = treeItem({ chev: true, label: 'Folders' })
     if (expanded.has(foldersKey)) folders.classList.add('open')
     folders.addEventListener('click', () => {
       expanded.has(foldersKey) ? expanded.delete(foldersKey) : expanded.add(foldersKey)
@@ -1060,7 +1060,7 @@ function renderSpaceTree() {
       sub.className = 'tree-kids'
       for (const g of FOLDER_GROUPS) {
         const pages = spacePages.filter((p) => g.match(p.slug) && !WEBSITE_MATCH(p.slug))
-        const item = treeItem({ ic: '📄', label: `${g.label} · ${pages.length}` })
+        const item = treeItem({ label: `${g.label} · ${pages.length}` })
         item.addEventListener('click', () => openPagelist(s, g.label, pages))
         sub.appendChild(item)
       }
@@ -1068,11 +1068,11 @@ function renderSpaceTree() {
       kids.appendChild(sub)
     }
 
-    const web = treeItem({ ic: '🌐', label: 'Websites' })
+    const web = treeItem({ label: 'Websites' })
     web.addEventListener('click', () => openPagelist(s, 'Websites', spacePages.filter((p) => WEBSITE_MATCH(p.slug))))
     kids.appendChild(web)
 
-    const tools = treeItem({ ic: '🛠️', label: 'Tools' })
+    const tools = treeItem({ label: 'Tools' })
     tools.addEventListener('click', () => activateArea('wiki', 'conn'))
     kids.appendChild(tools)
 
@@ -1083,16 +1083,16 @@ function renderSpaceTree() {
 // ---------- Connected Data eines Space
 function openConnectedData(space) {
   currentSpace = space
-  $('cd-space-name').textContent = (space.restricted ? '🔒 ' : '📚 ') + space.name
+  $('cd-space-name').textContent = space.name
   const list = $('cd-list')
   list.innerHTML = ''
   if (!space.connections.length) {
     list.innerHTML = '<div class="row"><div><div class="r-name">Noch keine Daten verbunden</div><div class="r-sub">Füge Quellen aus den Administration-Connections hinzu.</div></div><div></div><div></div></div>'
   }
   for (const key of space.connections) {
-    const c = CONNECTIONS[key] || { ic: '🔗', name: key, sub: '' }
+    const c = CONNECTIONS[key] || { name: key, sub: '' }
     list.insertAdjacentHTML('beforeend',
-      `<div class="row"><div><div class="r-name">${c.ic} ${esc(c.name)}</div><div class="r-sub">${esc(c.sub)}</div></div><div></div><span class="role admin">Aktiv</span></div>`)
+      `<div class="row"><div><div class="r-name">${esc(c.name)}</div><div class="r-sub">${esc(c.sub)}</div></div><div></div><span class="role admin">Aktiv</span></div>`)
   }
   activateArea('wiki', 'connected')
 }
@@ -1106,7 +1106,7 @@ $('cd-add').addEventListener('click', () => {
     list.insertAdjacentHTML('beforeend',
       `<label class="check-row${c.disabled ? ' disabled' : ''}">
         <input type="checkbox" value="${key}" ${currentSpace.connections.includes(key) ? 'checked' : ''} ${c.disabled ? 'disabled' : ''}>
-        <span>${c.ic} ${esc(c.name)}</span><span class="cr-sub">${esc(c.sub)}</span>
+        <span>${esc(c.name)}</span><span class="cr-sub">${esc(c.sub)}</span>
       </label>`)
   }
   $('cd-overlay').classList.add('open')
@@ -1131,7 +1131,7 @@ let plPages = []
 function openPagelist(space, label, pages) {
   currentSpace = space
   plPages = pages
-  $('pl-crumb').textContent = (space.restricted ? '🔒 ' : '📚 ') + space.name
+  $('pl-crumb').textContent = space.name
   $('pl-title').textContent = label
   $('pl-sub').textContent = pages.length ? `${pages.length} Seiten` : 'Noch keine Inhalte — Datei-Upload folgt in Phase 2.'
   $('pl-filter').value = ''
@@ -1147,7 +1147,7 @@ function renderPagelist(filter) {
     const row = document.createElement('div')
     row.className = 'row'
     row.style.cursor = 'pointer'
-    row.innerHTML = `<div><div class="r-name">📄 ${esc(pageLabel(p))}</div><div class="r-sub">${esc(p.slug)}</div></div><div></div><span class="r-val">${new Date(p.updated_at).toLocaleDateString('de-DE')}</span>`
+    row.innerHTML = `<div><div class="r-name">${esc(pageLabel(p))}</div><div class="r-sub">${esc(p.slug)}</div></div><div></div><span class="r-val">${new Date(p.updated_at).toLocaleDateString('de-DE')}</span>`
     row.addEventListener('click', () => openWikiPage(p.slug))
     list.appendChild(row)
   }

@@ -104,8 +104,8 @@
   .sb-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:0;background:none;border-radius:9px;padding:7px 9px;font-size:13px;color:var(--ink-2)}
   .sb-item:hover{background:rgba(29,30,44,.04);color:var(--ink)}
   .sb-item.on{background:rgba(123,90,226,.08);color:var(--ink);font-weight:600}
-  .sb-item .ic{width:17px;text-align:center;flex:none;font-size:12px}
   .sb-item .txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sb-item .lock{width:12px;height:12px;flex:none;margin-left:auto;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;opacity:.4}
   .sb-sec .sec-add{margin-left:auto;border:0;background:none;color:var(--ink-3);font-size:13px;padding:0 4px;border-radius:5px;cursor:pointer}
   .sb-sec .sec-add:hover{color:var(--lila)}
   .sb-sec{display:flex;align-items:center}
@@ -173,7 +173,6 @@
   .think-body .tp{margin:0 0 9px;font-size:12.5px;color:var(--ink-2);max-width:62ch;white-space:pre-wrap}
   .tool-row{display:flex;align-items:center;gap:9px;width:100%;text-align:left;border:0;background:none;border-radius:8px;padding:6px 8px;margin:0 0 6px -8px;font-size:12.5px;color:var(--ink-2);transition:background .15s}
   .tool-row:hover{background:rgba(29,30,44,.045);color:var(--ink)}
-  .tool-row .t-ic{width:16px;text-align:center;font-size:11px;flex:none}
   .tool-row code{font-family:var(--mono);font-size:11.5px}
   .tool-row .t-q{color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:24ch}
   .tool-row .arr{margin-left:auto;color:var(--ink-3);font-size:12px}
@@ -312,7 +311,8 @@
   .conn-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;max-width:980px;margin:0 auto;padding-bottom:50px}
   .conn{padding:22px 24px;display:flex;flex-direction:column;gap:10px}
   .conn .c-top{display:flex;align-items:center;gap:11px}
-  .conn .c-ic{width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,.85);border:1px solid var(--hair);display:inline-flex;align-items:center;justify-content:center;font-size:16px;flex:none}
+  .conn .c-ic{width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,.85);border:1px solid var(--hair);display:inline-flex;align-items:center;justify-content:center;flex:none;color:var(--ink-2)}
+  .conn .c-ic svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
   .conn .c-name{font-weight:640;font-size:14.5px}
   .conn .c-state{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600}
   .conn .c-state .dot-s{width:7px;height:7px;border-radius:50%}
@@ -453,8 +453,8 @@
     <div class="sb-ctx" id="sb-spaces" hidden>
       <div class="sb-scroll">
         <div class="sb-sec">Administration</div>
-        <button class="sb-item admin-area" data-view="admin-conn"><span class="ic">🔌</span><span class="txt">Connections</span></button>
-        <button class="sb-item admin-area" data-view="conn"><span class="ic">🛠️</span><span class="txt">Tools</span></button>
+        <button class="sb-item admin-area" data-view="admin-conn"><span class="txt">Connections</span></button>
+        <button class="sb-item admin-area" data-view="conn"><span class="txt">Tools</span></button>
         <div class="sb-sec">Open Spaces <button class="sec-add" id="new-open-space" title="Neuer Open Space">＋</button></div>
         <div id="space-tree-open"></div>
         <div class="sb-sec">Restricted Spaces <button class="sec-add" id="new-restricted-space" title="Neuer Restricted Space">＋</button></div>
@@ -466,9 +466,9 @@
     <div class="sb-ctx" id="sb-admin" hidden>
       <div class="sb-scroll">
         <div class="sb-sec">Administration</div>
-        <button class="sb-item admin-link" data-target="k-today"><span class="ic">💶</span><span class="txt">Kosten</span></button>
-        <button class="sb-item admin-link" data-target="panel-model"><span class="ic">🧠</span><span class="txt">Modell</span></button>
-        <button class="sb-item admin-link" data-target="panel-members"><span class="ic">👥</span><span class="txt">Mitglieder</span></button>
+        <button class="sb-item admin-link" data-target="k-today"><span class="txt">Kosten</span></button>
+        <button class="sb-item admin-link" data-target="panel-model"><span class="txt">Modell</span></button>
+        <button class="sb-item admin-link" data-target="panel-members"><span class="txt">Mitglieder</span></button>
       </div>
     </div>
 
@@ -536,12 +536,11 @@
     <section class="view" id="v-pod">
       <div class="pod-shell">
         <div class="chat-head" style="padding-top:22px">
-          <span style="font-size:20px;width:26px;text-align:center;flex:none">⬡</span>
           <div>
             <div class="t" id="pod-title">Pod</div>
             <div style="font-size:12px;color:var(--ink-3)" id="pod-sub">Pod · gemeinsamer Kontext für alle Mitglieder</div>
           </div>
-          <span class="badge" id="pod-badge" style="margin-left:auto">🌐 Open</span>
+          <span class="badge" id="pod-badge" style="margin-left:auto">Open</span>
           <div class="members" id="pod-members-row"></div>
         </div>
         <div class="pod-tabs" id="pod-tabs">
@@ -580,7 +579,7 @@
             <div style="font-size:12px;color:var(--ink-3);margin:-4px 0 8px">Gilt für Enni in allen Konversationen dieses Pods.</div>
             <textarea id="pset-instructions" class="pset-input" rows="6" placeholder="z. B. Antworte knapp. Der Kunde heißt STAWAG. Ansprechpartner ist …"></textarea>
             <div class="row" style="margin-top:10px">
-              <div><div class="r-name">🌐 Open to everyone</div><div class="r-sub">Alle in der Organisation können den Pod sehen und beitreten.</div></div>
+              <div><div class="r-name">Open to everyone</div><div class="r-sub">Alle in der Organisation können den Pod sehen und beitreten.</div></div>
               <div></div>
               <label class="toggle"><input type="checkbox" id="pset-open"><span></span></label>
             </div>
@@ -632,8 +631,8 @@
       </div>
       <div class="cost-shell">
         <div class="glass list-panel">
-          <div class="row"><div><div class="r-name">📖 Wiki</div><div class="r-sub">Internes Firmenwissen · eingebaut</div></div><div></div><span class="role admin">Verbunden</span></div>
-          <div class="row"><div><div class="r-name">🦊 GitLab</div><div class="r-sub">gitlab.com/enneo · read-only · persönlicher Token</div></div><div></div><span class="role admin">Verbunden</span></div>
+          <div class="row"><div><div class="r-name">Wiki</div><div class="r-sub">Internes Firmenwissen · eingebaut</div></div><div></div><span class="role admin">Verbunden</span></div>
+          <div class="row"><div><div class="r-name">GitLab</div><div class="r-sub">gitlab.com/enneo · read-only · persönlicher Token</div></div><div></div><span class="role admin">Verbunden</span></div>
           <div class="row"><div><div class="r-name">＋ Add Connections</div><div class="r-sub">Google Drive, Notion, Slack-Channels, Attio-Reads — folgt in Phase 2 mit OAuth</div></div><div></div><div></div></div>
         </div>
       </div>
@@ -658,17 +657,17 @@
       </div>
       <div class="conn-grid">
         <div class="glass conn">
-          <div class="c-top"><span class="c-ic">✉️</span><span class="c-name">E-Mail senden</span><span class="c-state off"><span class="dot-s"></span>Nicht verbunden</span></div>
+          <div class="c-top"><span class="c-ic"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg></span><span class="c-name">E-Mail senden</span><span class="c-state off"><span class="dot-s"></span>Nicht verbunden</span></div>
           <p class="c-desc">Enni entwirft Mails aus Konversationen. Senden ist High-Stake — immer mit deiner Freigabe.</p>
           <div class="c-foot">Phase 2 · persönliche Anmeldung <button class="btn quiet" disabled>Verbinden</button></div>
         </div>
         <div class="glass conn">
-          <div class="c-top"><span class="c-ic">📅</span><span class="c-name">Kalender</span><span class="c-state off"><span class="dot-s"></span>Nicht verbunden</span></div>
+          <div class="c-top"><span class="c-ic"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span><span class="c-name">Kalender</span><span class="c-state off"><span class="dot-s"></span>Nicht verbunden</span></div>
           <p class="c-desc">Termine vorschlagen und anlegen. Anlegen braucht Freigabe, Lesen ist frei.</p>
           <div class="c-foot">Phase 2 · nur du / Team wählbar <button class="btn quiet" disabled>Verbinden</button></div>
         </div>
         <div class="glass conn">
-          <div class="c-top"><span class="c-ic">📊</span><span class="c-name">Attio</span><span class="c-state off"><span class="dot-s"></span>Nicht verbunden</span></div>
+          <div class="c-top"><span class="c-ic"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span><span class="c-name">Attio</span><span class="c-state off"><span class="dot-s"></span>Nicht verbunden</span></div>
           <p class="c-desc">Notizen und Tasks im CRM anlegen. Writes sind High-Stake mit Freigabe, Reads laufen als Connection.</p>
           <div class="c-foot">Phase 2 · offizieller Attio-MCP <button class="btn quiet" disabled>Verbinden</button></div>
         </div>
@@ -733,7 +732,7 @@
     <span class="tp-t">Tool-Detail</span>
     <button class="tp-close" id="tp-close" aria-label="Schließen">✕</button>
   </div>
-  <div class="tp-title"><span id="tp-ic">🛠️</span><code id="tp-name"></code><span class="tp-time" id="tp-time"></span></div>
+  <div class="tp-title"><code id="tp-name"></code><span class="tp-time" id="tp-time"></span></div>
   <div class="tp-sec">Input</div>
   <div class="tp-block"><div class="tp-out" id="tp-inputs"></div></div>
   <div class="tp-sec">Output</div>
@@ -749,8 +748,8 @@
     <input type="text" id="sm-name" placeholder="z. B. STAWAG Rollout">
     <label>Zugriff</label>
     <div class="seg" id="sm-seg">
-      <button data-acc="open">🌐 Open</button>
-      <button class="on" data-acc="restricted">🔒 Restricted</button>
+      <button data-acc="open">Open</button>
+      <button class="on" data-acc="restricted">Restricted</button>
     </div>
     <p class="seg-hint" id="sm-hint">Nur ausgewählte Mitglieder haben Zugriff.</p>
     <div id="sm-members-wrap">
@@ -772,8 +771,8 @@
     <input type="text" id="pm-name" placeholder="z. B. STAWAG Projekt">
     <label>Zugriff</label>
     <div class="seg" id="pm-seg">
-      <button class="on" data-acc="open">🌐 Open</button>
-      <button data-acc="restricted">🔒 Restricted</button>
+      <button class="on" data-acc="open">Open</button>
+      <button data-acc="restricted">Restricted</button>
     </div>
     <p class="seg-hint" id="pm-hint">Alle in der Organisation können den Pod sehen und beitreten.</p>
     <div id="pm-members-wrap" style="display:none">
