@@ -60,12 +60,83 @@ async function token() {
 async function showApp() {
   $('login-view').hidden = true
   $('app-view').hidden = false
-  const name = session.user.user_metadata?.full_name || session.user.email
-  $('f-name').textContent = name.split(' ')[0]
-  $('f-avatar').textContent = name.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase()
+  renderFooterProfile()
   await Promise.all([loadConversations(), loadPods(), refreshCosts()])
   route()
 }
+
+async function renderFooterProfile() {
+  const { data: p } = await sb
+    .from('profiles').select('display_name, avatar_url, email').eq('id', session.user.id).maybeSingle()
+  const name = p?.display_name || session.user.email
+  $('f-name').textContent = name.split(' ')[0]
+  const av = $('f-avatar')
+  if (p?.avatar_url) av.innerHTML = `<img src="${esc(p.avatar_url)}" alt="">`
+  else av.textContent = name.split(' ').map((x) => x[0]).slice(0, 2).join('').toUpperCase()
+}
+
+// ============================================================ Profil bearbeiten
+let pendingAvatar = null
+async function openProfile() {
+  const { data: p } = await sb
+    .from('profiles').select('display_name, avatar_url, email').eq('id', session.user.id).maybeSingle()
+  pendingAvatar = null
+  $('pf-name').value = p?.display_name || ''
+  $('pf-email').value = p?.email || session.user.email
+  $('pf-pw').value = ''
+  $('pf-pw2').value = ''
+  $('pf-err').textContent = ''
+  const prev = $('pf-avatar')
+  if (p?.avatar_url) prev.innerHTML = `<img src="${esc(p.avatar_url)}" alt="">`
+  else prev.textContent = (p?.display_name || p?.email || '?').split(' ').map((x) => x[0]).slice(0, 2).join('').toUpperCase()
+  $('profile-overlay').classList.add('open')
+}
+document.querySelector('.sb-foot > div').addEventListener('click', openProfile)
+$('f-avatar').addEventListener('click', openProfile)
+$('pf-cancel').addEventListener('click', () => $('profile-overlay').classList.remove('open'))
+$('pf-file').addEventListener('change', () => {
+  const f = $('pf-file').files[0]
+  if (!f) return
+  if (!/^image\/(png|jpeg|webp)$/.test(f.type)) { $('pf-err').textContent = 'Bitte PNG, JPEG oder WebP.'; return }
+  if (f.size > 3 * 1024 * 1024) { $('pf-err').textContent = 'Max. 3 MB.'; return }
+  pendingAvatar = f
+  $('pf-err').textContent = ''
+  $('pf-avatar').innerHTML = `<img src="${URL.createObjectURL(f)}" alt="">`
+})
+$('pf-avatar-btn').addEventListener('click', () => $('pf-file').click())
+$('pf-save').addEventListener('click', async () => {
+  const err = $('pf-err')
+  err.textContent = ''
+  const pw = $('pf-pw').value
+  if (pw && pw.length < 8) { err.textContent = 'Passwort: mindestens 8 Zeichen.'; return }
+  if (pw && pw !== $('pf-pw2').value) { err.textContent = 'Passwörter stimmen nicht überein.'; return }
+  $('pf-save').disabled = true
+  try {
+    const patch = { display_name: $('pf-name').value.trim() || null }
+    if (pendingAvatar) {
+      // Alte eigenen Avatare aufräumen, dann neuen hochladen (public URL, Cache-Buster im Namen)
+      const { data: old } = await sb.storage.from('avatars').list('', { search: session.user.id })
+      if (old?.length) await sb.storage.from('avatars').remove(old.map((o) => o.name))
+      const ext = pendingAvatar.type.split('/')[1].replace('jpeg', 'jpg')
+      const path = `${session.user.id}-${Date.now()}.${ext}`
+      const { error: upErr } = await sb.storage.from('avatars').upload(path, pendingAvatar)
+      if (upErr) throw upErr
+      patch.avatar_url = sb.storage.from('avatars').getPublicUrl(path).data.publicUrl
+    }
+    const { error: profErr } = await sb.from('profiles').update(patch).eq('id', session.user.id)
+    if (profErr) throw profErr
+    if (pw) {
+      const { error: pwErr } = await sb.auth.updateUser({ password: pw })
+      if (pwErr) throw pwErr
+    }
+    profilesCache = null
+    $('profile-overlay').classList.remove('open')
+    renderFooterProfile()
+  } catch (e) {
+    err.textContent = 'Fehler: ' + e.message
+  }
+  $('pf-save').disabled = false
+})
 
 // Rail-Navigation — Sidebar-Inhalt wechselt mit dem Bereich
 const views = {
@@ -334,6 +405,43 @@ function summarizeInput(input) {
   return typeof v === 'string' ? `„${v}“` : JSON.stringify(v)
 }
 
+// Copy-Button auf jedem Code-Block (erscheint bei Hover, ✓-Feedback nach Klick)
+function enhanceCode(container) {
+  container.querySelectorAll('pre').forEach((pre) => {
+    if (pre.querySelector('.code-copy')) return
+    const btn = document.createElement('button')
+    btn.className = 'code-copy'
+    btn.title = 'Code kopieren'
+    btn.innerHTML = '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'
+    btn.addEventListener('click', async () => {
+      const text = pre.querySelector('code')?.innerText ?? pre.innerText
+      let ok = true
+      try {
+        await navigator.clipboard.writeText(text)
+      } catch {
+        // Fallback ohne Clipboard-API (HTTP, fehlender Fokus, ältere Browser)
+        try {
+          const ta = document.createElement('textarea')
+          ta.value = text
+          ta.style.cssText = 'position:fixed;opacity:0'
+          document.body.appendChild(ta)
+          ta.select()
+          ok = document.execCommand('copy')
+          ta.remove()
+        } catch { ok = false }
+      }
+      if (!ok) return
+      btn.classList.add('done')
+      btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>'
+      setTimeout(() => {
+        btn.classList.remove('done')
+        btn.innerHTML = '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'
+      }, 1600)
+    })
+    pre.appendChild(btn)
+  })
+}
+
 function renderAgent(text, thinking, toolCalls, cost) {
   const wrap = document.createElement('div')
   wrap.className = 'm-agent'
@@ -367,6 +475,7 @@ function renderAgent(text, thinking, toolCalls, cost) {
   const body = document.createElement('div')
   body.className = 'body'
   body.innerHTML = md(text)
+  enhanceCode(body)
   wrap.appendChild(body)
 
   if (cost != null) {
@@ -1060,6 +1169,7 @@ async function send() {
           follow()
         } else if (ev.type === 'done') {
           runIndicator.remove()
+          enhanceCode(body)
           thinkBody.insertAdjacentHTML('beforeend', '<div class="think-done">✓ Fertig</div>')
           think.classList.remove('open')
           const meta = document.createElement('div')
@@ -1146,6 +1256,7 @@ const FOLDER_GROUPS = [
   { label: 'Unternehmen', match: (s) => !s.includes('/') },
   { label: 'Produkt-Doku', match: (s) => s.startsWith('product-docs/') },
   { label: 'API-Doku', match: (s) => s.startsWith('api-docs/') },
+  { label: 'Enneo-API-Rezepte', match: (s) => s.startsWith('enneo-api/') },
 ]
 const WEBSITE_MATCH = (s) => s.startsWith('marketing-site/')
 
@@ -1375,6 +1486,7 @@ async function openWikiPage(slug) {
   $('doc-title').textContent = pageLabel(data)
   $('doc-meta').innerHTML = `<span>zuletzt aktualisiert ${new Date(data.updated_at).toLocaleDateString('de-DE')}</span>`
   $('doc-body').innerHTML = md(data.content.replace(/^#\s+.+\n/, ''))
+  enhanceCode($('doc-body'))
   activateArea('wiki')
   window.scrollTo({ top: 0 })
 }

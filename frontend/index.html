@@ -153,6 +153,14 @@
   .tree-kids .tree-kids .sb-item{font-size:12px}
   .sb-foot{border-top:1px solid var(--hair);margin-top:10px;padding-top:12px;display:flex;align-items:center;gap:8px}
   .sb-foot > div{min-width:0}
+  .sb-foot > div{cursor:pointer}
+  .sb-foot #f-avatar{cursor:pointer}
+  .avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+  .pf-row{display:flex;align-items:center;gap:14px;margin-bottom:20px}
+  .pf-row .avatar{width:52px;height:52px;font-size:16px}
+  .modal input:disabled{opacity:.55;cursor:not-allowed}
+  .pf-hint{font-size:11.5px;color:var(--ink-3);margin:-12px 0 16px}
+  .modal .err{color:var(--high);font-size:12.5px;min-height:18px;margin-bottom:6px}
   .avatar{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#2E3145,#4A4D66);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:650;flex:none}
   .sb-foot .f-name{font-size:13px;font-weight:600;line-height:1.2}
   .sb-foot .f-sub{font-size:11px;color:var(--ink-3);font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -191,7 +199,14 @@
   .m-agent .body ul,.m-agent .body ol{margin:0 0 13px;padding-left:22px;max-width:62ch}
   .m-agent .body li{margin-bottom:4px}
   .m-agent .body code{font-family:var(--mono);font-size:12.5px;background:var(--code-bg);border-radius:5px;padding:1px 5px}
-  .m-agent .body pre{background:var(--code-bg);border-radius:12px;padding:12px 15px;overflow-x:auto;font-size:12.5px}
+  .m-agent .body pre{background:var(--code-bg);border-radius:12px;padding:12px 15px;overflow-x:auto;font-size:12.5px;position:relative}
+  pre .code-copy{position:absolute;top:7px;right:7px;width:26px;height:26px;border:0;border-radius:7px;
+    background:var(--glass-strong);color:var(--ink-3);display:inline-flex;align-items:center;justify-content:center;
+    opacity:0;transition:opacity .15s, color .15s;box-shadow:0 1px 4px rgba(29,30,44,.12)}
+  pre:hover .code-copy{opacity:1}
+  pre .code-copy:hover{color:var(--ink)}
+  pre .code-copy.done{color:var(--good);opacity:1}
+  pre .code-copy svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
   .m-agent .body pre code{background:none;padding:0}
   .m-agent .body h1,.m-agent .body h2,.m-agent .body h3{font-size:15.5px;font-weight:650;margin:18px 0 8px;letter-spacing:-.01em}
   .m-agent .body table{border-collapse:collapse;font-size:13px;margin:0 0 13px}
@@ -356,7 +371,7 @@
   .doc-body p{margin:0 0 12px;max-width:68ch;font-size:14px}
   .doc-body ul,.doc-body ol{margin:0 0 12px;padding-left:22px;max-width:64ch;font-size:14px}
   .doc-body code{font-family:var(--mono);font-size:12.5px;background:var(--code-bg);border-radius:5px;padding:1px 5px}
-  .doc-body pre{background:var(--code-bg);border-radius:12px;padding:12px 15px;overflow-x:auto;font-size:12.5px}
+  .doc-body pre{background:var(--code-bg);border-radius:12px;padding:12px 15px;overflow-x:auto;font-size:12.5px;position:relative}
   .doc-body pre code{background:none;padding:0}
   .doc-body table{border-collapse:collapse;font-size:13px;margin:0 0 14px;max-width:100%}
   .doc-body th,.doc-body td{border:1px solid var(--hair);padding:7px 12px;text-align:left}
@@ -430,8 +445,8 @@
   .modal{width:min(460px,calc(100vw - 40px));background:var(--glass-strong);-webkit-backdrop-filter:blur(30px) saturate(1.6);backdrop-filter:blur(30px) saturate(1.6);border:1px solid var(--edge);border-radius:24px;box-shadow:0 40px 90px -20px rgba(29,30,44,.35);padding:26px 28px}
   .modal h3{margin:0 0 18px;font-size:17px;font-weight:650;letter-spacing:-.015em}
   .modal label{display:block;font-size:11px;font-weight:650;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:0 0 7px}
-  .modal input[type=text]{width:100%;border:1px solid var(--hair);border-radius:12px;background:var(--surface);padding:10px 14px;font-size:14px;outline:0;margin-bottom:18px}
-  .modal input[type=text]:focus{border-color:var(--lila);box-shadow:0 0 0 3px rgba(123,90,226,.12)}
+  .modal input[type=text],.modal input[type=password],.modal input[type=email]{width:100%;border:1px solid var(--hair);border-radius:12px;background:var(--surface);padding:10px 14px;font-size:14px;outline:0;margin-bottom:18px}
+  .modal input[type=text]:focus,.modal input[type=password]:focus,.modal input[type=email]:focus{border-color:var(--lila);box-shadow:0 0 0 3px rgba(123,90,226,.12)}
   .seg{display:flex;background:var(--press);border-radius:12px;padding:3px;margin-bottom:8px}
   .seg button{flex:1;border:0;background:none;border-radius:9px;padding:8px;font-size:13px;font-weight:560;color:var(--ink-2)}
   .seg button.on{background:var(--seg-on);color:var(--ink);font-weight:620;box-shadow:0 1px 4px rgba(83,63,165,.14)}
@@ -801,6 +816,32 @@
   <div class="tp-block"><div class="tp-out" id="tp-output"></div></div>
   <div class="tp-foot">Ausgeführt mit deinen Zugangsdaten · im Audit-Log attribuiert</div>
 </aside>
+
+<!-- ================= PROFIL MODAL ================= -->
+<div class="overlay" id="profile-overlay">
+  <div class="modal" role="dialog" aria-modal="true">
+    <h3>Profil</h3>
+    <div class="pf-row">
+      <span class="avatar" id="pf-avatar">·</span>
+      <input type="file" id="pf-file" hidden accept="image/png,image/jpeg,image/webp">
+      <button class="btn quiet" id="pf-avatar-btn" style="margin-left:0">Bild ändern</button>
+    </div>
+    <label for="pf-name">Anzeigename</label>
+    <input type="text" id="pf-name">
+    <label for="pf-email">E-Mail</label>
+    <input type="email" id="pf-email" disabled>
+    <p class="pf-hint">enneo-Konto — die E-Mail-Adresse ist fest (immer @enneo.ai).</p>
+    <label for="pf-pw">Neues Passwort</label>
+    <input type="password" id="pf-pw" autocomplete="new-password" placeholder="leer lassen = unverändert">
+    <label for="pf-pw2">Passwort wiederholen</label>
+    <input type="password" id="pf-pw2" autocomplete="new-password">
+    <div class="err" id="pf-err"></div>
+    <div class="m-actions">
+      <button class="btn quiet" id="pf-cancel">Abbrechen</button>
+      <button class="btn dark" id="pf-save">Speichern</button>
+    </div>
+  </div>
+</div>
 
 <!-- ================= SPACE MODAL ================= -->
 <div class="overlay" id="space-overlay">
