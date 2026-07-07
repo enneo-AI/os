@@ -1,23 +1,25 @@
-// Enneo-Plattform-Connector (read-only) — spricht die Mind-API der Enneo-Instanzen,
+// Enneo-Plattform-Connector — spricht die Mind-API der Enneo-Instanzen,
 // dieselbe API wie das offizielle Enneo Claude Code Plugin (https://{instanz}/api/mind).
 // Auth: universeller Production-Token (ENNEO_TOKEN) — gilt instanz-übergreifend, nie im Repo.
-// Instanz-Allowlist über ENNEO_INSTANCES (kommagetrennt, erste = Default).
+// Lesen: direkt. Schreiben: NUR über enneo_propose_write → Freigabe-Karte im Chat → Backend führt aus.
+// Instanz-Auflösung ist universell: jede {name}.enneo.ai, die der Nutzer nennt.
+// ENNEO_INSTANCES (kommagetrennt) liefert nur den Default (erster Eintrag).
 
-const INSTANCES = (process.env.ENNEO_INSTANCES || '')
+import { db } from '../db.js'
+
+const INSTANCES = (process.env.ENNEO_INSTANCES || 'aleksa-dev.enneo.ai')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean)
 
 function resolveInstance(input) {
   if (!input) return INSTANCES[0]
-  const wanted = input.replace(/^https?:\/\//, '').replace(/\/.*$/, '')
-  const match = INSTANCES.find((i) => i === wanted || i.split('.')[0] === wanted)
-  if (!match) {
-    throw new Error(
-      `Instanz "${input}" ist nicht freigegeben. Verfügbar: ${INSTANCES.join(', ') || '(keine konfiguriert)'}`
-    )
+  let host = input.replace(/^https?:\/\//, '').replace(/\/.*$/, '').toLowerCase()
+  if (!host.includes('.')) host = `${host}.enneo.ai`
+  if (!/^[a-z0-9][a-z0-9.-]*\.enneo\.ai$/.test(host)) {
+    throw new Error(`"${input}" ist keine gültige Enneo-Instanz (erwartet: {name}.enneo.ai)`)
   }
-  return match
+  return host
 }
 
 async function mind(instance, path, { method = 'GET', query, body } = {}) {
@@ -122,7 +124,7 @@ export const enneoToolDefinitions = [
   {
     name: 'enneo_api_get',
     description:
-      'Generischer read-only GET auf die Enneo Mind-API (/api/mind{path}). Für alles, wofür es kein eigenes Tool gibt — z.B. /customer/byTicketId/{id}, /aiAgent, /aiAgent/{id}, /intent/byTicketId/{id}, /ticket/{id}/activity, /settings/category/{cat}. Nur GET, keine Schreiboperationen.',
+      'Generischer read-only GET auf die Enneo Mind-API (/api/mind{path}). Für alles, wofür es kein eigenes Tool gibt — z.B. /customer/byTicketId/{id}, /aiAgent, /aiAgent/{id}, /intent/byTicketId/{id}, /ticket/{id}/activity, /tag, /settings/category/{cat}. Nur GET, keine Schreiboperationen.',
     input_schema: {
       type: 'object',
       properties: {
@@ -133,13 +135,85 @@ export const enneoToolDefinitions = [
       additionalProperties: false,
     },
   },
+  {
+    name: 'enneo_propose_write',
+    description:
+      'Schlägt eine SCHREIB-Operation auf einer Enneo-Instanz vor (POST/PUT/PATCH auf die Mind-API). Führt NICHTS aus — der Nutzer bekommt eine Freigabe-Karte im Chat und muss explizit bestätigen. Nutze das für Settings-Änderungen (PUT /settings/{name}), Tags anlegen (POST /tag mit name+reference+type), Ticket-Updates etc. DELETE ist grundsätzlich gesperrt. Formuliere summary so, dass ein Mensch die Auswirkung ohne API-Kenntnis versteht.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        ...instanceProp,
+        method: { type: 'string', enum: ['POST', 'PUT', 'PATCH'] },
+        path: { type: 'string', description: 'API-Pfad ab /api/mind, muss mit / beginnen' },
+        body: { description: 'Request-Body (JSON-Objekt, String oder Zahl — je nach Endpoint)' },
+        summary: { type: 'string', description: 'Ein Satz für den Menschen: was ändert sich wo, alter → neuer Zustand wenn bekannt' },
+      },
+      required: ['method', 'path', 'summary'],
+      additionalProperties: false,
+    },
+  },
 ]
 
-export async function runEnneoTool(name, input) {
-  if (!process.env.ENNEO_TOKEN || !INSTANCES.length) {
-    return 'Der Enneo-Connector ist noch nicht konfiguriert (ENNEO_TOKEN/ENNEO_INSTANCES fehlen). Sag dem Nutzer, dass der Connector erst eingerichtet werden muss.'
+// Wird vom Freigabe-Endpoint in index.js aufgerufen — erst hier passiert der echte API-Call.
+export async function executeWriteProposal(proposalId, userId) {
+  const { data: p } = await db.from('enneo_write_proposals').select('*').eq('id', proposalId).maybeSingle()
+  if (!p) throw new Error('Vorschlag nicht gefunden')
+  if (p.status !== 'proposed') throw new Error(`Vorschlag ist bereits ${p.status}`)
+  let status = 'executed'
+  let result
+  try {
+    result = await mind(p.instance, p.path, { method: p.method, body: p.body ?? undefined })
+  } catch (err) {
+    status = 'failed'
+    result = err.message
+  }
+  await db
+    .from('enneo_write_proposals')
+    .update({ status, result: String(result).slice(0, 5000), approved_by: userId, executed_at: new Date().toISOString() })
+    .eq('id', proposalId)
+  return { status, result: String(result).slice(0, 2000) }
+}
+
+export async function rejectWriteProposal(proposalId, userId) {
+  const { data: p } = await db.from('enneo_write_proposals').select('status').eq('id', proposalId).maybeSingle()
+  if (!p) throw new Error('Vorschlag nicht gefunden')
+  if (p.status !== 'proposed') throw new Error(`Vorschlag ist bereits ${p.status}`)
+  await db
+    .from('enneo_write_proposals')
+    .update({ status: 'rejected', approved_by: userId, executed_at: new Date().toISOString() })
+    .eq('id', proposalId)
+  return { status: 'rejected' }
+}
+
+export async function runEnneoTool(name, input, ctx = {}) {
+  if (!process.env.ENNEO_TOKEN) {
+    return 'Der Enneo-Connector ist noch nicht konfiguriert (ENNEO_TOKEN fehlt). Sag dem Nutzer, dass der Connector erst eingerichtet werden muss.'
   }
   const instance = resolveInstance(input.instance)
+
+  if (name === 'enneo_propose_write') {
+    if (!input.path.startsWith('/')) throw new Error('path muss mit / beginnen')
+    const { data, error } = await db
+      .from('enneo_write_proposals')
+      .insert({
+        conversation_id: ctx.conversationId || null,
+        proposed_by: ctx.userId || null,
+        instance,
+        method: input.method,
+        path: input.path,
+        body: input.body ?? null,
+        summary: input.summary,
+      })
+      .select('id')
+      .single()
+    if (error) throw new Error(error.message)
+    return JSON.stringify({
+      proposal_id: data.id,
+      status: 'proposed',
+      hinweis:
+        'Vorschlag gespeichert — der Nutzer sieht jetzt eine Freigabe-Karte im Chat und entscheidet dort. Sag ihm kurz, WAS du vorschlägst, und dass er es über die Karte ausführen oder ablehnen kann. Führe nichts selbst aus.',
+    })
+  }
 
   if (name === 'enneo_ticket_search') {
     const body = {

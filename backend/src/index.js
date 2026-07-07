@@ -148,7 +148,10 @@ app.post('/api/chat', async (req, res) => {
         (pod.description ? `\nPod-Beschreibung: ${pod.description}` : '') +
         (pod.instructions ? `\n\nInstructions for Agents (gelten in diesem Pod):\n${pod.instructions}` : '')
     }
-    const result = await runEnniTurn(history, emit, model, extraSystem)
+    const result = await runEnniTurn(history, emit, model, extraSystem, {
+      userId: user.id,
+      conversationId: convId,
+    })
 
     // Assistant-Message inkl. Gedankenkette + Tool-Calls persistieren
     const { data: msg } = await db
@@ -218,6 +221,29 @@ app.post('/api/compact', async (req, res) => {
   } catch (err) {
     console.error('compact error:', err)
     res.status(500).json({ error: err.message })
+  }
+})
+
+// Enneo-Write-Freigabe: Karte im Chat → hier passiert der echte API-Call (Audit via Tabelle)
+app.post('/api/enneo-write/:id/approve', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  try {
+    const { executeWriteProposal } = await import('./tools/enneo.js')
+    res.json(await executeWriteProposal(req.params.id, user.id))
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+app.post('/api/enneo-write/:id/reject', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  try {
+    const { rejectWriteProposal } = await import('./tools/enneo.js')
+    res.json(await rejectWriteProposal(req.params.id, user.id))
+  } catch (err) {
+    res.status(400).json({ error: err.message })
   }
 })
 

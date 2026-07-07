@@ -309,7 +309,73 @@ function renderAgent(text, thinking, toolCalls, cost) {
     meta.innerHTML = `<span class="cost">${fmtEur(cost)}</span>`
     wrap.appendChild(meta)
   }
+  renderWriteCards(wrap, toolCalls)
   return wrap
+}
+
+// ============================================================ Enneo-Write-Freigabe
+// Enni schlägt Änderungen an Enneo-Instanzen nur vor — ausgeführt wird erst nach Klick auf der Karte.
+async function renderWriteCards(wrap, toolCalls) {
+  const calls = (toolCalls || []).filter((c) => c.name === 'enneo_propose_write' && !c.is_error)
+  for (const call of calls) {
+    let pid = null
+    try { pid = JSON.parse(call.output).proposal_id } catch { /* Output noch nicht hydriert */ }
+    if (!pid || wrap.querySelector(`[data-proposal="${pid}"]`)) continue
+    const { data: p } = await sb.from('enneo_write_proposals').select('*').eq('id', pid).maybeSingle()
+    if (p) wrap.appendChild(writeCard(p))
+  }
+}
+
+function writeCard(p) {
+  const el = document.createElement('div')
+  el.className = 'wp-card'
+  el.dataset.proposal = p.id
+  const bodyJson = p.body != null ? JSON.stringify(p.body, null, 2) : null
+  el.innerHTML = `
+    <div class="wp-top"><span class="wp-title">Änderung an ${esc(p.instance.replace('.enneo.ai', ''))}</span><span class="wp-state"></span></div>
+    <div class="wp-sum">${esc(p.summary)}</div>
+    <div class="wp-req">${esc(p.method)} ${esc(p.path)} · ${esc(p.instance)}</div>
+    ${bodyJson ? `<pre class="wp-body">${esc(bodyJson)}</pre>` : ''}
+    <div class="wp-actions">
+      <button class="btn quiet wp-reject">Ablehnen</button>
+      <button class="btn dark wp-approve">Ausführen</button>
+    </div>
+    <div class="wp-result" hidden></div>`
+  const state = el.querySelector('.wp-state')
+  const actions = el.querySelector('.wp-actions')
+  const resultBox = el.querySelector('.wp-result')
+  const setState = (status, result) => {
+    actions.hidden = status !== 'proposed'
+    state.className = 'wp-state ' + status
+    state.textContent =
+      status === 'executed' ? '✓ Ausgeführt' :
+      status === 'failed' ? 'Fehlgeschlagen' :
+      status === 'rejected' ? 'Abgelehnt' :
+      'Wartet auf Freigabe'
+    if ((status === 'executed' || status === 'failed') && result) {
+      resultBox.hidden = false
+      resultBox.textContent = String(result).slice(0, 600)
+    }
+  }
+  setState(p.status, p.result)
+  const act = async (action) => {
+    actions.querySelectorAll('button').forEach((b) => (b.disabled = true))
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/enneo-write/${p.id}/${action}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${await token()}` },
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      setState(data.status, data.result)
+    } catch (err) {
+      setState('failed', err.message)
+    }
+    actions.querySelectorAll('button').forEach((b) => (b.disabled = false))
+  }
+  el.querySelector('.wp-approve').addEventListener('click', () => act('approve'))
+  el.querySelector('.wp-reject').addEventListener('click', () => act('reject'))
+  return el
 }
 
 // ============================================================ Kontext-Kompaktierung (Dust-Muster)
@@ -911,7 +977,7 @@ async function send() {
           meta.innerHTML = `<span class="cost">${fmtEur(ev.cost_eur)}</span>`
           wrap.appendChild(meta)
           // volle Tool-Outputs aus der DB nachladen (Stream enthält nur Status)
-          hydrateToolOutputs(ev.message_id, thinkBody)
+          hydrateToolOutputs(ev.message_id, thinkBody, wrap)
         } else if (ev.type === 'error') {
           runIndicator.remove()
           body.insertAdjacentHTML('beforeend', `<p style="color:var(--high)">${esc(ev.message)}</p>`)
@@ -932,7 +998,7 @@ async function send() {
   $('composer-input').focus()
 }
 
-async function hydrateToolOutputs(messageId, thinkBody) {
+async function hydrateToolOutputs(messageId, thinkBody, wrap) {
   if (!messageId) return
   const { data } = await sb.from('messages').select('tool_calls').eq('id', messageId).maybeSingle()
   if (!data?.tool_calls) return
@@ -943,6 +1009,7 @@ async function hydrateToolOutputs(messageId, thinkBody) {
     const fresh = toolRow(call)
     row.replaceWith(fresh)
   })
+  if (wrap) renderWriteCards(wrap, data.tool_calls)
 }
 
 $('send-btn').addEventListener('click', send)

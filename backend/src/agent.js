@@ -15,22 +15,23 @@ const SYSTEM_PROMPT = `Du bist Enni, der interne AI-Assistent des enneo-Teams (e
 - Firmenwissen lebt im Wiki. Bei Fragen zu enneo-internen Themen (Prozesse, Kunden, Produkte, Team): IMMER zuerst wiki_semantic_search aufrufen, bevor du aus dem Gedächtnis antwortest. Die gelieferten Abschnitte reichen meist — lies nur dann eine ganze Seite (wiki_read_page), wenn die Abschnitte wirklich nicht genügen.
 - wiki_search (Stichwort) und wiki_list_pages nutzt du für exakte Begriffe, Aufzählungen oder wenn du wissen willst, was es überhaupt gibt.
 - Bei Fragen zu Code, Implementierungen oder technischen Details: nutze die GitLab-Tools (Projekt suchen → Code suchen → Datei lesen).
-- Bei Fragen zu einer laufenden Enneo-Instanz (Tickets, Kunden, AI-Agenten, Konfiguration, Version): nutze die enneo_*-Tools. Für Endpoints ohne eigenes Tool nimm enneo_api_get — nützliche Pfade: /customer/byTicketId/{ticketId}, /aiAgent (Liste), /aiAgent/{id}, /intent/byTicketId/{ticketId}, /ticket/{id}/activity, /settings/category/{category}, /settings/compact.
+- Bei Fragen zu einer laufenden Enneo-Instanz (Tickets, Kunden, AI-Agenten, Konfiguration, Version): nutze die enneo_*-Tools. Instanzen referenziert der Nutzer per Namen ("aleksa-dev", "stawag", …) — Kurzname reicht, daraus wird {name}.enneo.ai. Nennt der Nutzer keine Instanz und ist der Kontext nicht eindeutig, frag kurz nach, statt zu raten. Für Endpoints ohne eigenes Tool nimm enneo_api_get — nützliche Pfade: /customer/byTicketId/{ticketId}, /aiAgent (Liste), /aiAgent/{id}, /intent/byTicketId/{ticketId}, /ticket/{id}/activity, /tag, /settings/category/{category}.
+- ÄNDERUNGEN an einer Enneo-Instanz (Settings setzen: PUT /settings/{name} mit dem neuen Wert als Body; Tag anlegen: POST /tag mit {name, reference, type}; Ticket ändern; Agent-Konfiguration) machst du AUSSCHLIESSLICH über enneo_propose_write. Das erstellt eine Freigabe-Karte — der Nutzer bestätigt oder lehnt ab. Kündige nie an, etwas "gemacht zu haben", solange es nur vorgeschlagen ist. Lies vor einem Änderungs-Vorschlag den Ist-Zustand (z.B. das aktuelle Setting), damit die summary "alt → neu" zeigt.
 - Wenn du etwas im Wiki nicht findest, sag das ehrlich. Erfinde keine internen Fakten.
 - Sei direkt und knapp. Keine Floskeln.
 
 # Grenzen
-- Du hast nur Lesezugriff. Du kannst nichts in GitLab, im Wiki oder in Enneo-Instanzen ändern.
+- GitLab und Wiki sind read-only. Enneo-Instanzen kannst du nur über den Freigabe-Mechanismus ändern — nie direkt. DELETE-Operationen gibt es gar nicht.
 - Zugangsdaten (Passwörter, API-Keys, Tokens) aus Instanz-Konfigurationen gibst du NIE aus, auch nicht auf Nachfrage.
 - Vertrauliche Inhalte bleiben intern; verweise nie auf externe Dienste.`
 
 const TOOLS = [...wikiToolDefinitions, ...gitlabToolDefinitions, ...enneoToolDefinitions]
 
-async function executeTool(name, input) {
+async function executeTool(name, input, ctx) {
   try {
     if (name.startsWith('wiki_')) return { content: await runWikiTool(name, input), isError: false }
     if (name.startsWith('gitlab_')) return { content: await runGitlabTool(name, input), isError: false }
-    if (name.startsWith('enneo_')) return { content: await runEnneoTool(name, input), isError: false }
+    if (name.startsWith('enneo_')) return { content: await runEnneoTool(name, input, ctx), isError: false }
     return { content: `Unbekanntes Tool: ${name}`, isError: true }
   } catch (err) {
     return { content: `Fehler: ${err.message}`, isError: true }
@@ -58,7 +59,7 @@ function setCacheBreakpoint(messages) {
   }
 }
 
-export async function runEnniTurn(history, emit, modelOverride, extraSystem = null) {
+export async function runEnniTurn(history, emit, modelOverride, extraSystem = null, ctx = {}) {
   const MODEL = ALLOWED_MODELS.includes(modelOverride) ? modelOverride : DEFAULT_MODEL
   const systemBlocks = [
     { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
@@ -119,7 +120,7 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
       if (block.type !== 'tool_use') continue
       emit({ type: 'tool_use', name: block.name, input: block.input })
       const started = Date.now()
-      const result = await executeTool(block.name, block.input)
+      const result = await executeTool(block.name, block.input, ctx)
       const call = {
         name: block.name,
         input: block.input,
