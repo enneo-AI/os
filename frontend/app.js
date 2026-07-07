@@ -577,15 +577,6 @@ async function openPod(pod, tab = 'convs') {
   convPod = null
   $('pod-title').textContent = pod.name
   $('pod-sub').textContent = pod.description || 'Pod · gemeinsamer Kontext für alle Mitglieder'
-  const profs = await allProfiles()
-  const row = $('pod-members-row')
-  row.innerHTML = ''
-  const ids = pod.open ? profs.map((p) => p.id) : [...new Set([pod.created_by, ...pod.members])].filter(Boolean)
-  ids.slice(0, 5).forEach((id) => {
-    const name = profName(profs, id)
-    row.insertAdjacentHTML('beforeend', `<span class="avatar" title="${esc(name)}">${esc(name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase())}</span>`)
-  })
-  if (ids.length > 5) row.insertAdjacentHTML('beforeend', `<span class="avatar" style="background:rgba(29,30,44,.35)">+${ids.length - 5}</span>`)
   document.querySelectorAll('#pod-list .sb-item').forEach((x) => x.classList.toggle('on', x.querySelector('.txt')?.textContent === pod.name))
   document.querySelectorAll('#conv-list .sb-item').forEach((x) => x.classList.remove('on'))
   switchPodTab(tab)
