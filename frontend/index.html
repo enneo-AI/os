@@ -175,8 +175,7 @@
   .chat-shell{max-width:720px;margin:0 auto;display:flex;flex-direction:column;min-height:100vh;padding-top:22px}
   .chat-head{display:flex;align-items:center;gap:10px;padding:0 4px 22px;font-size:13px;color:var(--ink-2)}
   .chat-head .t{font-weight:640;color:var(--ink);font-size:15px;max-width:46ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .badge{font-size:10.5px;font-weight:650;padding:3px 10px;border-radius:999px;background:var(--surface-2);border:1px solid var(--hair);color:var(--ink-2)}
-  .enni-dot{width:26px;height:26px;border-radius:50%;flex:none;display:inline-flex;align-items:center;justify-content:center;
+    .enni-dot{width:26px;height:26px;border-radius:50%;flex:none;display:inline-flex;align-items:center;justify-content:center;
     color:transparent;font-size:0;overflow:hidden;
     background:url(./icons/enni.png) center/108% no-repeat, radial-gradient(circle, #EDF0F8 60%, rgba(190,170,255,.35));
     box-shadow:0 4px 12px rgba(123,90,226,.3)}
@@ -383,7 +382,11 @@
   .btn.quiet:hover{background:var(--surface);color:var(--ink)}
 
   /* ---------- admin lists ---------- */
-  .list-panel{padding:8px 26px;margin-bottom:14px}
+  .list-panel{padding:0 4px;margin-bottom:26px}
+  .empty-plain{padding:22px 2px;color:var(--ink-3);font-size:13.5px}
+  .pod-danger{border-top:1px solid var(--hair);margin-top:22px;padding-top:14px;display:flex;gap:22px}
+  .danger-link{border:0;background:none;color:var(--high);font-size:12.5px;font-weight:600;padding:4px 0;opacity:.85}
+  .danger-link:hover{opacity:1;text-decoration:underline}
   .list-panel h3{font-size:13.5px;font-weight:640;margin:18px 0 6px}
   .row{display:grid;grid-template-columns:1fr auto auto;gap:18px;align-items:center;padding:12px 2px;border-bottom:1px solid var(--hair);font-size:13.5px}
   .row:last-child{border-bottom:0}
@@ -395,10 +398,9 @@
 
   /* ---------- pod ---------- */
   .pod-shell{max-width:860px;margin:0 auto;padding-bottom:50px}
-  .members{display:flex;margin-left:10px}
+  .members{display:flex;margin-left:auto}
   .members .avatar{width:24px;height:24px;font-size:9px;border:2px solid var(--bg);margin-left:-7px}
   .members .avatar:first-child{margin-left:0}
-  .badge.restricted{color:var(--warn)}
   .pod-tabs{display:flex;gap:3px;margin:6px 0 20px;padding:4px;border-radius:999px;width:fit-content;
     background:var(--press);
     box-shadow:inset 0 1px 3px rgba(29,30,44,.10), inset 0 0 0 1px rgba(29,30,44,.03), 0 1px 0 rgba(255,255,255,.7)}
@@ -553,7 +555,6 @@
             <div class="t" id="chat-title">Neue Konversation</div>
             <div style="font-size:12px;color:var(--ink-3)">Private Konversation · Enni antwortet mit deinen Rechten</div>
           </div>
-          <span class="badge" style="margin-left:auto">nur du</span>
         </div>
         <div class="msgs" id="msgs"></div>
         <div class="composer">
@@ -601,7 +602,6 @@
             <div class="t" id="pod-title">Pod</div>
             <div style="font-size:12px;color:var(--ink-3)" id="pod-sub">Pod · gemeinsamer Kontext für alle Mitglieder</div>
           </div>
-          <span class="badge" id="pod-badge" style="margin-left:auto">Open</span>
           <div class="members" id="pod-members-row"></div>
         </div>
         <div class="pod-tabs" id="pod-tabs">
@@ -613,7 +613,7 @@
 
         <div class="pod-tab" id="ptab-convs">
           <button class="sb-new" id="pod-new-conv" style="max-width:320px;margin-bottom:14px">＋ Neue Pod-Konversation</button>
-          <div class="glass list-panel"><div id="pod-conv-list"></div></div>
+          <div class="list-panel"><div id="pod-conv-list"></div></div>
         </div>
 
         <div class="pod-tab" id="ptab-tasks" hidden>
@@ -621,17 +621,17 @@
             <input type="text" id="task-input" placeholder="Aufgabe hinzufügen …">
             <button class="btn dark" id="task-add-btn">Hinzufügen</button>
           </div>
-          <div class="glass list-panel"><div id="pod-task-list"></div></div>
+          <div class="list-panel"><div id="pod-task-list"></div></div>
         </div>
 
         <div class="pod-tab" id="ptab-files" hidden>
           <input type="file" id="pod-file-input" multiple hidden>
           <button class="sb-new" id="pod-file-btn" style="max-width:320px;margin-bottom:14px">＋ Datei hochladen</button>
-          <div class="glass list-panel"><div id="pod-file-list"></div></div>
+          <div class="list-panel"><div id="pod-file-list"></div></div>
         </div>
 
         <div class="pod-tab" id="ptab-settings" hidden>
-          <div class="glass list-panel" style="padding:20px 26px">
+          <div class="list-panel">
             <h3>Name</h3>
             <input type="text" id="pset-name" class="pset-input">
             <h3>Beschreibung</h3>
@@ -647,6 +647,10 @@
             <div style="display:flex;justify-content:flex-end;margin:14px 0 10px">
               <button class="btn dark" id="pset-save">Speichern</button>
             </div>
+            <div class="pod-danger">
+              <button class="danger-link" id="pod-leave" hidden>Pod verlassen</button>
+              <button class="danger-link" id="pod-delete" hidden>Pod löschen</button>
+            </div>
           </div>
         </div>
       </div>
@@ -660,7 +664,7 @@
         <p>Verbundene Quellen aus der Administration, die diesem Space zugeordnet sind. Alle mit Zugriff auf den Space können sie über Enni nutzen.</p>
       </div>
       <div class="cost-shell">
-        <div class="glass list-panel">
+        <div class="list-panel">
           <div id="cd-list"></div>
           <div class="row" style="border-bottom:0">
             <div><button class="sb-new" id="cd-add" style="margin:8px 0;max-width:320px">＋ Add data from connections</button></div>
@@ -679,7 +683,7 @@
       </div>
       <div class="cost-shell">
         <input type="search" class="wiki-search" id="pl-filter" placeholder="Seiten filtern …" style="max-width:420px;margin:0 0 14px">
-        <div class="glass list-panel"><div id="pl-list"></div></div>
+        <div class="list-panel"><div id="pl-list"></div></div>
       </div>
     </section>
 
@@ -691,7 +695,7 @@
         <p>Connections sind Datenquellen zum Lesen: sie werden verbunden und indexiert, damit Enni darin suchen kann. Einmal verbunden, ordnest du sie Open Spaces (ganzes Team) oder Restricted Spaces (ausgewählte Mitglieder) zu. Aktionen laufen separat über Tools.</p>
       </div>
       <div class="cost-shell">
-        <div class="glass list-panel">
+        <div class="list-panel">
           <div class="row"><div><div class="r-name">Wiki</div><div class="r-sub">Internes Firmenwissen · eingebaut</div></div><div></div><span class="role admin">Verbunden</span></div>
           <div class="row"><div><div class="r-name">GitLab</div><div class="r-sub">gitlab.com/enneo · read-only · persönlicher Token</div></div><div></div><span class="role admin">Verbunden</span></div>
           <div class="row"><div><div class="r-name">Enneo-Plattform</div><div class="r-sub">Tickets, Kunden, AI-Agenten, Settings der Instanzen · read-only · Mind-API</div></div><div></div><span class="role admin">Verbunden</span></div>
@@ -765,7 +769,7 @@
           </div>
         </div>
 
-        <div class="glass list-panel" id="panel-model">
+        <div class="list-panel" id="panel-model">
           <h3>Modell</h3>
           <div class="row">
             <div><div class="r-name">Enni läuft auf Claude Opus 4.8</div><div class="r-sub">Anthropic · Provider-Auswahl und weitere Modelle folgen in Phase 2</div></div>
@@ -773,7 +777,7 @@
           </div>
         </div>
 
-        <div class="glass list-panel" id="panel-members">
+        <div class="list-panel" id="panel-members">
           <h3>Mitglieder</h3>
           <div id="member-list"></div>
           <div class="row">

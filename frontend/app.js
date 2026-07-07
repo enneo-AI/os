@@ -577,8 +577,6 @@ async function openPod(pod, tab = 'convs') {
   convPod = null
   $('pod-title').textContent = pod.name
   $('pod-sub').textContent = pod.description || 'Pod · gemeinsamer Kontext für alle Mitglieder'
-  $('pod-badge').textContent = pod.open ? 'Open' : 'Restricted'
-  $('pod-badge').classList.toggle('restricted', !pod.open)
   const profs = await allProfiles()
   const row = $('pod-members-row')
   row.innerHTML = ''
@@ -623,7 +621,7 @@ async function loadPodConvs() {
     list.appendChild(row)
   }
   if (!(data || []).length)
-    list.innerHTML = '<div class="row"><div><div class="r-name">Noch keine Konversationen</div><div class="r-sub">Starte die erste — alle im Pod können mitlesen und mitschreiben.</div></div><div></div><div></div></div>'
+    list.innerHTML = '<div class="empty-plain">Noch keine Konversationen — starte die erste, alle im Pod können mitlesen und mitschreiben.</div>'
 }
 $('pod-new-conv').addEventListener('click', () => {
   convPod = activePod
@@ -664,7 +662,7 @@ async function loadPodTasks() {
     list.appendChild(row)
   }
   if (!(data || []).length)
-    list.innerHTML = '<div class="row"><div><div class="r-name">Keine Aufgaben</div><div class="r-sub">Aufgaben kann jeder anlegen — und Enni per ▶ daran arbeiten lassen.</div></div><div></div><div></div></div>'
+    list.innerHTML = '<div class="empty-plain">Keine Aufgaben — jeder kann welche anlegen und Enni per ▶ daran arbeiten lassen.</div>'
 }
 $('task-add-btn').addEventListener('click', addTask)
 $('task-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') addTask() })
@@ -725,7 +723,7 @@ async function loadPodFiles() {
     list.appendChild(row)
   }
   if (!(data || []).length)
-    list.innerHTML = '<div class="row"><div><div class="r-name">Noch keine Dateien</div><div class="r-sub">Die gemeinsame Bibliothek des Pods.</div></div><div></div><div></div></div>'
+    list.innerHTML = '<div class="empty-plain">Noch keine Dateien — die gemeinsame Bibliothek des Pods.</div>'
 }
 $('pod-file-btn').addEventListener('click', () => $('pod-file-input').click())
 $('pod-file-input').addEventListener('change', async () => {
@@ -744,12 +742,47 @@ $('pod-file-input').addEventListener('change', async () => {
 })
 
 // --- Tab: Einstellungen
-function fillPodSettings() {
+let myProfile = null
+async function ownProfile() {
+  if (!myProfile) {
+    const { data } = await sb.from('profiles').select('is_admin').eq('id', session.user.id).maybeSingle()
+    myProfile = data || { is_admin: false }
+  }
+  return myProfile
+}
+
+async function fillPodSettings() {
   $('pset-name').value = activePod.name
   $('pset-desc').value = activePod.description || ''
   $('pset-instructions').value = activePod.instructions || ''
   $('pset-open').checked = activePod.open
+  // Löschen: nur Ersteller (oder Admin). Verlassen: Mitglieder, die nicht Ersteller sind.
+  const isCreator = activePod.created_by === session.user.id
+  const { is_admin } = await ownProfile()
+  $('pod-delete').hidden = !(isCreator || is_admin)
+  $('pod-leave').hidden = isCreator || !activePod.members.includes(session.user.id)
 }
+
+$('pod-leave').addEventListener('click', async () => {
+  if (!window.confirm(`Pod "${activePod.name}" verlassen?`)) return
+  const { error } = await sb.from('pod_members').delete().eq('pod_id', activePod.id).eq('user_id', session.user.id)
+  if (error) { window.alert('Fehler: ' + error.message); return }
+  activePod = null
+  await loadPods()
+  newConversation()
+})
+
+$('pod-delete').addEventListener('click', async () => {
+  if (!window.confirm(`Pod "${activePod.name}" endgültig löschen? Alle Konversationen, Aufgaben und Dateien des Pods werden mitgelöscht.`)) return
+  // Storage-Objekte zuerst — die DB-Rows cascaden, die Dateien im Bucket nicht
+  const { data: files } = await sb.from('pod_files').select('storage_path').eq('pod_id', activePod.id)
+  if (files?.length) await sb.storage.from('pod-files').remove(files.map((f) => f.storage_path))
+  const { error } = await sb.from('pods').delete().eq('id', activePod.id)
+  if (error) { window.alert('Fehler: ' + error.message); return }
+  activePod = null
+  await loadPods()
+  newConversation()
+})
 $('pset-save').addEventListener('click', async () => {
   const patch = {
     name: $('pset-name').value.trim() || activePod.name,
@@ -1225,7 +1258,7 @@ function openConnectedData(space) {
   const list = $('cd-list')
   list.innerHTML = ''
   if (!space.connections.length) {
-    list.innerHTML = '<div class="row"><div><div class="r-name">Noch keine Daten verbunden</div><div class="r-sub">Füge Quellen aus den Administration-Connections hinzu.</div></div><div></div><div></div></div>'
+    list.innerHTML = '<div class="empty-plain">Noch keine Daten verbunden — füge Quellen aus den Administration-Connections hinzu.</div>'
   }
   for (const key of space.connections) {
     const c = CONNECTIONS[key] || { name: key, sub: '' }
