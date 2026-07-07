@@ -82,6 +82,7 @@ app.post('/api/chat', async (req, res) => {
 
   // Conversation anlegen oder laden — eigene ODER sichtbare Pod-Konversation
   let convId = conversation_id
+  let isNewConversation = !conversation_id
   let pod = null
   if (convId) {
     const { data } = await db
@@ -176,6 +177,21 @@ app.post('/api/chat', async (req, res) => {
     await db.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', convId)
 
     emit({ type: 'done', message_id: msg?.id, cost_eur: cost, usage: result.usage })
+
+    // Auto-Titel nach dem ersten Austausch (Haiku, ~0,001 €) — nach 'done', blockiert die Antwort nicht
+    if (isNewConversation && result.text) {
+      try {
+        const { generateTitle } = await import('./agent.js')
+        const t = await generateTitle(message || 'Datei-Analyse', result.text)
+        if (t.title) {
+          await db.from('conversations').update({ title: t.title }).eq('id', convId)
+          await logUsage({ userId: user.id, conversationId: convId, messageId: msg?.id, model: t.model, usage: t.usage })
+          emit({ type: 'title', title: t.title })
+        }
+      } catch (err) {
+        console.error('auto-title failed:', err.message)
+      }
+    }
   } catch (err) {
     console.error('chat error:', err)
     emit({ type: 'error', message: err.message })

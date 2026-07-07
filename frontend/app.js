@@ -143,6 +143,15 @@ document.querySelectorAll('.admin-link').forEach((b) =>
 )
 
 // ============================================================ Conversations
+function convGroup(dateStr) {
+  const d = new Date(dateStr)
+  const now = new Date()
+  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  if (d >= dayStart) return 'Heute'
+  if (d >= new Date(dayStart.getTime() - 6 * 864e5)) return 'Diese Woche'
+  return 'Älter'
+}
+
 async function loadConversations() {
   const { data } = await sb
     .from('conversations')
@@ -153,13 +162,65 @@ async function loadConversations() {
     .limit(50)
   const list = $('conv-list')
   list.innerHTML = ''
+  let lastGroup = null
   for (const c of data || []) {
-    const btn = document.createElement('button')
-    btn.className = 'sb-item' + (currentConv?.id === c.id ? ' on' : '')
-    btn.innerHTML = `<span class="txt">${esc(c.title || 'Ohne Titel')}</span>`
-    btn.addEventListener('click', () => openConversation(c))
-    list.appendChild(btn)
+    const g = convGroup(c.updated_at)
+    if (g !== lastGroup) {
+      lastGroup = g
+      list.insertAdjacentHTML('beforeend', `<div class="sb-time">${g}</div>`)
+    }
+    list.appendChild(convItem(c))
   }
+}
+
+function convItem(c) {
+  const btn = document.createElement('button')
+  btn.className = 'sb-item conv' + (currentConv?.id === c.id ? ' on' : '')
+  btn.dataset.conv = c.id
+  btn.innerHTML = `<span class="txt">${esc(c.title || 'Ohne Titel')}</span>
+    <span class="sb-acts">
+      <span class="sb-act rename" title="Umbenennen"><svg viewBox="0 0 24 24"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></span>
+      <span class="sb-act delete" title="Löschen"><svg viewBox="0 0 24 24"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg></span>
+    </span>`
+  btn.addEventListener('click', (e) => {
+    if (e.target.closest('.sb-act')) return
+    openConversation(c)
+  })
+  btn.querySelector('.rename').addEventListener('click', () => renameConv(btn, c))
+  btn.querySelector('.delete').addEventListener('click', async () => {
+    if (!window.confirm(`Konversation "${c.title || 'Ohne Titel'}" löschen?`)) return
+    await sb.from('conversations').delete().eq('id', c.id)
+    if (currentConv?.id === c.id) newConversation()
+    loadConversations()
+  })
+  return btn
+}
+
+function renameConv(btn, c) {
+  const txt = btn.querySelector('.txt')
+  const input = document.createElement('input')
+  input.className = 'sb-rename'
+  input.value = c.title || ''
+  txt.replaceWith(input)
+  input.focus()
+  input.select()
+  let done = false
+  const save = async (commit) => {
+    if (done) return
+    done = true
+    const title = input.value.trim()
+    if (commit && title && title !== c.title) {
+      await sb.from('conversations').update({ title }).eq('id', c.id)
+      c.title = title
+      if (currentConv?.id === c.id) $('chat-title').textContent = title
+    }
+    loadConversations()
+  }
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') save(true)
+    if (e.key === 'Escape') save(false)
+  })
+  input.addEventListener('blur', () => save(true))
 }
 
 function newConversation() {
@@ -183,8 +244,13 @@ async function openConversation(c) {
   convPod = c.pod_id ? podsList.find((p) => p.id === c.pod_id) || convPod : null
   $('chat-title').textContent = (convPod ? `${convPod.name} · ` : '') + (c.title || 'Ohne Titel')
   activateChatView()
+  $('msgs').innerHTML =
+    '<div class="skel" style="align-self:flex-end;width:45%;height:44px"></div>' +
+    '<div class="skel" style="width:70%;height:76px"></div>' +
+    '<div class="skel" style="align-self:flex-end;width:30%;height:44px"></div>' +
+    '<div class="skel" style="width:55%;height:60px"></div>'
   document.querySelectorAll('#conv-list .sb-item').forEach((x) =>
-    x.classList.toggle('on', x.querySelector('.txt')?.textContent === (c.title || 'Ohne Titel'))
+    x.classList.toggle('on', x.dataset.conv === c.id)
   )
   const [{ data: msgs }, { data: usage }, profs] = await Promise.all([
     sb.from('messages').select('*').eq('conversation_id', c.id).order('created_at'),
@@ -978,6 +1044,10 @@ async function send() {
           wrap.appendChild(meta)
           // volle Tool-Outputs aus der DB nachladen (Stream enthält nur Status)
           hydrateToolOutputs(ev.message_id, thinkBody, wrap)
+        } else if (ev.type === 'title') {
+          if (currentConv) currentConv.title = ev.title
+          if (!convPod) $('chat-title').textContent = ev.title
+          loadConversations()
         } else if (ev.type === 'error') {
           runIndicator.remove()
           body.insertAdjacentHTML('beforeend', `<p style="color:var(--high)">${esc(ev.message)}</p>`)
@@ -1318,5 +1388,12 @@ async function refreshCosts() {
 // Modell-Wahl merken
 $('model-select').value = localStorage.getItem('enni-model') || 'claude-opus-4-8'
 $('model-select').addEventListener('change', () => localStorage.setItem('enni-model', $('model-select').value))
+
+// Hell/Dunkel-Umschalter (Init passiert inline im <head>, gegen Theme-Flash)
+$('theme-toggle').addEventListener('click', () => {
+  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'
+  document.documentElement.dataset.theme = next
+  localStorage.setItem('enni-theme', next)
+})
 
 init()

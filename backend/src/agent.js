@@ -89,9 +89,17 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
       messages,
     })
 
+    // Text aus einer neuen Tool-Loop-Iteration ist ein neuer Gedanke → eigener Absatz,
+    // sonst kleben Zwischensätze im gestreamten Markdown aneinander.
+    let needSeparator = finalText.length > 0 && !finalText.endsWith('\n\n')
     for await (const event of stream) {
       if (event.type === 'content_block_delta') {
         if (event.delta.type === 'text_delta') {
+          if (needSeparator) {
+            needSeparator = false
+            finalText += '\n\n'
+            emit({ type: 'text_delta', text: '\n\n' })
+          }
           finalText += event.delta.text
           emit({ type: 'text_delta', text: event.delta.text })
         } else if (event.delta.type === 'thinking_delta') {
@@ -125,7 +133,7 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
       const call = {
         name: block.name,
         input: block.input,
-        output: result.content.slice(0, 2000),
+        output: result.content.slice(0, 20000),
         is_error: result.isError,
         duration_ms: Date.now() - started,
       }
@@ -142,6 +150,22 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
   }
 
   return { text: finalText, thinking: thinkingText, toolCalls, usage: totalUsage, model: MODEL }
+}
+
+// Auto-Titel: Haiku benennt die Konversation nach dem ersten Austausch (~0,001 €)
+export async function generateTitle(question, answer) {
+  const model = 'claude-haiku-4-5'
+  const response = await anthropic.messages.create({
+    model,
+    max_tokens: 60,
+    system:
+      'Gib der folgenden Assistenz-Konversation einen prägnanten deutschen Titel. Max. 6 Wörter, kein Satzzeichen am Ende, keine Anführungszeichen, keine Floskeln. Antworte NUR mit dem Titel.',
+    messages: [
+      { role: 'user', content: `Frage: ${question.slice(0, 1000)}\n\nAntwort: ${answer.slice(0, 1500)}` },
+    ],
+  })
+  const title = (response.content.find((b) => b.type === 'text')?.text || '').trim().replace(/^["„»]|["“«]$/g, '')
+  return { title: title.slice(0, 80), usage: response.usage, model }
 }
 
 // Kontext-Kompaktierung: Haiku fasst den Verlauf zusammen (billig, ~Sekunden)
