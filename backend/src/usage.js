@@ -2,6 +2,7 @@ import { db } from './db.js'
 
 // USD pro 1M Tokens. Cache-Write = 1.25x Input, Cache-Read = 0.1x Input.
 const PRICING = {
+  'claude-fable-5':   { input: 10.0, output: 50.0 },
   'claude-opus-4-8':  { input: 5.0, output: 25.0 },
   'claude-sonnet-5':  { input: 3.0, output: 15.0 },
   'claude-haiku-4-5': { input: 1.0, output: 5.0 },

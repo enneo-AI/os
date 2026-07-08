@@ -5,7 +5,7 @@ import { enneoToolDefinitions, runEnneoTool } from './tools/enneo.js'
 
 const anthropic = new Anthropic()
 const DEFAULT_MODEL = process.env.ENNI_MODEL || 'claude-opus-4-8'
-export const ALLOWED_MODELS = ['claude-opus-4-8', 'claude-sonnet-5', 'claude-haiku-4-5']
+export const ALLOWED_MODELS = ['claude-opus-4-8', 'claude-fable-5', 'claude-sonnet-5', 'claude-haiku-4-5']
 const MAX_TOOL_ITERATIONS = 12
 
 const SYSTEM_PROMPT = `Du bist Enni, der interne AI-Assistent des enneo-Teams (enneo GmbH, Berlin — AI-Agenten für Energieversorger).
@@ -152,20 +152,19 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
   return { text: finalText, thinking: thinkingText, toolCalls, usage: totalUsage, model: MODEL }
 }
 
-// Auto-Titel: Haiku benennt die Konversation nach dem ersten Austausch (~0,001 €)
-export async function generateTitle(question, answer) {
+// Auto-Titel: Haiku (unser günstigstes Modell, $1/$5 pro MTok) analysiert die ERSTE
+// Nachricht und formt daraus einen Titel mit 1-5 Wörtern (~0,0005 €). Läuft parallel zum Turn.
+export async function generateTitle(firstMessage) {
   const model = 'claude-haiku-4-5'
   const response = await anthropic.messages.create({
     model,
-    max_tokens: 60,
+    max_tokens: 40,
     system:
-      'Gib der folgenden Assistenz-Konversation einen prägnanten deutschen Titel. Max. 6 Wörter, kein Satzzeichen am Ende, keine Anführungszeichen, keine Floskeln. Antworte NUR mit dem Titel.',
-    messages: [
-      { role: 'user', content: `Frage: ${question.slice(0, 1000)}\n\nAntwort: ${answer.slice(0, 1500)}` },
-    ],
+      'Analysiere die erste Nachricht einer Assistenz-Konversation und forme daraus einen Titel: 1 bis 5 Wörter, Deutsch (außer die Nachricht ist englisch), kein Satzzeichen am Ende, keine Anführungszeichen, keine Floskeln. Benenne das THEMA, wiederhole nicht die Frage. Antworte NUR mit dem Titel.',
+    messages: [{ role: 'user', content: firstMessage.slice(0, 1500) }],
   })
   const title = (response.content.find((b) => b.type === 'text')?.text || '').trim().replace(/^["„»]|["“«]$/g, '')
-  return { title: title.slice(0, 80), usage: response.usage, model }
+  return { title: title.slice(0, 60), usage: response.usage, model }
 }
 
 // Kontext-Kompaktierung: Haiku fasst den Verlauf zusammen (billig, ~Sekunden)

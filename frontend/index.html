@@ -164,8 +164,9 @@
   .avatar{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#2E3145,#4A4D66);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:650;flex:none}
   .sb-foot .f-name{font-size:13px;font-weight:600;line-height:1.2}
   .sb-foot .f-sub{font-size:11px;color:var(--ink-3);font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
-  .sb-foot .logout{margin-left:auto;border:0;background:none;color:var(--ink-3);font-size:12px;padding:4px 8px;border-radius:8px;white-space:nowrap}
+  .sb-foot .logout{margin-left:auto;border:0;background:none;color:var(--ink-3);width:26px;height:26px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;flex:none;padding:0}
   .sb-foot .logout:hover{color:var(--ink);background:var(--hover)}
+  .sb-foot .logout svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
   .main{min-width:0;padding:0 24px}
   .view{display:none}
@@ -574,7 +575,9 @@
       <button class="theme-toggle" id="theme-toggle" title="Hell/Dunkel">
         <svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/></svg>
       </button>
-      <button class="logout" id="logout" title="Abmelden">Abmelden</button>
+      <button class="logout" id="logout" title="Abmelden" aria-label="Abmelden">
+        <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </button>
     </div>
   </aside>
 
@@ -614,6 +617,7 @@
               </button>
               <select id="model-select" class="model-select" aria-label="Modell" title="KI-Modell wählen">
                 <option value="claude-opus-4-8">Opus 4.8</option>
+                <option value="claude-fable-5">Fable 5</option>
                 <option value="claude-sonnet-5">Sonnet 5</option>
                 <option value="claude-haiku-4-5">Haiku 4.5</option>
               </select>

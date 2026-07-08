@@ -296,6 +296,7 @@ function renameConv(btn, c) {
 
 function newConversation() {
   currentConv = null
+  $('model-select').value = 'claude-opus-4-8'
   $('chat-title').textContent = 'Neue Konversation'
   $('msgs').innerHTML = `<div class="empty"><div><span class="enni-dot">E</span></div>
     Hallo! Ich bin Enni. Frag mich zu enneo-Prozessen, Kunden, Produkt oder Code — ich schaue in Wiki und GitLab nach.</div>`
@@ -1536,9 +1537,9 @@ async function refreshCosts() {
   $('k-count').textContent = rows.length
 }
 
-// Modell-Wahl merken
-$('model-select').value = localStorage.getItem('enni-model') || 'claude-opus-4-8'
-$('model-select').addEventListener('change', () => localStorage.setItem('enni-model', $('model-select').value))
+// Modell-Wahl: Opus 4.8 ist Default bei jedem Chat-Start (Reset in newConversation);
+// innerhalb einer Konversation bleibt die Auswahl bestehen.
+$('model-select').value = 'claude-opus-4-8'
 
 // Hell/Dunkel-Umschalter (Init passiert inline im <head>, gegen Theme-Flash)
 $('theme-toggle').addEventListener('click', () => {

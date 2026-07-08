@@ -1,7 +1,7 @@
 import express from 'express'
 import cors from 'cors'
 import { db, getUserFromRequest } from './db.js'
-import { runEnniTurn, ALLOWED_MODELS } from './agent.js'
+import { runEnniTurn, ALLOWED_MODELS, generateTitle } from './agent.js'
 import { attachmentsToBlocks, attachmentMeta } from './attachments.js'
 import { logUsage } from './usage.js'
 
@@ -138,6 +138,16 @@ app.post('/api/chat', async (req, res) => {
   const emit = (event) => res.write(`data: ${JSON.stringify(event)}\n\n`)
   emit({ type: 'conversation', conversation_id: convId })
 
+  // Auto-Titel läuft PARALLEL zum Turn: Haiku (günstigstes Modell) analysiert die erste
+  // Nachricht und formt einen Titel mit 1-5 Wörtern — nicht die Nachricht selbst als Titel.
+  const titlePromise =
+    isNewConversation && message?.trim()
+      ? generateTitle(message).catch((err) => {
+          console.error('auto-title failed:', err.message)
+          return null
+        })
+      : null
+
   try {
     // Pod-Kontext: Instructions for Agents + Absender-Attribution
     let extraSystem = null
@@ -178,18 +188,12 @@ app.post('/api/chat', async (req, res) => {
 
     emit({ type: 'done', message_id: msg?.id, cost_eur: cost, usage: result.usage })
 
-    // Auto-Titel nach dem ersten Austausch (Haiku, ~0,001 €) — nach 'done', blockiert die Antwort nicht
-    if (isNewConversation && result.text) {
-      try {
-        const { generateTitle } = await import('./agent.js')
-        const t = await generateTitle(message || 'Datei-Analyse', result.text)
-        if (t.title) {
-          await db.from('conversations').update({ title: t.title }).eq('id', convId)
-          await logUsage({ userId: user.id, conversationId: convId, messageId: msg?.id, model: t.model, usage: t.usage })
-          emit({ type: 'title', title: t.title })
-        }
-      } catch (err) {
-        console.error('auto-title failed:', err.message)
+    if (titlePromise) {
+      const t = await titlePromise
+      if (t?.title) {
+        await db.from('conversations').update({ title: t.title }).eq('id', convId)
+        await logUsage({ userId: user.id, conversationId: convId, messageId: msg?.id, model: t.model, usage: t.usage })
+        emit({ type: 'title', title: t.title })
       }
     }
   } catch (err) {
