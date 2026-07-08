@@ -1258,13 +1258,13 @@ document.addEventListener('keydown', (e) => {
 // ============================================================ Spaces (Dust-Pattern)
 // Connections = Wissensquellen (lesen/indexieren). Aktionen laufen separat als Tools.
 const CONNECTIONS = {
-  wiki: { name: 'Wiki', sub: 'Internes Firmenwissen · eingebaut' },
-  gitlab: { name: 'GitLab', sub: 'Code, Projekte, MRs · read-only' },
-  enneo: { name: 'Enneo-Plattform', sub: 'Tickets, Kunden, AI-Agenten, Settings · read-only' },
-  google_drive: { name: 'Google Drive', sub: 'folgt in Phase 2', disabled: true },
-  notion: { name: 'Notion', sub: 'folgt in Phase 2', disabled: true },
-  slack: { name: 'Slack-Channels', sub: 'read-only Sync · folgt in Phase 2', disabled: true },
-  attio: { name: 'Attio (Reads)', sub: 'folgt in Phase 2', disabled: true },
+  wiki: { name: 'Wiki', sub: 'Internes Firmenwissen · eingebaut', logo: './icons/enni.png' },
+  gitlab: { name: 'GitLab', sub: 'Code, Projekte, Merge Requests · read-only', logo: './icons/gitlab.svg' },
+  enneo: { name: 'Enneo-Plattform', sub: 'Tickets, Kunden, AI-Agenten, Settings', logo: './icons/enneo-logo.png' },
+  google_drive: { name: 'Google Drive', sub: 'Phase 2', logo: './icons/google-drive.svg', disabled: true },
+  notion: { name: 'Notion', sub: 'Phase 2', logo: './icons/notion.svg', disabled: true },
+  slack: { name: 'Slack', sub: 'Phase 2', logo: './icons/slack.svg', disabled: true },
+  attio: { name: 'Attio', sub: 'Phase 2', logo: './icons/attio.ico', disabled: true },
 }
 const FOLDER_GROUPS = [
   { label: 'Unternehmen', match: (s) => !s.includes('/') },
@@ -1379,7 +1379,7 @@ function openConnectedData(space) {
   for (const key of space.connections) {
     const c = CONNECTIONS[key] || { name: key, sub: '' }
     list.insertAdjacentHTML('beforeend',
-      `<div class="row"><div><div class="r-name">${esc(c.name)}</div><div class="r-sub">${esc(c.sub)}</div></div><div></div><span class="role admin">Aktiv</span></div>`)
+      `<div class="crow">${c.logo ? `<span class="c-logo"><img src="${c.logo}" alt=""></span>` : ''}<div><div class="c-name">${esc(c.name)}</div><div class="c-sub">${esc(c.sub)}</div></div><span class="c-right ok"><span class="dot-s"></span>Aktiv</span></div>`)
   }
   activateArea('wiki', 'connected')
 }
@@ -1393,6 +1393,7 @@ $('cd-add').addEventListener('click', () => {
     list.insertAdjacentHTML('beforeend',
       `<label class="check-row${c.disabled ? ' disabled' : ''}">
         <input type="checkbox" value="${key}" ${currentSpace.connections.includes(key) ? 'checked' : ''} ${c.disabled ? 'disabled' : ''}>
+        ${c.logo ? `<img src="${c.logo}" alt="" style="width:18px;height:18px;object-fit:contain;flex:none">` : ''}
         <span>${esc(c.name)}</span><span class="cr-sub">${esc(c.sub)}</span>
       </label>`)
   }
