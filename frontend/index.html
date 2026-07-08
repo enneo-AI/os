@@ -234,8 +234,15 @@
   .pulse{width:7px;height:7px;border-radius:50%;background:var(--lila);animation:pulse 1.2s ease-in-out infinite}
   @keyframes pulse{0%,100%{opacity:.35;transform:scale(.85)}50%{opacity:1;transform:scale(1.1)}}
 
-  .m-meta{display:flex;gap:16px;align-items:center;margin:14px 2px 0;font-size:12px;color:var(--ink-3)}
+  .m-meta{display:flex;gap:12px;align-items:center;margin:10px 0 0;font-size:12px;color:var(--ink-3)}
   .m-meta .cost{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .msg-copy{width:24px;height:24px;border:0;border-radius:7px;background:none;color:var(--ink-3);
+    display:inline-flex;align-items:center;justify-content:center;margin-left:-4px;
+    opacity:0;transition:opacity .15s, color .15s, background .15s}
+  .m-agent:hover .msg-copy{opacity:1}
+  .msg-copy:hover{color:var(--ink);background:var(--hover)}
+  .msg-copy.done{color:var(--good);opacity:1}
+  .msg-copy svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
   /* Enneo-Write-Freigabe-Karte */
   .wp-card{margin:16px 0 0;border:1px solid var(--edge);border-radius:16px;background:var(--glass-strong);

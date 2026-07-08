@@ -405,6 +405,47 @@ function summarizeInput(input) {
   return typeof v === 'string' ? `„${v}“` : JSON.stringify(v)
 }
 
+// Text in die Zwischenablage — Clipboard-API mit execCommand-Fallback
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.style.cssText = 'position:fixed;opacity:0'
+      document.body.appendChild(ta)
+      ta.select()
+      const ok = document.execCommand('copy')
+      ta.remove()
+      return ok
+    } catch { return false }
+  }
+}
+
+const COPY_ICON = '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'
+const CHECK_ICON = '<svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>'
+
+// Meta-Zeile unter einer Enni-Antwort: Copy (nur die Antwort, nicht die Gedanken) + Kosten
+function agentMeta(getText, cost) {
+  const meta = document.createElement('div')
+  meta.className = 'm-meta'
+  const btn = document.createElement('button')
+  btn.className = 'msg-copy'
+  btn.title = 'Antwort kopieren'
+  btn.innerHTML = COPY_ICON
+  btn.addEventListener('click', async () => {
+    if (!(await copyText(getText()))) return
+    btn.classList.add('done')
+    btn.innerHTML = CHECK_ICON
+    setTimeout(() => { btn.classList.remove('done'); btn.innerHTML = COPY_ICON }, 1600)
+  })
+  meta.appendChild(btn)
+  if (cost != null) meta.insertAdjacentHTML('beforeend', `<span class="cost">${fmtEur(cost)}</span>`)
+  return meta
+}
+
 // Copy-Button auf jedem Code-Block (erscheint bei Hover, ✓-Feedback nach Klick)
 function enhanceCode(container) {
   container.querySelectorAll('pre').forEach((pre) => {
@@ -412,31 +453,12 @@ function enhanceCode(container) {
     const btn = document.createElement('button')
     btn.className = 'code-copy'
     btn.title = 'Code kopieren'
-    btn.innerHTML = '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'
+    btn.innerHTML = COPY_ICON
     btn.addEventListener('click', async () => {
-      const text = pre.querySelector('code')?.innerText ?? pre.innerText
-      let ok = true
-      try {
-        await navigator.clipboard.writeText(text)
-      } catch {
-        // Fallback ohne Clipboard-API (HTTP, fehlender Fokus, ältere Browser)
-        try {
-          const ta = document.createElement('textarea')
-          ta.value = text
-          ta.style.cssText = 'position:fixed;opacity:0'
-          document.body.appendChild(ta)
-          ta.select()
-          ok = document.execCommand('copy')
-          ta.remove()
-        } catch { ok = false }
-      }
-      if (!ok) return
+      if (!(await copyText(pre.querySelector('code')?.innerText ?? pre.innerText))) return
       btn.classList.add('done')
-      btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>'
-      setTimeout(() => {
-        btn.classList.remove('done')
-        btn.innerHTML = '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'
-      }, 1600)
+      btn.innerHTML = CHECK_ICON
+      setTimeout(() => { btn.classList.remove('done'); btn.innerHTML = COPY_ICON }, 1600)
     })
     pre.appendChild(btn)
   })
@@ -478,12 +500,7 @@ function renderAgent(text, thinking, toolCalls, cost) {
   enhanceCode(body)
   wrap.appendChild(body)
 
-  if (cost != null) {
-    const meta = document.createElement('div')
-    meta.className = 'm-meta'
-    meta.innerHTML = `<span class="cost">${fmtEur(cost)}</span>`
-    wrap.appendChild(meta)
-  }
+  if (text) wrap.appendChild(agentMeta(() => text, cost))
   renderWriteCards(wrap, toolCalls)
   return wrap
 }
@@ -1172,10 +1189,7 @@ async function send() {
           enhanceCode(body)
           thinkBody.insertAdjacentHTML('beforeend', '<div class="think-done">✓ Fertig</div>')
           think.classList.remove('open')
-          const meta = document.createElement('div')
-          meta.className = 'm-meta'
-          meta.innerHTML = `<span class="cost">${fmtEur(ev.cost_eur)}</span>`
-          wrap.appendChild(meta)
+          wrap.appendChild(agentMeta(() => answerText, ev.cost_eur))
           // volle Tool-Outputs aus der DB nachladen (Stream enthält nur Status)
           hydrateToolOutputs(ev.message_id, thinkBody, wrap)
         } else if (ev.type === 'title') {
