@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { wikiToolDefinitions, runWikiTool } from './tools/wiki.js'
 import { gitlabToolDefinitions, runGitlabTool } from './tools/gitlab.js'
 import { enneoToolDefinitions, runEnneoTool } from './tools/enneo.js'
+import { mcpToolDefinitions, runMcpTool } from './tools/mcp.js'
 
 const anthropic = new Anthropic()
 const DEFAULT_MODEL = process.env.ENNI_MODEL || 'claude-opus-4-8'
@@ -18,6 +19,7 @@ const SYSTEM_PROMPT = `Du bist Enni, der interne AI-Assistent des enneo-Teams (e
 - Bei Fragen zu einer laufenden Enneo-Instanz (Tickets, Kunden, AI-Agenten, Telefonie, Reports, Konfiguration): nutze die enneo_*-Tools. Instanzen referenziert der Nutzer per Namen ("aleksa-dev", "stawag", …) — Kurzname reicht, daraus wird {name}.enneo.ai. Nennt der Nutzer keine Instanz und ist der Kontext nicht eindeutig, frag kurz nach, statt zu raten.
 - WICHTIG — API-Rezepte statt Endpoint-Raten: Im Wiki liegen unter dem Slug-Prefix "enneo-api/" 15 Rezept-Seiten mit den dokumentierten Mind-API-Endpoints (ai-agents, customers, events, exports, knowledge, quality, reports, settings-config, tags, telephony, templates, tickets, tools, troubleshooting, users). BEVOR du enneo_api_get gegen einen Endpoint aufrufst, den du nicht sicher kennst, hole dir das passende Rezept: wiki_read_page mit slug "enneo-api/{thema}" (oder wiki_semantic_search). Beispiel: Telefonnummern/Leitungen/Anruf-Metriken → "enneo-api/telephony" (dort: /report/telephonyLines, /telephony/getRouting u.a.). Rate NIE mehrfach blind — ein 405/404 heißt: Rezept nachschlagen.
 - ÄNDERUNGEN an einer Enneo-Instanz (Settings setzen: PUT /settings/{name} mit dem neuen Wert als Body; Tag anlegen: POST /tag mit {name, reference, type}; Ticket ändern; Agent-Konfiguration) machst du AUSSCHLIESSLICH über enneo_propose_write. Das erstellt eine Freigabe-Karte — der Nutzer bestätigt oder lehnt ab. Kündige nie an, etwas "gemacht zu haben", solange es nur vorgeschlagen ist. Lies vor einem Änderungs-Vorschlag den Ist-Zustand (z.B. das aktuelle Setting), damit die summary "alt → neu" zeigt.
+- Zusätzlich können via Administration verknüpfte MCP-Server verfügbar sein — deren Tools beginnen mit "mcp__". Nutze sie gemäß ihrer Beschreibung wie jedes andere Tool.
 - Wenn du etwas im Wiki nicht findest, sag das ehrlich. Erfinde keine internen Fakten.
 - Sei direkt und knapp. Keine Floskeln.
 
@@ -30,6 +32,7 @@ const TOOLS = [...wikiToolDefinitions, ...gitlabToolDefinitions, ...enneoToolDef
 
 async function executeTool(name, input, ctx) {
   try {
+    if (name.startsWith('mcp__')) return { content: await runMcpTool(name, input), isError: false }
     if (name.startsWith('wiki_')) return { content: await runWikiTool(name, input), isError: false }
     if (name.startsWith('gitlab_')) return { content: await runGitlabTool(name, input), isError: false }
     if (name.startsWith('enneo_')) return { content: await runEnneoTool(name, input, ctx), isError: false }
@@ -66,6 +69,14 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
     { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
     ...(extraSystem ? [{ type: 'text', text: extraSystem }] : []),
   ]
+  // Statische Tools + live geladene Tools der verknüpften MCP-Server (gecacht, nicht-fatal)
+  let turnTools = TOOLS
+  try {
+    const mcpDefs = await mcpToolDefinitions()
+    if (mcpDefs.length) turnTools = [...TOOLS, ...mcpDefs]
+  } catch (err) {
+    console.error('MCP-Tool-Discovery fehlgeschlagen:', err.message)
+  }
   const messages = [...history]
   const totalUsage = {
     input_tokens: 0,
@@ -85,7 +96,7 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
       max_tokens: 16000,
       system: systemBlocks,
       ...(supportsThinking ? { thinking: { type: 'adaptive', display: 'summarized' } } : {}),
-      tools: TOOLS,
+      tools: turnTools,
       messages,
     })
 

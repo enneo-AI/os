@@ -267,5 +267,46 @@ app.post('/api/enneo-write/:id/reject', async (req, res) => {
   }
 })
 
+// Connectors (MCP-Server verknüpfen) — nur Admins
+async function requireAdmin(req, res) {
+  const user = await getUserFromRequest(req)
+  if (!user) {
+    res.status(401).json({ error: 'Nicht eingeloggt' })
+    return null
+  }
+  const { data: prof } = await db.from('profiles').select('is_admin').eq('id', user.id).maybeSingle()
+  if (!prof?.is_admin) {
+    res.status(403).json({ error: 'Nur Admins können Integrationen verwalten' })
+    return null
+  }
+  return user
+}
+
+app.post('/api/connectors', async (req, res) => {
+  const user = await requireAdmin(req, res)
+  if (!user) return
+  const { name, url, token, category } = req.body || {}
+  if (!name?.trim() || !url?.trim()) return res.status(400).json({ error: 'Name und URL sind Pflicht' })
+  if (!/^https:\/\//.test(url.trim())) return res.status(400).json({ error: 'URL muss mit https:// beginnen' })
+  try {
+    const { addConnector } = await import('./tools/mcp.js')
+    res.json(await addConnector({ name, url, token, category }, user.id))
+  } catch (err) {
+    res.status(400).json({ error: `Verbindung fehlgeschlagen: ${err.message}` })
+  }
+})
+
+app.delete('/api/connectors/:id', async (req, res) => {
+  const user = await requireAdmin(req, res)
+  if (!user) return
+  try {
+    const { removeConnector } = await import('./tools/mcp.js')
+    await removeConnector(req.params.id)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
 const port = Number(process.env.PORT || 8080)
 app.listen(port, () => console.log(`enneo OS backend läuft auf :${port}`))

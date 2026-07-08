@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "latest",
+    "@modelcontextprotocol/sdk": "^1",
     "@supabase/supabase-js": "^2",
     "express": "^4",
     "cors": "^2",

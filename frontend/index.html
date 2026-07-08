@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>enneo OS</title>
+<link rel="icon" type="image/svg+xml" href="./icons/enneo-icon.svg">
 <script>document.documentElement.dataset.theme = localStorage.getItem('enni-theme') || 'light'</script>
 <style>
   :root{
@@ -400,6 +401,13 @@
   .crow .c-right .dot-s{width:7px;height:7px;border-radius:50%;flex:none}
   .crow .c-right.ok{color:var(--good)}.crow .c-right.ok .dot-s{background:var(--good)}
   .crow .c-right.off{color:var(--ink-3)}.crow .c-right.off .dot-s{background:rgba(128,128,150,.35)}
+  button.crow{width:100%;text-align:left;background:none;border-left:0;border-right:0;border-top:0}
+  .crow-add{cursor:pointer}
+  .crow-add:hover .c-name{color:var(--ink)!important}
+  .crow .c-del{border:0;background:none;color:var(--ink-3);width:24px;height:24px;border-radius:7px;display:none;align-items:center;justify-content:center;flex:none;margin-left:6px;cursor:pointer}
+  .crow:hover .c-del{display:inline-flex}
+  .crow .c-del:hover{color:var(--high);background:var(--hover)}
+  .crow .c-del svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round}
 
   /* ---------- connectors ---------- */
   .conn-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;max-width:980px;margin:0 auto;padding-bottom:50px}
@@ -734,11 +742,13 @@
         <div class="list-panel">
           <div class="crow"><span class="c-logo"><img src="./icons/enni.png" alt=""></span><div><div class="c-name">Wiki</div><div class="c-sub">Internes Firmenwissen · eingebaut</div></div><span class="c-right ok"><span class="dot-s"></span>Verbunden</span></div>
           <div class="crow"><span class="c-logo"><img src="./icons/gitlab.svg" alt=""></span><div><div class="c-name">GitLab</div><div class="c-sub">Code, Projekte, Merge Requests · read-only</div></div><span class="c-right ok"><span class="dot-s"></span>Verbunden</span></div>
-          <div class="crow"><span class="c-logo"><img src="./icons/enneo-logo.png" alt=""></span><div><div class="c-name">Enneo-Plattform</div><div class="c-sub">Tickets, Kunden, AI-Agenten, Settings · alle Instanzen</div></div><span class="c-right ok"><span class="dot-s"></span>Verbunden</span></div>
+          <div class="crow"><span class="c-logo"><img src="./icons/enneo-icon.svg" alt=""></span><div><div class="c-name">Enneo-Plattform</div><div class="c-sub">Tickets, Kunden, AI-Agenten, Settings · alle Instanzen</div></div><span class="c-right ok"><span class="dot-s"></span>Verbunden</span></div>
           <div class="crow"><span class="c-logo"><img src="./icons/google-drive.svg" alt=""></span><div><div class="c-name">Google Drive</div><div class="c-sub">Dokumente & Ordner</div></div><span class="c-right off"><span class="dot-s"></span>Phase 2</span></div>
           <div class="crow"><span class="c-logo"><img src="./icons/notion.svg" alt=""></span><div><div class="c-name">Notion</div><div class="c-sub">Seiten & Datenbanken</div></div><span class="c-right off"><span class="dot-s"></span>Phase 2</span></div>
           <div class="crow"><span class="c-logo"><img src="./icons/slack.svg" alt=""></span><div><div class="c-name">Slack</div><div class="c-sub">Channels · read-only Sync</div></div><span class="c-right off"><span class="dot-s"></span>Phase 2</span></div>
           <div class="crow"><span class="c-logo"><img src="./icons/attio.ico" alt=""></span><div><div class="c-name">Attio</div><div class="c-sub">CRM-Daten · read-only</div></div><span class="c-right off"><span class="dot-s"></span>Phase 2</span></div>
+          <div id="dyn-connections"></div>
+          <button class="crow crow-add" data-category="connection"><span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--ink-3);fill:none;stroke-width:1.8;stroke-linecap:round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span><div><div class="c-name" style="color:var(--ink-2)">Connection verknüpfen</div><div class="c-sub">jeder MCP-Server per URL · Token optional</div></div></button>
         </div>
       </div>
     </section>
@@ -762,10 +772,11 @@
       </div>
       <div class="cost-shell">
         <div class="list-panel">
-          <div class="crow"><span class="c-logo"><img src="./icons/enneo-logo.png" alt=""></span><div><div class="c-name">Enneo-Plattform</div><div class="c-sub">Änderungen an Instanzen · jede Ausführung mit Freigabe-Karte</div></div><span class="c-right ok"><span class="dot-s"></span>Aktiv</span></div>
+          <div class="crow"><span class="c-logo"><img src="./icons/enneo-icon.svg" alt=""></span><div><div class="c-name">Enneo-Plattform</div><div class="c-sub">Änderungen an Instanzen · jede Ausführung mit Freigabe-Karte</div></div><span class="c-right ok"><span class="dot-s"></span>Aktiv</span></div>
           <div class="crow"><span class="c-logo"><img src="./icons/outlook.svg" alt=""></span><div><div class="c-name">Outlook</div><div class="c-sub">E-Mails senden & Termine anlegen</div></div><span class="c-right off"><span class="dot-s"></span>Phase 2</span></div>
           <div class="crow"><span class="c-logo"><img src="./icons/attio.ico" alt=""></span><div><div class="c-name">Attio</div><div class="c-sub">Notizen & Tasks im CRM anlegen</div></div><span class="c-right off"><span class="dot-s"></span>Phase 2</span></div>
-          <div class="crow"><span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--ink-3);fill:none;stroke-width:1.8;stroke-linecap:round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span><div><div class="c-name" style="color:var(--ink-2)">Eigenes Tool</div><div class="c-sub">jeder MCP-Server per URL</div></div><span class="c-right off"><span class="dot-s"></span>Phase 2</span></div>
+          <div id="dyn-tools"></div>
+          <button class="crow crow-add" data-category="tool"><span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--ink-3);fill:none;stroke-width:1.8;stroke-linecap:round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span><div><div class="c-name" style="color:var(--ink-2)">Eigenes Tool verknüpfen</div><div class="c-sub">jeder MCP-Server per URL · Token optional</div></div></button>
         </div>
       </div>
     </section>
@@ -832,6 +843,25 @@
   <div class="tp-block"><div class="tp-out" id="tp-output"></div></div>
   <div class="tp-foot">Ausgeführt mit deinen Zugangsdaten · im Audit-Log attribuiert</div>
 </aside>
+
+<!-- ================= CONNECTOR MODAL ================= -->
+<div class="overlay" id="conn-overlay">
+  <div class="modal" role="dialog" aria-modal="true">
+    <h3 id="cm-title">MCP-Server verknüpfen</h3>
+    <label for="cn-name">Name</label>
+    <input type="text" id="cn-name" placeholder="z. B. DeepWiki">
+    <label for="cn-url">Server-URL</label>
+    <input type="text" id="cn-url" placeholder="https://mcp.example.com/mcp">
+    <label for="cn-token">Bearer-Token (optional)</label>
+    <input type="password" id="cn-token" autocomplete="off" placeholder="leer lassen, wenn der Server offen ist">
+    <p class="pf-hint">Beim Speichern wird die Verbindung getestet und die Tool-Liste geladen. OAuth-basierte MCP-Server folgen später.</p>
+    <div class="err" id="cn-err"></div>
+    <div class="m-actions">
+      <button class="btn quiet" id="cn-cancel">Abbrechen</button>
+      <button class="btn dark" id="cn-save">Verknüpfen</button>
+    </div>
+  </div>
+</div>
 
 <!-- ================= PROFIL MODAL ================= -->
 <div class="overlay" id="profile-overlay">

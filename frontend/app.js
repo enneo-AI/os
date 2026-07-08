@@ -61,7 +61,7 @@ async function showApp() {
   $('login-view').hidden = true
   $('app-view').hidden = false
   renderFooterProfile()
-  await Promise.all([loadConversations(), loadPods(), refreshCosts()])
+  await Promise.all([loadConversations(), loadPods(), refreshCosts(), loadConnectorRows()])
   route()
 }
 
@@ -1261,7 +1261,7 @@ document.addEventListener('keydown', (e) => {
 const CONNECTIONS = {
   wiki: { name: 'Wiki', sub: 'Internes Firmenwissen · eingebaut', logo: './icons/enni.png' },
   gitlab: { name: 'GitLab', sub: 'Code, Projekte, Merge Requests · read-only', logo: './icons/gitlab.svg' },
-  enneo: { name: 'Enneo-Plattform', sub: 'Tickets, Kunden, AI-Agenten, Settings', logo: './icons/enneo-logo.png' },
+  enneo: { name: 'Enneo-Plattform', sub: 'Tickets, Kunden, AI-Agenten, Settings', logo: './icons/enneo-icon.svg' },
   google_drive: { name: 'Google Drive', sub: 'Phase 2', logo: './icons/google-drive.svg', disabled: true },
   notion: { name: 'Notion', sub: 'Phase 2', logo: './icons/notion.svg', disabled: true },
   slack: { name: 'Slack', sub: 'Phase 2', logo: './icons/slack.svg', disabled: true },
@@ -1540,6 +1540,80 @@ async function refreshCosts() {
 // Modell-Wahl: Opus 4.8 ist Default bei jedem Chat-Start (Reset in newConversation);
 // innerhalb einer Konversation bleibt die Auswahl bestehen.
 $('model-select').value = 'claude-opus-4-8'
+
+// ============================================================ Connectors (MCP-Server verknüpfen)
+let cnCategory = 'tool'
+
+async function loadConnectorRows() {
+  const { data } = await sb
+    .from('connectors')
+    .select('id, name, url, category, tool_count')
+    .order('created_at')
+  const { is_admin } = await ownProfile()
+  for (const target of ['tool', 'connection']) {
+    const box = $(target === 'tool' ? 'dyn-tools' : 'dyn-connections')
+    if (!box) continue
+    box.innerHTML = ''
+    for (const c of (data || []).filter((x) => x.category === target)) {
+      const row = document.createElement('div')
+      row.className = 'crow'
+      row.innerHTML = `<span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:var(--lila-deep);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></span>
+        <div><div class="c-name">${esc(c.name)}</div><div class="c-sub">${esc(new URL(c.url).hostname)} · ${c.tool_count ?? '?'} Tools · MCP</div></div>
+        <span class="c-right ok"><span class="dot-s"></span>Verbunden</span>` +
+        (is_admin ? '<button class="c-del" title="Trennen"><svg viewBox="0 0 24 24"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg></button>' : '')
+      row.querySelector('.c-del')?.addEventListener('click', async () => {
+        if (!window.confirm(`"${c.name}" trennen? Enni verliert sofort den Zugriff auf diese Tools.`)) return
+        const res = await fetch(`${BACKEND_URL}/api/connectors/${c.id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${await token()}` },
+        })
+        if (!res.ok) { window.alert((await res.json().catch(() => ({}))).error || 'Fehler'); return }
+        loadConnectorRows()
+      })
+      box.appendChild(row)
+    }
+  }
+}
+
+document.querySelectorAll('.crow-add').forEach((b) =>
+  b.addEventListener('click', () => {
+    cnCategory = b.dataset.category
+    $('cm-title').textContent = cnCategory === 'tool' ? 'Eigenes Tool verknüpfen' : 'Connection verknüpfen'
+    $('cn-name').value = ''
+    $('cn-url').value = ''
+    $('cn-token').value = ''
+    $('cn-err').textContent = ''
+    $('conn-overlay').classList.add('open')
+    setTimeout(() => $('cn-name').focus(), 50)
+  })
+)
+$('cn-cancel').addEventListener('click', () => $('conn-overlay').classList.remove('open'))
+$('cn-save').addEventListener('click', async () => {
+  const err = $('cn-err')
+  err.textContent = ''
+  $('cn-save').disabled = true
+  $('cn-save').textContent = 'Verbinde …'
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/connectors`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({
+        name: $('cn-name').value,
+        url: $('cn-url').value,
+        token: $('cn-token').value || undefined,
+        category: cnCategory,
+      }),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+    $('conn-overlay').classList.remove('open')
+    loadConnectorRows()
+  } catch (e) {
+    err.textContent = e.message
+  }
+  $('cn-save').disabled = false
+  $('cn-save').textContent = 'Verknüpfen'
+})
 
 // Hell/Dunkel-Umschalter (Init passiert inline im <head>, gegen Theme-Flash)
 $('theme-toggle').addEventListener('click', () => {
