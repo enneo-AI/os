@@ -3,6 +3,7 @@ import { wikiToolDefinitions, runWikiTool } from './tools/wiki.js'
 import { gitlabToolDefinitions, runGitlabTool } from './tools/gitlab.js'
 import { enneoToolDefinitions, runEnneoTool } from './tools/enneo.js'
 import { mcpToolDefinitions, runMcpTool } from './tools/mcp.js'
+import { podToolDefinitions, runPodTool } from './tools/pod.js'
 
 const anthropic = new Anthropic()
 const DEFAULT_MODEL = process.env.ENNI_MODEL || 'claude-opus-4-8'
@@ -33,6 +34,7 @@ const TOOLS = [...wikiToolDefinitions, ...gitlabToolDefinitions, ...enneoToolDef
 async function executeTool(name, input, ctx) {
   try {
     if (name.startsWith('mcp__')) return { content: await runMcpTool(name, input), isError: false }
+    if (name.startsWith('pod_')) return { content: await runPodTool(name, input, ctx), isError: false }
     if (name.startsWith('wiki_')) return { content: await runWikiTool(name, input), isError: false }
     if (name.startsWith('gitlab_')) return { content: await runGitlabTool(name, input), isError: false }
     if (name.startsWith('enneo_')) return { content: await runEnneoTool(name, input, ctx), isError: false }
@@ -69,11 +71,12 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
     { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
     ...(extraSystem ? [{ type: 'text', text: extraSystem }] : []),
   ]
-  // Statische Tools + live geladene Tools der verknüpften MCP-Server (gecacht, nicht-fatal)
-  let turnTools = TOOLS
+  // Statische Tools + Pod-Kontext-Tools (nur in Pod-Konversationen)
+  // + live geladene Tools der verknüpften MCP-Server (gecacht, nicht-fatal)
+  let turnTools = ctx.podId ? [...TOOLS, ...podToolDefinitions] : TOOLS
   try {
     const mcpDefs = await mcpToolDefinitions()
-    if (mcpDefs.length) turnTools = [...TOOLS, ...mcpDefs]
+    if (mcpDefs.length) turnTools = [...turnTools, ...mcpDefs]
   } catch (err) {
     console.error('MCP-Tool-Discovery fehlgeschlagen:', err.message)
   }

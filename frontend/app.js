@@ -297,6 +297,7 @@ function renameConv(btn, c) {
 function newConversation() {
   currentConv = null
   $('model-select').value = 'claude-opus-4-8'
+  $('composer-input').placeholder = convPod ? 'Nachricht ans Team — @enni ruft Enni …' : 'Frag Enni …'
   $('chat-title').textContent = 'Neue Konversation'
   $('msgs').innerHTML = `<div class="empty"><div><span class="enni-dot">E</span></div>
     Hallo! Ich bin Enni. Frag mich zu enneo-Prozessen, Kunden, Produkt oder Code — ich schaue in Wiki und GitLab nach.</div>`
@@ -314,6 +315,7 @@ $('new-chat').addEventListener('click', () => {
 async function openConversation(c) {
   currentConv = c
   convPod = c.pod_id ? podsList.find((p) => p.id === c.pod_id) || convPod : null
+  $('composer-input').placeholder = convPod ? 'Nachricht ans Team — @enni ruft Enni …' : 'Frag Enni …'
   $('chat-title').textContent = (convPod ? `${convPod.name} · ` : '') + (c.title || 'Ohne Titel')
   activateChatView()
   $('msgs').innerHTML =
@@ -347,10 +349,13 @@ async function openConversation(c) {
 }
 
 // ============================================================ Rendering
+// @Erwähnungen (Personen, @enni) hervorheben — Text wird vorher escaped
+const mentionize = (t) => esc(t).replace(/@([A-Za-zÀ-ÿ][\w.\-]*)/g, '<span class="mention">@$1</span>')
+
 function renderUser(text, attachments) {
   const el = document.createElement('div')
   el.className = 'm-user'
-  el.textContent = text
+  el.innerHTML = mentionize(text)
   if (attachments?.length) {
     const row = document.createElement('div')
     row.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin-top:8px'
@@ -372,7 +377,9 @@ function renderPeer(name, text, attachments) {
   nameEl.className = 'u-name'
   nameEl.textContent = name
   el.appendChild(nameEl)
-  el.appendChild(document.createTextNode(text))
+  const textEl = document.createElement('span')
+  textEl.innerHTML = mentionize(text)
+  el.appendChild(textEl)
   if (attachments?.length) {
     const row = document.createElement('div')
     row.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin-top:8px'
@@ -639,7 +646,7 @@ async function compactNow() {
   }
   compacting = false
   $('composer-input').disabled = false
-  $('composer-input').placeholder = 'Frag Enni …'
+  $('composer-input').placeholder = convPod ? 'Nachricht ans Team — @enni ruft Enni …' : 'Frag Enni …'
   renderCtx()
 }
 
@@ -720,32 +727,51 @@ function switchPodTab(tab) {
 }
 document.querySelectorAll('.pt-btn').forEach((b) => b.addEventListener('click', () => switchPodTab(b.dataset.tab)))
 
-// --- Tab: Konversationen
+// --- Tab: Konversationen (Dust-Muster: Direkt-Input + Suche + Liste)
+let podConvsCache = []
 async function loadPodConvs() {
   const [{ data }, profs] = await Promise.all([
     sb.from('conversations').select('id, title, updated_at, user_id, pod_id').eq('pod_id', activePod.id).order('updated_at', { ascending: false }),
     allProfiles(),
   ])
+  podConvsCache = (data || []).map((c) => ({ ...c, starter: profName(profs, c.user_id) }))
+  $('pod-conv-search').value = ''
+  $('pod-quick-input').placeholder = `Schreib dem Team in „${activePod.name}“ — @enni ruft Enni dazu …`
+  renderPodConvs('')
+}
+
+function renderPodConvs(filter) {
   const list = $('pod-conv-list')
   list.innerHTML = ''
-  for (const c of data || []) {
+  const items = podConvsCache.filter((c) => !filter || (c.title || '').toLowerCase().includes(filter))
+  for (const c of items) {
     const row = document.createElement('div')
     row.className = 'row'
     row.style.cursor = 'pointer'
     row.innerHTML = `<div><div class="r-name">${esc(c.title || 'Ohne Titel')}</div>
-      <div class="r-sub">gestartet von ${esc(profName(profs, c.user_id))}</div></div><div></div>
+      <div class="r-sub">gestartet von ${esc(c.starter)}</div></div><div></div>
       <span class="r-val">${new Date(c.updated_at).toLocaleDateString('de-DE')}</span>`
     row.addEventListener('click', () => { convPod = activePod; openConversation(c) })
     list.appendChild(row)
   }
-  if (!(data || []).length)
-    list.innerHTML = '<div class="empty-plain">Noch keine Konversationen — starte die erste, alle im Pod können mitlesen und mitschreiben.</div>'
+  if (!items.length)
+    list.innerHTML = `<div class="empty-plain">${filter ? 'Keine Treffer.' : 'Noch keine Konversationen — schreib oben die erste Nachricht, alle im Pod können mitlesen und mitschreiben.'}</div>`
 }
-$('pod-new-conv').addEventListener('click', () => {
+$('pod-conv-search').addEventListener('input', () => renderPodConvs($('pod-conv-search').value.trim().toLowerCase()))
+
+function podQuickStart() {
+  const text = $('pod-quick-input').value.trim()
+  if (!text) return
+  $('pod-quick-input').value = ''
   convPod = activePod
   newConversation()
   $('chat-title').textContent = `Neue Konversation · ${activePod.name}`
-})
+  $('composer-input').value = text
+  autosize()
+  send()
+}
+$('pod-quick-send').addEventListener('click', podQuickStart)
+$('pod-quick-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') podQuickStart() })
 
 // --- Tab: Aufgaben
 async function loadPodTasks() {
@@ -1087,30 +1113,41 @@ async function send() {
   box.appendChild(renderUser(text || 'Bitte analysiere die angehängten Dateien.', attachMeta))
   if (!currentConv) $('chat-title').textContent = (text || attachMeta[0]?.name || '').slice(0, 80)
 
-  // Live-Agent-Container
-  const wrap = document.createElement('div')
-  wrap.className = 'm-agent'
-  wrap.innerHTML = `<div class="who"><span class="enni-dot">E</span><b>Enni</b></div>`
-  const think = document.createElement('div')
-  think.className = 'think open'
-  think.innerHTML = `<button class="think-head"><span class="chev">▶</span>Gedanken</button>`
-  const thinkBody = document.createElement('div')
-  thinkBody.className = 'think-body'
-  const runIndicator = document.createElement('div')
-  runIndicator.className = 'think-run'
-  runIndicator.innerHTML = '<span class="pulse"></span>Enni arbeitet …'
-  thinkBody.appendChild(runIndicator)
-  think.appendChild(thinkBody)
-  think.addEventListener('click', (e) => {
-    if (e.target.closest('.tool-row')) return
-    think.classList.toggle('open')
-  })
-  wrap.appendChild(think)
-  const body = document.createElement('div')
-  body.className = 'body'
-  wrap.appendChild(body)
-  box.appendChild(wrap)
-  wrap.scrollIntoView({ block: 'end' })
+  // Pod-Konversationen sind Team-Chat: Enni antwortet nur bei @enni-Erwähnung.
+  // Ohne Erwähnung wird die Nachricht nur gespeichert — kein Agent-Container nötig.
+  const isTeamMsg = !!convPod && !/@enni\b/i.test(text)
+
+  // Live-Agent-Container (nur wenn Enni antworten wird)
+  let wrap = null
+  let thinkBody = null
+  let runIndicator = null
+  let body = null
+  let think = null
+  if (!isTeamMsg) {
+    wrap = document.createElement('div')
+    wrap.className = 'm-agent'
+    wrap.innerHTML = `<div class="who"><span class="enni-dot">E</span><b>Enni</b></div>`
+    think = document.createElement('div')
+    think.className = 'think open'
+    think.innerHTML = `<button class="think-head"><span class="chev">▶</span>Gedanken</button>`
+    thinkBody = document.createElement('div')
+    thinkBody.className = 'think-body'
+    runIndicator = document.createElement('div')
+    runIndicator.className = 'think-run'
+    runIndicator.innerHTML = '<span class="pulse"></span>Enni arbeitet …'
+    thinkBody.appendChild(runIndicator)
+    think.appendChild(thinkBody)
+    think.addEventListener('click', (e) => {
+      if (e.target.closest('.tool-row')) return
+      think.classList.toggle('open')
+    })
+    wrap.appendChild(think)
+    body = document.createElement('div')
+    body.className = 'body'
+    wrap.appendChild(body)
+    box.appendChild(wrap)
+    wrap.scrollIntoView({ block: 'end' })
+  }
 
   let thinkingText = ''
   let answerText = ''
@@ -1186,26 +1223,28 @@ async function send() {
           body.innerHTML = md(answerText)
           follow()
         } else if (ev.type === 'done') {
-          runIndicator.remove()
-          enhanceCode(body)
-          thinkBody.insertAdjacentHTML('beforeend', '<div class="think-done">✓ Fertig</div>')
-          think.classList.remove('open')
-          wrap.appendChild(agentMeta(() => answerText, ev.cost_eur))
-          // volle Tool-Outputs aus der DB nachladen (Stream enthält nur Status)
-          hydrateToolOutputs(ev.message_id, thinkBody, wrap)
+          if (!isTeamMsg) {
+            runIndicator.remove()
+            enhanceCode(body)
+            thinkBody.insertAdjacentHTML('beforeend', '<div class="think-done">✓ Fertig</div>')
+            think.classList.remove('open')
+            wrap.appendChild(agentMeta(() => answerText, ev.cost_eur))
+            // volle Tool-Outputs aus der DB nachladen (Stream enthält nur Status)
+            hydrateToolOutputs(ev.message_id, thinkBody, wrap)
+          }
         } else if (ev.type === 'title') {
           if (currentConv) currentConv.title = ev.title
           if (!convPod) $('chat-title').textContent = ev.title
           loadConversations()
         } else if (ev.type === 'error') {
-          runIndicator.remove()
-          body.insertAdjacentHTML('beforeend', `<p style="color:var(--high)">${esc(ev.message)}</p>`)
+          runIndicator?.remove()
+          ;(body || box).insertAdjacentHTML('beforeend', `<p style="color:var(--high)">${esc(ev.message)}</p>`)
         }
       }
     }
   } catch (err) {
-    runIndicator.remove()
-    body.insertAdjacentHTML('beforeend', `<p style="color:var(--high)">Fehler: ${esc(err.message)}</p>`)
+    runIndicator?.remove()
+    ;(body || box).insertAdjacentHTML('beforeend', `<p style="color:var(--high)">Fehler: ${esc(err.message)}</p>`)
   }
 
   streaming = false

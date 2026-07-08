@@ -149,19 +149,39 @@ app.post('/api/chat', async (req, res) => {
       : null
 
   try {
-    // Pod-Kontext: Instructions for Agents + Absender-Attribution
+    // Pod-Konversationen sind Team-Chat: Enni antwortet NUR, wenn er mit @enni erwähnt wird.
+    // Ohne Erwähnung wird die Nachricht nur persistiert (Team-Nachricht, kein LLM-Call).
+    const enniMentioned = /@enni\b/i.test(message || '')
+    if (pod && !enniMentioned) {
+      if (titlePromise) {
+        const t = await titlePromise
+        if (t?.title) {
+          await db.from('conversations').update({ title: t.title }).eq('id', convId)
+          await logUsage({ userId: user.id, conversationId: convId, messageId: null, model: t.model, usage: t.usage })
+          emit({ type: 'title', title: t.title })
+        }
+      }
+      await db.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', convId)
+      emit({ type: 'done', message_id: null, cost_eur: 0, team_message: true })
+      res.end()
+      return
+    }
+
+    // Pod-Kontext: Instructions for Agents + Absender-Attribution + Pod-Tools-Hinweis
     let extraSystem = null
     if (pod) {
       const senderName = user.user_metadata?.full_name || user.email
       extraSystem =
-        `Diese Konversation läuft im Pod "${pod.name}" — ein geteilter Projekt-Raum, mehrere Personen lesen mit. ` +
-        `User-Nachrichten sind mit dem Absender-Namen geprefixt; die aktuelle Nachricht kommt von ${senderName}.` +
+        `Diese Konversation läuft im Pod "${pod.name}" — ein geteilter Projekt-Raum (Team-Chat, mehrere Personen lesen und schreiben mit). ` +
+        `Du wurdest gerade mit @enni gerufen; die aktuelle Nachricht kommt von ${senderName}. User-Nachrichten sind mit dem Absender-Namen geprefixt. ` +
+        `Du hast Zugriff auf den GESAMTEN Pod über die pod_-Tools: Aufgabenliste (pod_list_tasks), geteilte Dateien (pod_list_files / pod_read_file) und die anderen Konversationen (pod_list_conversations / pod_read_conversation). Nutze sie, wenn die Frage Pod-Kontext braucht.` +
         (pod.description ? `\nPod-Beschreibung: ${pod.description}` : '') +
         (pod.instructions ? `\n\nInstructions for Agents (gelten in diesem Pod):\n${pod.instructions}` : '')
     }
     const result = await runEnniTurn(history, emit, model, extraSystem, {
       userId: user.id,
       conversationId: convId,
+      podId: pod?.id || null,
     })
 
     // Assistant-Message inkl. Gedankenkette + Tool-Calls persistieren
