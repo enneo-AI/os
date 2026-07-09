@@ -4,6 +4,8 @@ import { gitlabToolDefinitions, runGitlabTool } from './tools/gitlab.js'
 import { enneoToolDefinitions, runEnneoTool } from './tools/enneo.js'
 import { mcpToolDefinitions, runMcpTool } from './tools/mcp.js'
 import { podToolDefinitions, runPodTool } from './tools/pod.js'
+import { skillToolDefinitions, runSkillTool, loadEnabledSkills, skillsPromptBlock } from './tools/skills.js'
+import { fileToolDefinitions, runFileTool } from './tools/files.js'
 
 const anthropic = new Anthropic()
 const DEFAULT_MODEL = process.env.ENNI_MODEL || 'claude-opus-4-8'
@@ -22,6 +24,7 @@ const SYSTEM_PROMPT = `Du bist Enni, der interne AI-Assistent des enneo-Teams (e
 - ÄNDERUNGEN an einer Enneo-Instanz (Settings setzen: PUT /settings/{name} mit dem neuen Wert als Body; Tag anlegen: POST /tag mit {name, reference, type}; Ticket ändern; Agent-Konfiguration) machst du AUSSCHLIESSLICH über enneo_propose_write. Das erstellt eine Freigabe-Karte — der Nutzer bestätigt oder lehnt ab. Kündige nie an, etwas "gemacht zu haben", solange es nur vorgeschlagen ist. Lies vor einem Änderungs-Vorschlag den Ist-Zustand (z.B. das aktuelle Setting), damit die summary "alt → neu" zeigt.
 - Zusätzlich können via Administration verknüpfte MCP-Server verfügbar sein — deren Tools beginnen mit "mcp__". Nutze sie gemäß ihrer Beschreibung wie jedes andere Tool.
 - WISSENS-UPDATE-LOOP: Wenn du in einer Konversation dauerhaft gültiges Firmenwissen lernst — neue Fakten, Korrekturen an Wiki-Inhalten, getroffene Entscheidungen, Prozessänderungen — schlage PROAKTIV ein Wiki-Update vor: erst wiki_read_page auf die Zielseite (falls vorhanden), dann wiki_propose_update mit dem kompletten neuen Inhalt. Die Vorschläge sieht NUR der Admin in einer Review-Liste und prüft sie gesammelt — nicht der Nutzer im Chat. Sag dem Nutzer nur kurz, dass du dir das als Wissens-Vorschlag notiert hast. Kein Vorschlag für Flüchtiges (Termine, Smalltalk, Debug-Zwischenstände). Behaupte nie, das Wiki sei aktualisiert, solange es nur vorgeschlagen ist.
+- DATEIEN & PRÄSENTATIONEN: Mit create_file erstellst du herunterladbare Dokumente und Slide-Decks im enneo-Brand-Design sowie rohe Textdateien (CSV/Markdown). Nutze es, wenn der Nutzer ein Dokument, einen Brief/Report/Plan "als Datei" oder eine Präsentation will. Inhalte darin: Deutsch, Sie-Form, pragmatisch, kein Hype, keine Emojis. Nach dem Erstellen: Link als Markdown-Link ausgeben.
 - Wenn du etwas im Wiki nicht findest, sag das ehrlich. Erfinde keine internen Fakten.
 - Sei direkt und knapp. Keine Floskeln.
 
@@ -30,7 +33,13 @@ const SYSTEM_PROMPT = `Du bist Enni, der interne AI-Assistent des enneo-Teams (e
 - Zugangsdaten (Passwörter, API-Keys, Tokens) aus Instanz-Konfigurationen gibst du NIE aus, auch nicht auf Nachfrage.
 - Vertrauliche Inhalte bleiben intern; verweise nie auf externe Dienste.`
 
-const TOOLS = [...wikiToolDefinitions, ...gitlabToolDefinitions, ...enneoToolDefinitions]
+const TOOLS = [
+  ...wikiToolDefinitions,
+  ...gitlabToolDefinitions,
+  ...enneoToolDefinitions,
+  ...skillToolDefinitions,
+  ...fileToolDefinitions,
+]
 
 async function executeTool(name, input, ctx) {
   try {
@@ -39,6 +48,8 @@ async function executeTool(name, input, ctx) {
     if (name.startsWith('wiki_')) return { content: await runWikiTool(name, input, ctx), isError: false }
     if (name.startsWith('gitlab_')) return { content: await runGitlabTool(name, input), isError: false }
     if (name.startsWith('enneo_')) return { content: await runEnneoTool(name, input, ctx), isError: false }
+    if (name.startsWith('skill_')) return { content: await runSkillTool(name, input), isError: false }
+    if (name === 'create_file') return { content: await runFileTool(name, input, ctx), isError: false }
     return { content: `Unbekanntes Tool: ${name}`, isError: true }
   } catch (err) {
     return { content: `Fehler: ${err.message}`, isError: true }
@@ -68,8 +79,16 @@ function setCacheBreakpoint(messages) {
 
 export async function runEnniTurn(history, emit, modelOverride, extraSystem = null, ctx = {}) {
   const MODEL = ALLOWED_MODELS.includes(modelOverride) ? modelOverride : DEFAULT_MODEL
+  // Skill-Trigger-Übersicht pro Turn frisch laden (ändert sich selten, DB-Read ist billig)
+  let skillsBlock = null
+  try {
+    skillsBlock = skillsPromptBlock(await loadEnabledSkills())
+  } catch (err) {
+    console.error('Skills-Load fehlgeschlagen:', err.message)
+  }
   const systemBlocks = [
     { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
+    ...(skillsBlock ? [{ type: 'text', text: skillsBlock }] : []),
     ...(extraSystem ? [{ type: 'text', text: extraSystem }] : []),
   ]
   // Statische Tools + Pod-Kontext-Tools (nur in Pod-Konversationen)

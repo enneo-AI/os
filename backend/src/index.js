@@ -15,6 +15,27 @@ app.use(
 
 app.get('/health', (_req, res) => res.json({ ok: true }))
 
+// Von Enni erstellte Dateien inline ausliefern (Supabase Storage serviert HTML
+// als text/plain, Anti-XSS). Autorisierung steckt in der Storage-Signed-URL selbst —
+// wir akzeptieren ausschließlich Signed-URLs unseres eigenen generated-files-Buckets.
+app.get('/files', async (req, res) => {
+  const u = String(req.query.u || '')
+  const allowedPrefix = `${process.env.SUPABASE_URL}/storage/v1/object/sign/generated-files/`
+  if (!u.startsWith(allowedPrefix)) return res.status(400).send('Ungültiger Datei-Link')
+  try {
+    const r = await fetch(u)
+    if (!r.ok) return res.status(r.status).send('Datei-Link abgelaufen oder ungültig')
+    const name = decodeURIComponent(u.split('?')[0].split('/').pop() || 'datei')
+    const { MIME } = await import('./tools/files.js')
+    const ext = name.split('.').pop()
+    res.setHeader('Content-Type', MIME[ext] || 'application/octet-stream')
+    res.setHeader('Content-Disposition', `inline; filename="${name.replace(/"/g, '')}"`)
+    res.send(Buffer.from(await r.arrayBuffer()))
+  } catch (err) {
+    res.status(500).send(`Auslieferung fehlgeschlagen: ${err.message}`)
+  }
+})
+
 // Pod laden, wenn der User ihn sehen darf (open / Mitglied / Ersteller / Admin)
 async function podIfVisible(podId, userId) {
   const { data: pod } = await db.from('pods').select('*').eq('id', podId).maybeSingle()
@@ -151,7 +172,9 @@ app.post('/api/chat', async (req, res) => {
   try {
     // Pod-Konversationen sind Team-Chat: Enni antwortet NUR, wenn er mit @enni erwähnt wird.
     // Ohne Erwähnung wird die Nachricht nur persistiert (Team-Nachricht, kein LLM-Call).
-    const enniMentioned = /@enni\b/i.test(message || '')
+    // Ausnahme: ein Slash-Skill-Aufruf (/health-check …) richtet sich immer an Enni.
+    const slashMatch = (message || '').match(/^\/([a-z0-9-]+)/i)
+    const enniMentioned = /@enni\b/i.test(message || '') || !!slashMatch
     if (pod && !enniMentioned) {
       if (titlePromise) {
         const t = await titlePromise
@@ -178,6 +201,23 @@ app.post('/api/chat', async (req, res) => {
         (pod.description ? `\nPod-Beschreibung: ${pod.description}` : '') +
         (pod.instructions ? `\n\nInstructions for Agents (gelten in diesem Pod):\n${pod.instructions}` : '')
     }
+    // Slash-Command: /slug am Nachrichtenanfang ruft einen Skill explizit auf —
+    // voller Skill geht als System-Block mit, Enni startet mit einem Workflow-Overview.
+    if (slashMatch) {
+      const { data: skill } = await db
+        .from('skills')
+        .select('*')
+        .eq('slug', slashMatch[1].toLowerCase())
+        .eq('enabled', true)
+        .maybeSingle()
+      if (skill) {
+        const { skillText } = await import('./tools/skills.js')
+        extraSystem =
+          (extraSystem ? extraSystem + '\n\n' : '') +
+          `Der Nutzer hat den Skill /${skill.slug} explizit per Slash-Command aufgerufen. Vollständiger Skill:\n\n${skillText(skill)}\n\nBeginne deine Antwort mit einem kompakten Workflow-Overview (nummerierte Schritte, je eine Zeile — was du jetzt tun wirst), dann arbeite den Workflow ab. Fehlen dir dafür nötige Inputs, stelle GENAU EINE gebündelte Rückfrage nach allen fehlenden Angaben.`
+      }
+    }
+
     const result = await runEnniTurn(history, emit, model, extraSystem, {
       userId: user.id,
       conversationId: convId,

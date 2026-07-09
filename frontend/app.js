@@ -1417,11 +1417,11 @@ function mentionCandidatesFor(pod, profs) {
     people = profs.filter((p) => ids.has(p.id))
   }
   return [
-    { tag: 'enni', name: 'Enni ruft den AI-Assistenten in die Konversation' },
+    { insert: '@enni', name: 'Enni ruft den AI-Assistenten in die Konversation' },
     ...people
       .filter((p) => p.id !== session.user.id)
       .map((p) => ({
-        tag: (p.display_name || p.email.split('@')[0]).split(' ')[0],
+        insert: '@' + (p.display_name || p.email.split('@')[0]).split(' ')[0],
         name: p.display_name || p.email,
       })),
   ]
@@ -1435,11 +1435,41 @@ async function mentionCheck(input, pod) {
   const query = m[2].toLowerCase()
   const profs = await allProfiles()
   const items = mentionCandidatesFor(pod, profs).filter(
-    (c) => c.tag.toLowerCase().startsWith(query) || c.name.toLowerCase().includes(query)
+    (c) => c.insert.slice(1).toLowerCase().startsWith(query) || c.name.toLowerCase().includes(query)
   )
   if (!items.length) return mentionClose()
   mentionState = { input, items, sel: 0, start: pos - query.length - 1 }
   renderMentionMenu()
+}
+
+// Slash-Autocomplete: "/" am Nachrichtenanfang schlägt Skills vor
+let skillsCache = null
+async function allSkills() {
+  if (!skillsCache) {
+    const { data } = await sb.from('skills').select('slug, name').eq('enabled', true).order('slug')
+    skillsCache = data || []
+  }
+  return skillsCache
+}
+
+async function slashCheck(input) {
+  const pos = input.selectionStart
+  const before = input.value.slice(0, pos)
+  const m = before.match(/^\/([a-z0-9-]*)$/i)
+  if (!m) return false
+  const q = m[1].toLowerCase()
+  const skills = (await allSkills()).filter(
+    (s) => s.slug.startsWith(q) || s.name.toLowerCase().includes(q)
+  )
+  if (!skills.length) return false
+  mentionState = {
+    input,
+    items: skills.map((s) => ({ insert: '/' + s.slug, name: s.name })),
+    sel: 0,
+    start: 0,
+  }
+  renderMentionMenu()
+  return true
 }
 
 function renderMentionMenu() {
@@ -1447,7 +1477,7 @@ function renderMentionMenu() {
   mentionMenu.innerHTML = items
     .map(
       (c, i) =>
-        `<button class="mm-row${i === sel ? ' on' : ''}" data-i="${i}"><span class="mm-name">@${esc(c.tag)}</span><span class="mm-sub">${esc(c.name)}</span></button>`
+        `<button class="mm-row${i === sel ? ' on' : ''}" data-i="${i}"><span class="mm-name">${esc(c.insert)}</span><span class="mm-sub">${esc(c.name)}</span></button>`
     )
     .join('')
   mentionMenu.querySelectorAll('.mm-row').forEach((b) =>
@@ -1473,8 +1503,8 @@ function mentionPick(i) {
   const { input, items, start } = mentionState
   const c = items[i]
   const after = input.value.slice(input.selectionStart)
-  input.value = `${input.value.slice(0, start)}@${c.tag} ${after}`
-  const caret = start + c.tag.length + 2
+  input.value = `${input.value.slice(0, start)}${c.insert} ${after}`
+  const caret = start + c.insert.length + 1
   mentionClose()
   input.focus()
   input.setSelectionRange(caret, caret)
@@ -1482,7 +1512,8 @@ function mentionPick(i) {
 }
 
 function attachMentions(input, getPod) {
-  input.addEventListener('input', () => {
+  input.addEventListener('input', async () => {
+    if (await slashCheck(input)) return
     const pod = getPod()
     if (!pod) return mentionClose()
     mentionCheck(input, pod)
@@ -1970,6 +2001,7 @@ $('sk-save').addEventListener('click', async () => {
     return
   }
   $('skill-overlay').classList.remove('open')
+  skillsCache = null
   loadSkills()
 })
 
@@ -1979,6 +2011,7 @@ $('sk-delete').addEventListener('click', async () => {
   const { error } = await sb.from('skills').delete().eq('id', editingSkill.id)
   if (error) { $('sk-err').textContent = 'Fehler: ' + error.message; return }
   $('skill-overlay').classList.remove('open')
+  skillsCache = null
   loadSkills()
 })
 

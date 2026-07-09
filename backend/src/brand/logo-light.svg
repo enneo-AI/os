@@ -1,0 +1,28 @@
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" viewBox="0 0 1006 205">
+  <defs><style>.st2{fill:#292C3F}.st0{fill:url(#Enneo_Logo_Gradient)}.st1{fill:url(#Enneo_Logo_Gradient1)}.st3{fill:url(#Enneo_Logo_Gradient2)}</style>
+    <linearGradient id="linear-gradient" x1="37.8" y1="138.4" x2="156.5" y2="167.3" gradientTransform="translate(0 194) scale(1 -1)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#b09cee"></stop>
+      <stop offset="1" stop-color="#7b5ae2"></stop>
+    </linearGradient>
+    <linearGradient id="linear-gradient1" x1="52.9" y1="76.1" x2="171.6" y2="105" gradientTransform="translate(0 194) scale(1 -1)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#b09cee"></stop>
+      <stop offset="1" stop-color="#7b5ae2"></stop>
+    </linearGradient>
+    <linearGradient id="linear-gradient2" x1="67.9" y1="14.5" x2="186.6" y2="43.3" gradientTransform="translate(0 194) scale(1 -1)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#b09cee"></stop>
+      <stop offset="1" stop-color="#7b5ae2"></stop>
+    </linearGradient>
+  </defs>
+  <g>
+    <path class="st2" d="M321.8,92.2c0-33.4,22.6-67.4,61.8-67.4s58.2,28.1,59.6,56.8c0,2.8.3,5,.3,13.9h-99.2c1.4,25.6,18.7,40.7,46,40.7s30.4-4.5,42.9-13.4v22c-11.4,8.4-26.2,12.5-42.9,12.5-38.7,0-68.5-28.1-68.5-65.2h0ZM420.7,77.4c-1.4-17.8-17.3-31.5-37.3-31.5s-35.7,13.4-37.9,31.5h75.2Z"></path>
+    <path class="st2" d="M463,153.5V28.7h22.6v17.8c10-14.5,23.7-21.7,41.5-21.7,30.1,0,50.4,20.6,50.4,50.7v78h-22.6v-71c0-22.8-12.3-36.5-33.1-36.5s-36.2,15.6-36.2,37.9v69.6h-22.6Z"></path>
+    <path class="st2" d="M603.4,153.5V28.7h22.6v17.8c10-14.5,23.7-21.7,41.5-21.7,30.1,0,50.4,20.6,50.4,50.7v78h-22.6v-71c0-22.8-12.3-36.5-33.1-36.5s-36.2,15.6-36.2,37.9v69.6h-22.6Z"></path>
+    <path class="st2" d="M736.5,92.2c0-33.4,22.6-67.4,61.8-67.4s58.2,28.1,59.6,56.8c0,2.8.3,5,.3,13.9h-99.2c1.4,25.6,18.7,40.7,46,40.7s30.4-4.5,42.9-13.4v22c-11.4,8.4-26.2,12.5-42.9,12.5-38.7,0-68.5-28.1-68.5-65.2h0ZM835.4,77.4c-1.4-17.8-17.3-31.5-37.3-31.5s-35.7,13.4-37.9,31.5h75.2Z"></path>
+    <path class="st2" d="M870.5,91.1c0-37,29.2-66.3,66.6-66.3s66.3,29.5,66.3,66.3-29.2,66.3-66.9,66.3-66-29-66-66.3h0ZM980.8,91.1c0-26.5-18.4-45.1-44.3-45.1s-43.5,18.4-43.5,45.1,17.8,45.1,44,45.1,43.7-17.8,43.7-45.1h.1Z"></path>
+  </g>
+  <g>
+    <path class="st3" d="M202.2,3.2h-44.9c-9.5,0-18.7,3.8-25.4,10.7l-16.3,16.6c-3,3-7,4.7-11.2,4.7h-39.4c-15.1,0-27.3,12.2-27.3,27.3v9.4h29c9.5,0,18.7-3.8,25.4-10.7l16.3-16.6c3-3,7-4.7,11.2-4.7h56.3c14.6,0,26.4-11.8,26.4-26.4V3.1h0Z"></path>
+    <path class="st1" d="M202.2,68.8h-43.6c-9.5,0-18.7,3.8-25.4,10.7l-16.3,16.6c-3,3-7,4.7-11.2,4.7H29.5c-15.1,0-27.3,12.2-27.3,27.3v9.4h66.1c9.3,0,18.3-3.8,24.8-10.4l16.5-16.8c3-3,7-4.7,11.2-4.7h55c14.6,0,26.4-11.8,26.4-26.4v-10.4h0Z"></path>
+    <path class="st0" d="M202.2,134.4h-44.9c-9.5,0-18.7,3.8-25.4,10.7l-16.3,16.6c-3,3-7,4.7-11.2,4.7h-39.4c-15.1,0-27.3,12.2-27.3,27.3v9.4h29c9.5,0,18.7-3.8,25.4-10.7l16.3-16.6c3-3,7-4.7,11.2-4.7h56.3c14.6,0,26.4-11.8,26.4-26.4v-10.4h0Z"></path>
+  </g>
+</svg>
