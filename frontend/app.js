@@ -1856,14 +1856,15 @@ let cnCategory = 'tool'
 async function loadConnectorRows() {
   const { data } = await sb
     .from('connectors')
-    .select('id, name, url, category, tool_count')
+    .select('id, name, url, category, tool_count, kind')
     .order('created_at')
   const { is_admin } = await ownProfile()
+  renderAttioRow((data || []).find((x) => x.kind === 'attio') || null, is_admin)
   for (const target of ['tool', 'connection']) {
     const box = $(target === 'tool' ? 'dyn-tools' : 'dyn-connections')
     if (!box) continue
     box.innerHTML = ''
-    for (const c of (data || []).filter((x) => x.category === target)) {
+    for (const c of (data || []).filter((x) => x.category === target && x.kind === 'mcp')) {
       const row = document.createElement('div')
       row.className = 'crow'
       row.innerHTML = `<span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:var(--lila-deep);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></span>
@@ -1883,6 +1884,68 @@ async function loadConnectorRows() {
     }
   }
 }
+
+// Attio-Zeile: Status live, Klick öffnet das Key-Modal (Admin) bzw. Trennen
+let attioConnector = null
+function renderAttioRow(conn, isAdmin) {
+  attioConnector = conn
+  const status = $('attio-status')
+  const sub = $('attio-sub')
+  if (!status) return
+  if (conn) {
+    status.className = 'c-right ok'
+    status.innerHTML = '<span class="dot-s"></span>Verbunden' +
+      (isAdmin ? '<button class="c-del" id="attio-del" title="Trennen" style="display:inline-flex;margin-left:8px"><svg viewBox="0 0 24 24"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg></button>' : '')
+    sub.textContent = 'CRM: Accounts, Kontakte, Deals, Notizen · read-only'
+    document.getElementById('attio-del')?.addEventListener('click', async (e) => {
+      e.stopPropagation()
+      if (!window.confirm('Attio trennen? Enni verliert sofort den CRM-Zugriff.')) return
+      const res = await fetch(`${BACKEND_URL}/api/connectors/${conn.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${await token()}` },
+      })
+      if (!res.ok) { window.alert((await res.json().catch(() => ({}))).error || 'Fehler'); return }
+      loadConnectorRows()
+    })
+  } else {
+    status.className = 'c-right off'
+    status.innerHTML = '<span class="dot-s"></span>' + (isAdmin ? 'Verbinden' : 'Nicht verbunden')
+    sub.textContent = isAdmin ? 'CRM-Daten · read-only · Klick zum Verbinden (API-Key)' : 'CRM-Daten · read-only'
+  }
+}
+
+$('attio-row').addEventListener('click', async () => {
+  if (attioConnector) return // verbunden — Trennen läuft über das ✕
+  const { is_admin } = await ownProfile()
+  if (!is_admin) return
+  $('at-token').value = ''
+  $('at-err').textContent = ''
+  $('attio-overlay').classList.add('open')
+  setTimeout(() => $('at-token').focus(), 50)
+})
+$('at-cancel').addEventListener('click', () => $('attio-overlay').classList.remove('open'))
+$('at-save').addEventListener('click', async () => {
+  const err = $('at-err')
+  err.textContent = ''
+  if (!$('at-token').value.trim()) { err.textContent = 'API-Key fehlt.'; return }
+  $('at-save').disabled = true
+  $('at-save').textContent = 'Verbinde …'
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/connectors`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ kind: 'attio', token: $('at-token').value.trim() }),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+    $('attio-overlay').classList.remove('open')
+    loadConnectorRows()
+  } catch (e) {
+    err.textContent = e.message
+  }
+  $('at-save').disabled = false
+  $('at-save').textContent = 'Verbinden'
+})
 
 document.querySelectorAll('.crow-add[data-category]').forEach((b) =>
   b.addEventListener('click', () => {

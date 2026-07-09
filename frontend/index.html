@@ -772,7 +772,7 @@
           <div class="crow"><span class="c-logo"><img src="./icons/google-drive.svg" alt=""></span><div><div class="c-name">Google Drive</div><div class="c-sub">Dokumente & Ordner</div></div><span class="c-right off"><span class="dot-s"></span>Phase 2</span></div>
           <div class="crow"><span class="c-logo"><img src="./icons/notion.svg" alt=""></span><div><div class="c-name">Notion</div><div class="c-sub">Seiten & Datenbanken</div></div><span class="c-right off"><span class="dot-s"></span>Phase 2</span></div>
           <div class="crow"><span class="c-logo"><img src="./icons/slack.svg" alt=""></span><div><div class="c-name">Slack</div><div class="c-sub">Channels · read-only Sync</div></div><span class="c-right off"><span class="dot-s"></span>Phase 2</span></div>
-          <div class="crow"><span class="c-logo"><img src="./icons/attio.ico" alt=""></span><div><div class="c-name">Attio</div><div class="c-sub">CRM-Daten · read-only</div></div><span class="c-right off"><span class="dot-s"></span>Phase 2</span></div>
+          <button class="crow" id="attio-row"><span class="c-logo"><img src="./icons/attio.ico" alt=""></span><div><div class="c-name">Attio</div><div class="c-sub" id="attio-sub">CRM-Daten · read-only</div></div><span class="c-right off" id="attio-status"><span class="dot-s"></span>Nicht verbunden</span></button>
           <div class="crow"><span class="c-logo"><img src="./icons/whatsapp.svg" alt=""></span><div><div class="c-name">WhatsApp</div><div class="c-sub">Enni mobil steuern — chatten & Routinen-Ergebnisse aufs Handy</div></div><span class="c-right off"><span class="dot-s"></span>Coming soon</span></div>
           <div class="crow"><span class="c-logo"><img src="./icons/telegram.svg" alt=""></span><div><div class="c-name">Telegram</div><div class="c-sub">Enni mobil steuern — Bot-Chat von unterwegs</div></div><span class="c-right off"><span class="dot-s"></span>Coming soon</span></div>
           <div id="dyn-connections"></div>
@@ -959,6 +959,21 @@
       <span style="flex:1"></span>
       <button class="btn quiet" id="sk-cancel">Abbrechen</button>
       <button class="btn dark" id="sk-save">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= ATTIO MODAL ================= -->
+<div class="overlay" id="attio-overlay">
+  <div class="modal" role="dialog" aria-modal="true">
+    <h3>Attio verbinden</h3>
+    <label for="at-token">API-Key</label>
+    <input type="password" id="at-token" autocomplete="off" placeholder="attio_…">
+    <p class="pf-hint">Attio → Workspace Settings → Developers → Access Tokens. Ein Key mit Lese-Rechten reicht — Enni liest nur (Accounts, Kontakte, Deals, Notizen), schreibt nie. Der Key ist nach dem Speichern aus der App nicht mehr auslesbar (write-only, nur das Backend nutzt ihn).</p>
+    <div class="err" id="at-err"></div>
+    <div class="m-actions">
+      <button class="btn quiet" id="at-cancel">Abbrechen</button>
+      <button class="btn dark" id="at-save">Verbinden</button>
     </div>
   </div>
 </div>

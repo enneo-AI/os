@@ -380,7 +380,37 @@ async function requireAdmin(req, res) {
 app.post('/api/connectors', async (req, res) => {
   const user = await requireAdmin(req, res)
   if (!user) return
-  const { name, url, token, category } = req.body || {}
+  const { name, url, token, category, kind } = req.body || {}
+
+  // Nativer Attio-Connector: nur API-Key nötig, Verbindungstest gegen /v2/self
+  if (kind === 'attio') {
+    if (!token?.trim()) return res.status(400).json({ error: 'API-Key ist Pflicht' })
+    try {
+      const { probeAttio, invalidateAttioCache } = await import('./tools/attio.js')
+      const workspace = await probeAttio(token.trim())
+      const { data: existing } = await db.from('connectors').select('id').eq('kind', 'attio').maybeSingle()
+      if (existing) await db.from('connectors').delete().eq('id', existing.id) // Re-Connect ersetzt den Key
+      const { data, error } = await db
+        .from('connectors')
+        .insert({
+          name: 'Attio',
+          url: 'https://api.attio.com',
+          token: token.trim(),
+          category: 'connection',
+          kind: 'attio',
+          tool_count: 5,
+          created_by: user.id,
+        })
+        .select('id, name')
+        .single()
+      if (error) throw new Error(error.message)
+      invalidateAttioCache()
+      return res.json({ ...data, workspace })
+    } catch (err) {
+      return res.status(400).json({ error: `Attio-Verbindung fehlgeschlagen: ${err.message}` })
+    }
+  }
+
   if (!name?.trim() || !url?.trim()) return res.status(400).json({ error: 'Name und URL sind Pflicht' })
   if (!/^https:\/\//.test(url.trim())) return res.status(400).json({ error: 'URL muss mit https:// beginnen' })
   try {
@@ -397,6 +427,8 @@ app.delete('/api/connectors/:id', async (req, res) => {
   try {
     const { removeConnector } = await import('./tools/mcp.js')
     await removeConnector(req.params.id)
+    const { invalidateAttioCache } = await import('./tools/attio.js')
+    invalidateAttioCache()
     res.json({ ok: true })
   } catch (err) {
     res.status(400).json({ error: err.message })

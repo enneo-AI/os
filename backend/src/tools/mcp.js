@@ -60,7 +60,7 @@ export async function removeConnector(id) {
 // Tool-Definitionen aller Connectors — gecacht, Fehler pro Server nicht-fatal
 export async function mcpToolDefinitions() {
   if (Date.now() - cache.at < CACHE_TTL_MS) return cache.defs
-  const { data: connectors } = await db.from('connectors').select('id, name, url, token')
+  const { data: connectors } = await db.from('connectors').select('id, name, url, token').eq('kind', 'mcp')
   const defs = []
   const routes = new Map()
   for (const c of connectors || []) {
