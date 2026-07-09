@@ -1400,6 +1400,121 @@ $('composer-input').addEventListener('keydown', (e) => {
   }
 })
 
+// ============================================================ Mention-Autocomplete (@ in Pods)
+// Beim Tippen von "@" in Pod-Kontext: Dropdown mit @enni + Pod-Mitgliedern.
+// Ein globales Menü (fixed) für beide Eingaben: Composer + Pod-Startseite.
+const mentionMenu = document.createElement('div')
+mentionMenu.className = 'mention-menu'
+mentionMenu.hidden = true
+document.body.appendChild(mentionMenu)
+let mentionState = null // { input, items, sel, start }
+
+function mentionCandidatesFor(pod, profs) {
+  // Restricted Pod: nur Mitglieder + Ersteller. Open Pod: das ganze Team.
+  let people = profs
+  if (pod && !pod.open) {
+    const ids = new Set([...(pod.members || []), pod.created_by])
+    people = profs.filter((p) => ids.has(p.id))
+  }
+  return [
+    { tag: 'enni', name: 'Enni ruft den AI-Assistenten in die Konversation' },
+    ...people
+      .filter((p) => p.id !== session.user.id)
+      .map((p) => ({
+        tag: (p.display_name || p.email.split('@')[0]).split(' ')[0],
+        name: p.display_name || p.email,
+      })),
+  ]
+}
+
+async function mentionCheck(input, pod) {
+  const pos = input.selectionStart
+  const before = input.value.slice(0, pos)
+  const m = before.match(/(^|\s)@([\wÀ-ÿ.\-]*)$/)
+  if (!m) return mentionClose()
+  const query = m[2].toLowerCase()
+  const profs = await allProfiles()
+  const items = mentionCandidatesFor(pod, profs).filter(
+    (c) => c.tag.toLowerCase().startsWith(query) || c.name.toLowerCase().includes(query)
+  )
+  if (!items.length) return mentionClose()
+  mentionState = { input, items, sel: 0, start: pos - query.length - 1 }
+  renderMentionMenu()
+}
+
+function renderMentionMenu() {
+  const { input, items, sel } = mentionState
+  mentionMenu.innerHTML = items
+    .map(
+      (c, i) =>
+        `<button class="mm-row${i === sel ? ' on' : ''}" data-i="${i}"><span class="mm-name">@${esc(c.tag)}</span><span class="mm-sub">${esc(c.name)}</span></button>`
+    )
+    .join('')
+  mentionMenu.querySelectorAll('.mm-row').forEach((b) =>
+    // mousedown statt click — feuert vor dem blur des Inputs
+    b.addEventListener('mousedown', (e) => {
+      e.preventDefault()
+      mentionPick(Number(b.dataset.i))
+    })
+  )
+  const r = input.getBoundingClientRect()
+  mentionMenu.hidden = false
+  mentionMenu.style.left = `${r.left}px`
+  mentionMenu.style.width = `${Math.min(360, r.width)}px`
+  mentionMenu.style.bottom = `${window.innerHeight - r.top + 6}px`
+}
+
+function mentionClose() {
+  mentionState = null
+  mentionMenu.hidden = true
+}
+
+function mentionPick(i) {
+  const { input, items, start } = mentionState
+  const c = items[i]
+  const after = input.value.slice(input.selectionStart)
+  input.value = `${input.value.slice(0, start)}@${c.tag} ${after}`
+  const caret = start + c.tag.length + 2
+  mentionClose()
+  input.focus()
+  input.setSelectionRange(caret, caret)
+  if (input.id === 'composer-input') autosize()
+}
+
+function attachMentions(input, getPod) {
+  input.addEventListener('input', () => {
+    const pod = getPod()
+    if (!pod) return mentionClose()
+    mentionCheck(input, pod)
+  })
+  input.addEventListener('blur', () => setTimeout(() => { if (mentionState?.input === input) mentionClose() }, 120))
+}
+attachMentions($('composer-input'), () => convPod)
+attachMentions($('pod-quick-input'), () => activePod)
+
+// Capture-Phase auf document: läuft VOR den Enter-Send-Handlern der Inputs
+document.addEventListener(
+  'keydown',
+  (e) => {
+    if (!mentionState) return
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      e.stopPropagation()
+      const n = mentionState.items.length
+      mentionState.sel = (mentionState.sel + (e.key === 'ArrowDown' ? 1 : n - 1)) % n
+      renderMentionMenu()
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault()
+      e.stopPropagation()
+      mentionPick(mentionState.sel)
+    } else if (e.key === 'Escape') {
+      e.stopPropagation()
+      mentionClose()
+    }
+  },
+  { capture: true }
+)
+
 // ============================================================ Tool-Panel
 const panel = $('tool-panel')
 function openPanel(call) {
