@@ -287,10 +287,12 @@ app.post('/api/enneo-write/:id/reject', async (req, res) => {
   }
 })
 
-// Wissens-Update-Freigabe: Lern-Karte im Chat → hier wird das Wiki wirklich geändert + RAG re-indexiert
+// Wissens-Update-Review — NUR Admins (Aleksas Vorgabe: Vorschläge werden gesammelt,
+// der Admin geht sie regelmäßig durch; normale Nutzer können Enni nicht "schulen").
+// Erst hier wird das Wiki wirklich geändert + RAG re-indexiert.
 app.post('/api/knowledge-update/:id/approve', async (req, res) => {
-  const user = await getUserFromRequest(req)
-  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const user = await requireAdmin(req, res)
+  if (!user) return
   try {
     const { applyKnowledgeUpdate } = await import('./tools/wiki.js')
     res.json(await applyKnowledgeUpdate(req.params.id, user.id))
@@ -300,8 +302,8 @@ app.post('/api/knowledge-update/:id/approve', async (req, res) => {
 })
 
 app.post('/api/knowledge-update/:id/reject', async (req, res) => {
-  const user = await getUserFromRequest(req)
-  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const user = await requireAdmin(req, res)
+  if (!user) return
   try {
     const { rejectKnowledgeUpdate } = await import('./tools/wiki.js')
     res.json(await rejectKnowledgeUpdate(req.params.id, user.id))
@@ -319,7 +321,7 @@ async function requireAdmin(req, res) {
   }
   const { data: prof } = await db.from('profiles').select('is_admin').eq('id', user.id).maybeSingle()
   if (!prof?.is_admin) {
-    res.status(403).json({ error: 'Nur Admins können Integrationen verwalten' })
+    res.status(403).json({ error: 'Nur für Admins' })
     return null
   }
   return user

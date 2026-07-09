@@ -128,7 +128,7 @@ export const wikiToolDefinitions = [
   {
     name: 'wiki_propose_update',
     description:
-      'Schlägt eine Änderung an einer Wiki-Seite vor (oder eine neue Seite). Führt NICHTS aus — der Nutzer bekommt eine Lern-Karte im Chat und entscheidet dort. Nutze das PROAKTIV, wenn du in der Konversation dauerhaft gültiges Firmenwissen lernst: neue Fakten, Korrekturen an bestehendem Wiki-Inhalt, Entscheidungen, Prozessänderungen. Lies die Seite VORHER mit wiki_read_page und gib den KOMPLETTEN neuen Markdown-Inhalt an (nicht nur die Änderung). Kein Vorschlag für flüchtige Infos (einmalige Termine, Smalltalk, Debugging-Zwischenstände).',
+      'Schlägt eine Änderung an einer Wiki-Seite vor (oder eine neue Seite). Führt NICHTS aus — der Vorschlag landet in der Review-Liste im Admin-Bereich; NUR der Admin sieht ihn dort und entscheidet gesammelt (typisch wöchentlich). Nutze das PROAKTIV, wenn du in der Konversation dauerhaft gültiges Firmenwissen lernst: neue Fakten, Korrekturen an bestehendem Wiki-Inhalt, Entscheidungen, Prozessänderungen. Lies die Seite VORHER mit wiki_read_page und gib den KOMPLETTEN neuen Markdown-Inhalt an (nicht nur die Änderung). Kein Vorschlag für flüchtige Infos (einmalige Termine, Smalltalk, Debugging-Zwischenstände).',
     input_schema: {
       type: 'object',
       properties: {
@@ -190,7 +190,7 @@ export async function runWikiTool(name, input, ctx = {}) {
       status: 'proposed',
       action: page ? 'update' : 'create',
       hinweis:
-        'Vorschlag gespeichert — der Nutzer sieht jetzt eine Lern-Karte im Chat und entscheidet dort. Sag ihm in EINEM Satz, was du vorschlägst. Behaupte nie, das Wiki sei schon aktualisiert.',
+        'Vorschlag gespeichert — er landet in der Review-Liste des Admins (nicht beim Nutzer). Sag dem Nutzer in EINEM Satz, dass du dir das als Wissens-Vorschlag notiert hast und der Admin es prüft. Behaupte nie, das Wiki sei schon aktualisiert.',
     })
   }
 

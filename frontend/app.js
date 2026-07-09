@@ -140,7 +140,7 @@ $('pf-save').addEventListener('click', async () => {
 
 // Rail-Navigation — Sidebar-Inhalt wechselt mit dem Bereich
 const views = {
-  chat: 'v-chat', wiki: 'v-wiki', conn: 'v-conn', admin: 'v-admin',
+  chat: 'v-chat', wiki: 'v-wiki', conn: 'v-conn', admin: 'v-admin', skills: 'v-skills',
   connected: 'v-connected', pagelist: 'v-pagelist', 'admin-conn': 'v-admin-conn', pod: 'v-pod',
 }
 const sidebars = { chat: 'sb-chat', wiki: 'sb-spaces', admin: 'sb-admin' }
@@ -159,7 +159,7 @@ function syncUrl(area, view) {
   let path = '/chat'
   if (view === 'pod' && activePod) path = `/pod/${activePod.id}`
   else if (area === 'chat') path = currentConv?.id ? `/chat/${currentConv.id}` : '/chat'
-  else if (area === 'wiki') path = view === 'conn' ? '/spaces/tools' : view === 'admin-conn' ? '/spaces/connections' : '/spaces'
+  else if (area === 'wiki') path = view === 'conn' ? '/spaces/tools' : view === 'admin-conn' ? '/spaces/connections' : view === 'skills' ? '/spaces/skills' : '/spaces'
   else if (area === 'admin') path = '/admin'
   if (location.pathname !== path) history.pushState({}, '', path)
 }
@@ -176,12 +176,14 @@ async function route() {
     if (c) return openConversation(c)
   }
   if (p.startsWith('/spaces')) {
-    activateArea('wiki', p === '/spaces/tools' ? 'conn' : p === '/spaces/connections' ? 'admin-conn' : 'wiki')
+    activateArea('wiki', p === '/spaces/tools' ? 'conn' : p === '/spaces/connections' ? 'admin-conn' : p === '/spaces/skills' ? 'skills' : 'wiki')
+    if (p === '/spaces/skills') loadSkills()
     return loadSpacesTree()
   }
   if (p.startsWith('/admin')) {
     activateArea('admin')
     refreshCosts()
+    loadKnowledgeUpdates()
     return loadMembers()
   }
   newConversation()
@@ -192,7 +194,7 @@ document.querySelectorAll('.rail-btn').forEach((b) =>
   b.addEventListener('click', () => {
     activateArea(b.dataset.v)
     if (b.dataset.v === 'wiki') loadSpacesTree()
-    if (b.dataset.v === 'admin') { refreshCosts(); loadMembers() }
+    if (b.dataset.v === 'admin') { refreshCosts(); loadMembers(); loadKnowledgeUpdates() }
   })
 )
 
@@ -202,7 +204,10 @@ function activateChatView() {
 
 // Administration-Bereich (Spaces-Sidebar oben)
 document.querySelectorAll('.admin-area').forEach((b) =>
-  b.addEventListener('click', () => activateArea('wiki', b.dataset.view))
+  b.addEventListener('click', () => {
+    activateArea('wiki', b.dataset.view)
+    if (b.dataset.view === 'skills') loadSkills()
+  })
 )
 
 // Admin-Sidebar: zu Panel scrollen
@@ -510,7 +515,6 @@ function renderAgent(text, thinking, toolCalls, cost) {
 
   if (text) wrap.appendChild(agentMeta(() => text, cost))
   renderWriteCards(wrap, toolCalls)
-  renderLearnCards(wrap, toolCalls)
   return wrap
 }
 
@@ -579,16 +583,54 @@ function writeCard(p) {
   return el
 }
 
-// ============================================================ Wissens-Update-Loop (Lern-Karte)
-// Enni schlägt Wiki-Änderungen nur vor — übernommen wird erst nach Klick auf der Karte.
-async function renderLearnCards(wrap, toolCalls) {
-  const calls = (toolCalls || []).filter((c) => c.name === 'wiki_propose_update' && !c.is_error)
-  for (const call of calls) {
-    let uid = null
-    try { uid = JSON.parse(call.output).update_id } catch { /* Output noch nicht hydriert */ }
-    if (!uid || wrap.querySelector(`[data-kupdate="${uid}"]`)) continue
-    const { data: u } = await sb.from('knowledge_updates').select('*').eq('id', uid).maybeSingle()
-    if (u) wrap.appendChild(learnCard(u))
+// ============================================================ Wissens-Update-Loop (Admin-Review)
+// Enni sammelt Wiki-Vorschläge aus allen Konversationen — NUR der Admin sieht sie
+// (RLS-gated) und geht sie gesammelt durch. Kein User-Approve im Chat.
+async function loadKnowledgeUpdates() {
+  const { is_admin } = await ownProfile()
+  const panel = $('panel-knowledge')
+  const link = document.querySelector('.admin-link[data-target="panel-knowledge"]')
+  panel.hidden = !is_admin
+  if (link) link.hidden = !is_admin
+  if (!is_admin) return
+
+  const { data: updates } = await sb
+    .from('knowledge_updates')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(50)
+  const list = $('ku-list')
+  list.innerHTML = ''
+  const all = updates || []
+  const open = all.filter((u) => u.status === 'proposed')
+  const done = all.filter((u) => u.status !== 'proposed').slice(0, 10)
+  $('ku-count').textContent = open.length
+    ? `${open.length} offen`
+    : 'nichts offen'
+
+  // Namen der auslösenden Nutzer auflösen (profiles sind org-weit lesbar)
+  const ids = [...new Set(all.map((u) => u.triggered_by).filter(Boolean))]
+  let names = {}
+  if (ids.length) {
+    const { data: profs } = await sb.from('profiles').select('id, display_name, email').in('id', ids)
+    names = Object.fromEntries((profs || []).map((p) => [p.id, p.display_name || p.email]))
+  }
+
+  if (!open.length) {
+    list.insertAdjacentHTML('beforeend', '<div class="empty-plain">Keine offenen Vorschläge — Enni sammelt weiter aus den Konversationen.</div>')
+  }
+  for (const u of open) list.appendChild(learnCard(u, names))
+  if (done.length) {
+    list.insertAdjacentHTML('beforeend', '<div class="sb-time" style="margin-top:14px">Zuletzt entschieden</div>')
+    for (const u of done) {
+      const label = u.status === 'approved' ? '✓ Übernommen' : 'Abgelehnt'
+      list.insertAdjacentHTML(
+        'beforeend',
+        `<div class="row"><div><div class="r-name">${esc(u.summary)}</div>
+          <div class="r-sub">${esc(u.slug || '')} · von ${esc(names[u.triggered_by] || 'unbekannt')} · ${new Date(u.created_at).toLocaleDateString('de-DE')}</div></div>
+          <div></div><span class="role${u.status === 'approved' ? ' admin' : ''}">${label}</span></div>`
+      )
+    }
   }
 }
 
@@ -602,15 +644,17 @@ function diffHtml(diff) {
     .join('\n')
 }
 
-function learnCard(u) {
+function learnCard(u, names = {}) {
   const el = document.createElement('div')
   el.className = 'wp-card ku-card'
   el.dataset.kupdate = u.id
   const isNew = !u.wiki_page_id
+  const who = names[u.triggered_by] || 'unbekannt'
+  const when = new Date(u.created_at).toLocaleDateString('de-DE')
   el.innerHTML = `
     <div class="wp-top"><span class="wp-title">Wissens-Update · ${esc(u.slug || '')}</span><span class="wp-state"></span></div>
     <div class="wp-sum">${esc(u.summary)}</div>
-    <div class="wp-req">${isNew ? 'Neue Wiki-Seite' : 'Wiki-Seite aktualisieren'}${u.new_title ? ` · ${esc(u.new_title)}` : ''}</div>
+    <div class="wp-req">${isNew ? 'Neue Wiki-Seite' : 'Wiki-Seite aktualisieren'}${u.new_title ? ` · ${esc(u.new_title)}` : ''} · aus Konversation von ${esc(who)} · ${when}</div>
     <pre class="wp-body ku-diff">${diffHtml(u.diff)}</pre>
     <div class="wp-actions">
       <button class="btn quiet wp-reject">Ablehnen</button>
@@ -644,6 +688,8 @@ function learnCard(u) {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
       setState(data.status, data.result)
+      // Entschiedene Vorschläge wandern in "Zuletzt entschieden" — Liste kurz danach neu laden
+      if (data.status === 'approved' || data.status === 'rejected') setTimeout(loadKnowledgeUpdates, 1200)
     } catch (err) {
       setState('failed', err.message)
     }
@@ -1690,7 +1736,7 @@ async function loadConnectorRows() {
   }
 }
 
-document.querySelectorAll('.crow-add').forEach((b) =>
+document.querySelectorAll('.crow-add[data-category]').forEach((b) =>
   b.addEventListener('click', () => {
     cnCategory = b.dataset.category
     $('cm-title').textContent = cnCategory === 'tool' ? 'Eigenes Tool verknüpfen' : 'Connection verknüpfen'
@@ -1728,6 +1774,97 @@ $('cn-save').addEventListener('click', async () => {
   }
   $('cn-save').disabled = false
   $('cn-save').textContent = 'Verknüpfen'
+})
+
+// ============================================================ Skills (Best-Practice-Playbooks)
+// Tools sagen WAS Enni kann, Skills sagen WIE man es bei enneo richtig macht.
+// Lesen: alle. Anlegen/Ändern/Löschen: nur Admins (RLS-enforced, UI read-only für Member).
+let editingSkill = null
+
+async function loadSkills() {
+  const [{ data: skills }, { is_admin }] = await Promise.all([
+    sb.from('skills').select('*').order('name'),
+    ownProfile(),
+  ])
+  $('skill-add').hidden = !is_admin
+  const list = $('skill-list')
+  list.innerHTML = ''
+  if (!(skills || []).length) {
+    list.innerHTML = '<div class="empty-plain">Noch keine Skills definiert.</div>'
+  }
+  for (const s of skills || []) {
+    const row = document.createElement('button')
+    row.className = 'crow'
+    row.innerHTML = `<span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:var(--lila-deep);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
+      <div><div class="c-name">${esc(s.name)}</div><div class="c-sub">/${esc(s.slug)}${s.tools?.length ? ` · ${s.tools.length} Tools` : ''} · ${esc((s.context || '').split('\n')[0].slice(0, 90))}</div></div>
+      <span class="c-right ${s.enabled ? 'ok' : 'off'}"><span class="dot-s"></span>${s.enabled ? 'Aktiv' : 'Aus'}</span>`
+    row.addEventListener('click', () => openSkill(s, is_admin))
+    list.appendChild(row)
+  }
+}
+
+function openSkill(s, isAdmin) {
+  editingSkill = s
+  $('sk-title').textContent = s ? s.name : 'Neuer Skill'
+  $('sk-name').value = s?.name || ''
+  $('sk-slug').value = s?.slug || ''
+  $('sk-context').value = s?.context || ''
+  $('sk-workflow').value = s?.workflow || ''
+  $('sk-tools').value = (s?.tools || []).join('\n')
+  $('sk-triggers').value = s?.triggers || ''
+  $('sk-dod').value = s?.definition_of_done || ''
+  $('sk-corner').value = s?.corner_cases || ''
+  $('sk-err').textContent = ''
+  // Non-Admins sehen den Skill read-only — das ist die Skill-Übersicht für alle
+  document.querySelectorAll('#skill-overlay input, #skill-overlay textarea').forEach((el) => (el.disabled = !isAdmin))
+  $('sk-save').hidden = !isAdmin
+  $('sk-delete').hidden = !isAdmin || !s
+  $('skill-overlay').classList.add('open')
+  if (isAdmin) setTimeout(() => $('sk-name').focus(), 50)
+}
+
+$('skill-add').addEventListener('click', () => openSkill(null, true))
+$('sk-cancel').addEventListener('click', () => $('skill-overlay').classList.remove('open'))
+
+$('sk-save').addEventListener('click', async () => {
+  const err = $('sk-err')
+  err.textContent = ''
+  const name = $('sk-name').value.trim()
+  const slug = $('sk-slug').value.trim().toLowerCase()
+  if (!name) { err.textContent = 'Name fehlt.'; return }
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) { err.textContent = 'Slug bitte in kebab-case (a-z, 0-9, Bindestrich) — er ist zugleich der Slash-Command.'; return }
+  const row = {
+    name,
+    slug,
+    context: $('sk-context').value.trim(),
+    workflow: $('sk-workflow').value.trim(),
+    tools: $('sk-tools').value.split('\n').map((t) => t.trim()).filter(Boolean),
+    triggers: $('sk-triggers').value.trim(),
+    definition_of_done: $('sk-dod').value.trim(),
+    corner_cases: $('sk-corner').value.trim(),
+    updated_by: session.user.id,
+  }
+  $('sk-save').disabled = true
+  const q = editingSkill
+    ? sb.from('skills').update(row).eq('id', editingSkill.id)
+    : sb.from('skills').insert({ ...row, created_by: session.user.id })
+  const { error } = await q
+  $('sk-save').disabled = false
+  if (error) {
+    err.textContent = error.code === '23505' ? `Slug "/${slug}" ist schon vergeben.` : 'Fehler: ' + error.message
+    return
+  }
+  $('skill-overlay').classList.remove('open')
+  loadSkills()
+})
+
+$('sk-delete').addEventListener('click', async () => {
+  if (!editingSkill) return
+  if (!window.confirm(`Skill "${editingSkill.name}" löschen?`)) return
+  const { error } = await sb.from('skills').delete().eq('id', editingSkill.id)
+  if (error) { $('sk-err').textContent = 'Fehler: ' + error.message; return }
+  $('skill-overlay').classList.remove('open')
+  loadSkills()
 })
 
 // Hell/Dunkel-Umschalter (Init passiert inline im <head>, gegen Theme-Flash)

@@ -439,6 +439,14 @@
   .danger-link{border:0;background:none;color:var(--high);font-size:12.5px;font-weight:600;padding:4px 0;opacity:.85}
   .danger-link:hover{opacity:1;text-decoration:underline}
   .list-panel h3{font-size:13.5px;font-weight:640;margin:18px 0 6px}
+  .panel-sub{font-size:12.5px;color:var(--ink-3);margin:0 0 10px}
+  .ku-count{font-weight:500;color:var(--ink-3);margin-left:6px}
+  .modal.wide{width:min(720px,calc(100vw - 40px));max-height:calc(100vh - 60px);overflow-y:auto}
+  .sk-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+  .lbl-hint{font-weight:400;color:var(--ink-3)}
+  .modal textarea{width:100%;resize:vertical;font:inherit;font-size:13px;border:1px solid var(--hair);border-radius:12px;background:var(--surface);padding:10px 14px;outline:0;margin-bottom:18px}
+  .modal textarea:focus{border-color:var(--lila);box-shadow:0 0 0 3px rgba(123,90,226,.12)}
+  .modal textarea:disabled,.modal input:disabled{opacity:.55;cursor:not-allowed}
   .row{display:grid;grid-template-columns:1fr auto auto;gap:18px;align-items:center;padding:12px 2px;border-bottom:1px solid var(--hair);font-size:13.5px}
   .row:last-child{border-bottom:0}
   .row .r-name{font-weight:560}
@@ -563,6 +571,7 @@
         <div class="sb-sec">Administration</div>
         <button class="sb-item admin-area" data-view="admin-conn"><span class="txt">Connections</span></button>
         <button class="sb-item admin-area" data-view="conn"><span class="txt">Tools</span></button>
+        <button class="sb-item admin-area" data-view="skills"><span class="txt">Skills</span></button>
         <div class="sb-sec">Open Spaces <button class="sec-add" id="new-open-space" title="Neuer Open Space">＋</button></div>
         <div id="space-tree-open"></div>
         <div class="sb-sec">Restricted Spaces <button class="sec-add" id="new-restricted-space" title="Neuer Restricted Space">＋</button></div>
@@ -575,6 +584,7 @@
       <div class="sb-scroll">
         <div class="sb-sec">Administration</div>
         <button class="sb-item admin-link" data-target="k-today"><span class="txt">Kosten</span></button>
+        <button class="sb-item admin-link" data-target="panel-knowledge" hidden><span class="txt">Wissens-Updates</span></button>
         <button class="sb-item admin-link" data-target="panel-model"><span class="txt">Modell</span></button>
         <button class="sb-item admin-link" data-target="panel-members"><span class="txt">Mitglieder</span></button>
       </div>
@@ -791,6 +801,21 @@
       </div>
     </section>
 
+    <!-- SKILLS -->
+    <section class="view" id="v-skills">
+      <div class="page-head">
+        <div class="eyebrow">Skills</div>
+        <h2>Wie Enni Dinge richtig macht.</h2>
+        <p>Tools sagen, was Enni technisch kann — Skills sagen, wie man es bei enneo macht: Kontext, Workflow, Best Practices.</p>
+      </div>
+      <div class="cost-shell">
+        <div class="list-panel">
+          <div id="skill-list"></div>
+          <button class="crow crow-add" id="skill-add" hidden><span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--ink-3);fill:none;stroke-width:1.8;stroke-linecap:round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span><div><div class="c-name" style="color:var(--ink-2)">Neuer Skill</div><div class="c-sub">Kontext · Workflow · Tools · Trigger · Definition of Done · Corner Cases</div></div></button>
+        </div>
+      </div>
+    </section>
+
     <!-- ADMIN -->
     <section class="view" id="v-admin">
       <div class="page-head">
@@ -815,6 +840,12 @@
             <div class="k-val" id="k-count">—</div>
             <div class="k-sub">seit Start</div>
           </div>
+        </div>
+
+        <div class="list-panel" id="panel-knowledge" hidden>
+          <h3>Wissens-Updates <span class="ku-count" id="ku-count"></span></h3>
+          <p class="panel-sub">Enni sammelt aus allen Konversationen Vorschläge fürs Wiki. Nur du entscheidest, was übernommen wird — nach der Übernahme wird die Seite sofort neu indexiert.</p>
+          <div id="ku-list"></div>
         </div>
 
         <div class="list-panel" id="panel-model">
@@ -869,6 +900,42 @@
     <div class="m-actions">
       <button class="btn quiet" id="cn-cancel">Abbrechen</button>
       <button class="btn dark" id="cn-save">Verknüpfen</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= SKILL MODAL ================= -->
+<div class="overlay" id="skill-overlay">
+  <div class="modal wide" role="dialog" aria-modal="true">
+    <h3 id="sk-title">Skill</h3>
+    <div class="sk-grid">
+      <div>
+        <label for="sk-name">Name</label>
+        <input type="text" id="sk-name" placeholder="z. B. Voice-Agent-Konfiguration">
+      </div>
+      <div>
+        <label for="sk-slug">Slug (= Slash-Command)</label>
+        <input type="text" id="sk-slug" placeholder="voice-agent">
+      </div>
+    </div>
+    <label for="sk-context">Kontext <span class="lbl-hint">— warum gibt es diesen Skill, wofür ist er da, typische Use Cases</span></label>
+    <textarea id="sk-context" rows="4"></textarea>
+    <label for="sk-workflow">Workflow <span class="lbl-hint">— wann macht man genau was, Schritt für Schritt</span></label>
+    <textarea id="sk-workflow" rows="6"></textarea>
+    <label for="sk-tools">Tools <span class="lbl-hint">— ein Tool pro Zeile · Basis für die Ausführung, nicht exklusiv</span></label>
+    <textarea id="sk-tools" rows="3" placeholder="wiki_semantic_search&#10;enneo_api_get&#10;gitlab_search_code"></textarea>
+    <label for="sk-triggers">Trigger <span class="lbl-hint">— wann greift der Skill: außer /slash auch kontextbasiert, z. B. „User will einen Voicebot bauen"</span></label>
+    <textarea id="sk-triggers" rows="3"></textarea>
+    <label for="sk-dod">Definition of Done <span class="lbl-hint">— wann ist die Ausführung fertig und gut</span></label>
+    <textarea id="sk-dod" rows="3"></textarea>
+    <label for="sk-corner">Corner Cases <span class="lbl-hint">— bekannte Sonderfälle und wie man sie behandelt</span></label>
+    <textarea id="sk-corner" rows="3"></textarea>
+    <div class="err" id="sk-err"></div>
+    <div class="m-actions">
+      <button class="btn quiet danger-link" id="sk-delete" hidden>Skill löschen</button>
+      <span style="flex:1"></span>
+      <button class="btn quiet" id="sk-cancel">Abbrechen</button>
+      <button class="btn dark" id="sk-save">Speichern</button>
     </div>
   </div>
 </div>

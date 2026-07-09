@@ -1,6 +1,18 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-08 (Session-Ende — Polish-, Connector- & Team-Chat-Runde. MVP live auf https://enneo-os.netlify.app)
+**Zuletzt aktualisiert:** 2026-07-09 (Wissens-Update-Loop live als Admin-Review + Skillstruktur v1. MVP live auf https://enneo-os.netlify.app)
+
+### Session 2026-07-09 — Wissens-Update-Loop (Admin-Review) + Skillstruktur
+
+1. **Wissens-Update-Loop LIVE — als Admin-Review, NICHT als User-Learn-Card.** Aleksas Vorgabe: unerfahrene Nutzer dürfen Enni nicht schulen — Vorschläge werden gesammelt, NUR der Admin sieht und genehmigt sie (typisch 1×/Woche). Umbau der Vormittags-Version (die hatte User-Approve im Chat):
+   - Migration `0012_knowledge_admin_only.sql`: RLS-select auf `knowledge_updates` nur noch für `is_admin`; alte `ku_review`-Policy (jeder Authentifizierte) entfernt. Updates laufen ausschließlich über Backend-Endpoints.
+   - Backend: `/api/knowledge-update/:id/approve|reject` jetzt hinter `requireAdmin` (403 für Member — E2E verifiziert). Tool-Description + System-Prompt: Enni sagt dem Nutzer nur "als Wissens-Vorschlag notiert", verspricht nichts.
+   - Frontend: Learn-Card aus dem Chat entfernt. Neues Admin-Panel **"Wissens-Updates"** (Admin-Bereich, Sidebar-Link, beides für Non-Admins hidden + RLS-gated): offene Vorschläge als Karten (Diff, Quelle "aus Konversation von X", Übernehmen/Ablehnen) + "Zuletzt entschieden"-Historie.
+   - **E2E verifiziert:** Vorschlag → Admin-Panel → Übernehmen → Wiki-Seite aktualisiert + RAG-Chunks sofort re-embedded ("3 Chunks neu indexiert"); Non-Admin: 403 am Endpoint, leere Liste via RLS. Testdaten danach vollständig zurückgebaut (Seite, Chunks, Testuser).
+2. **Skillstruktur v1 (Tristan-Roadmap Punkt 1).** Migration `0013_skills.sql`: Tabelle `skills` mit 6 Textblöcken — `context` (warum/wofür), `workflow` (wann macht man was), `tools[]` (verknüpfte Basis-Tools), `triggers` (Slash-Command + kontextbasiert), `definition_of_done`, `corner_cases` — plus `slug` (= künftiger Slash-Command), `enabled`. RLS: lesen alle, schreiben nur Admins. UI: neuer Bereich **Skills** unter Administration (Spaces-Sidebar, `/spaces/skills`), Zeilen-Liste im Tools-Look, breites Editor-Modal; Non-Admins sehen alles read-only (Editor disabled, kein Save/Delete — damit ist "Skill-Overview für Non-Admins" aus der Tristan-Liste ab Tag 1 drin). **E2E:** Skill angelegt → gelistet → bearbeitet geöffnet → gelöscht, RLS-Write als Non-Admin verweigert.
+3. **Noch NICHT drin (bewusst, nächste Session):** Skillcalls — `/slash` im Composer + Trigger-Block in Ennis System-Prompt + `skill_read`-Tool. Die Struktur ist dafür vorbereitet.
+
+**Phase-2-Roadmap (Tristan-Liste, sortiert 2026-07-09):** 1) Skillstruktur ✓ → 2) Skillcalls (Slash + Kontext-Trigger + Workflow-Overview) → 3) Non-Admin-Overview ✓ (Teil von 1) → 4) Department-Briefings (Content, parallel) → 5) Post-to-Slack (als UI-Connection per Knopfdruck, OAuth-Flow für Connector-Layer nötig — bisher nur Bearer-Token-MCPs) → 6) Cronjobs/Routinen → 7) Missing Skills (Job Role Creator, Skill Creator Metaskill, OS Health Audit; Feedback-Audit erst nach Privacy-Entscheidung — Konflikt mit "Inhalte werden nie ausgewertet") → 8) Agent-to-Agent Orchestration.
 
 ### Session 2026-07-06 → 2026-07-08 — Was neu ist (Details in den Punkten 10c–10m unten)
 
@@ -22,7 +34,8 @@ Reine Ausbau-/Polish-Session auf dem live MVP. Reihenfolge wie gebaut:
 
 ### Offene Prioritäten für die NÄCHSTE Session (Reihenfolge = Empfehlung)
 
-1. [ ] **Wissens-Update-Loop** — der eigentliche Kern-Differenzierer, seit Tag 1 offen (`knowledge_updates`-Tabelle existiert seit Migration 0001). Enni schlägt nach Konversationen Wiki-Diffs vor → Mensch reviewt (Learn-Card im Chat, siehe mockup-v5 „WISSENS-UPDATE") → Wiki-Seite aktualisiert + Audit-Eintrag. **Nach dem Update: betroffene RAG-Chunks re-embedden** (Script-Pattern `scratchpad/index_rag.py`).
+1. [x] **Wissens-Update-Loop** — LIVE seit 2026-07-09, als Admin-Review (siehe Session-Block oben). Enni schlägt vor → Admin-Panel "Wissens-Updates" → Übernehmen aktualisiert Wiki + re-embedded Chunks sofort.
+1b. [ ] **Skillcalls** — nächster Schritt der Tristan-Roadmap: `/slug` im Composer (Autocomplete aus `skills`), Trigger-Blöcke kompakt in Ennis System-Prompt, `skill_read`-Tool, Workflow-Overview bei Slash-Call.
 2. [ ] **Realtime für Pod-Team-Chat** — Supabase Realtime auf `messages`. Jetzt dringender, weil Pods echte Team-Chats sind: Kollegen sehen neue Nachrichten aktuell erst nach Reload.
 3. [ ] **Mention-Autocomplete** — @-Dropdown mit Pod-Mitgliedern + @enni beim Tippen (aktuell sind @-Tags reiner Text, nur farblich hervorgehoben).
 4. [ ] **Space-Rechte im Tool-Layer** — Enni ignoriert Restricted-Spaces beim Antworten noch (wiki/gitlab nicht nach User-Spaces gefiltert). Vertraulichkeit vor Team-Rollout.
