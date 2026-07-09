@@ -18,12 +18,14 @@ export const fileToolDefinitions = [
       '"document" = Dokument im enneo-Brand (A4-artig, druckbar als PDF über den Browser) — du lieferst NUR den inneren HTML-Body (h1/h2/h3, p, ul/ol, table, blockquote; Klassen: .lead für Intro-Absatz, .kpi-row > .kpi mit .v/.l für Kennzahlen, .accent für Purple-Hervorhebung). ' +
       '"presentation" = Slide-Deck im enneo-Brand (16:9, dunkel, Grain-Gradient, Pfeiltasten-Navigation, druckbar) — du lieferst eine Folge von <section class="slide">…</section>-Blöcken; erste Folie class="slide title" (mit .kicker + h1), Akzent-Folien class="slide accent"; in Folien: h2/h3, p, ul, .cols > .card, .big für große Zahlen, table. Max. ~6 Zeilen Inhalt pro Folie — lieber mehr Folien als volle. ' +
       '"raw" = beliebige Textdatei (CSV, Markdown, JSON, TXT) ohne Branding — du lieferst den kompletten Inhalt in "text" und eine filename-Endung passend zum Format. ' +
+      'document/presentation werden standardmäßig als ECHTES PDF gerendert (format="pdf", Chromium-Rendering — Dokument A4, Präsentation 16:9 mit einer Folie pro Seite). Nur wenn der Nutzer ausdrücklich eine interaktive/HTML-Version will (z. B. Deck mit Tastatur-Navigation im Browser): format="html". ' +
       'Sprache in Brand-Dateien: Deutsch, Sie-Form, kein Hype, KEINE Emojis. Zeige dem Nutzer den Link danach als Markdown-Link.',
     input_schema: {
       type: 'object',
       properties: {
         kind: { type: 'string', enum: ['document', 'presentation', 'raw'], description: 'Art der Datei' },
-        filename: { type: 'string', description: 'Dateiname mit Endung, z. B. "kickoff-brief-stadtwerke.html" oder "export.csv". Für document/presentation immer .html' },
+        format: { type: 'string', enum: ['pdf', 'html'], description: 'Nur für document/presentation. Default: pdf.' },
+        filename: { type: 'string', description: 'Dateiname mit Endung, z. B. "kickoff-brief-stadtwerke.pdf" oder "export.csv". Endung wird ans Format angepasst.' },
         title: { type: 'string', description: 'Titel (erscheint im Browser-Tab und Dokumentkopf)' },
         html: { type: 'string', description: 'document: innerer HTML-Body. presentation: die <section class="slide">-Blöcke. Bei raw weglassen.' },
         text: { type: 'string', description: 'Nur bei kind=raw: der komplette Dateiinhalt.' },
@@ -35,6 +37,7 @@ export const fileToolDefinitions = [
 ]
 
 export const MIME = {
+  pdf: 'application/pdf',
   html: 'text/html; charset=utf-8',
   csv: 'text/csv; charset=utf-8',
   md: 'text/markdown; charset=utf-8',
@@ -59,23 +62,41 @@ export async function runFileTool(name, input, ctx = {}) {
     .toLowerCase()
 
   let content
+  let pdfNote = ''
   if (kind === 'raw') {
     if (!input.text) throw new Error('kind=raw braucht "text"')
     content = input.text
   } else {
     if (!input.html) throw new Error(`kind=${kind} braucht "html"`)
-    if (!filename.endsWith('.html')) filename += '.html'
-    content =
+    const html =
       kind === 'presentation'
         ? wrapPresentation({ title: input.title, slides: input.html })
         : wrapDocument({ title: input.title, body: input.html })
+    const wantPdf = (input.format || 'pdf') === 'pdf'
+    if (wantPdf) {
+      try {
+        const { htmlToPdf } = await import('../pdf.js')
+        content = await htmlToPdf(html, kind)
+        filename = filename.replace(/\.(html|pdf)$/, '') + '.pdf'
+      } catch (err) {
+        // Chromium nicht verfügbar o.ä. → HTML als Fallback liefern statt zu scheitern
+        console.error('PDF-Rendering fehlgeschlagen, HTML-Fallback:', err.message)
+        content = html
+        pdfNote = ` HINWEIS: PDF-Rendering ist fehlgeschlagen (${err.message}) — als HTML geliefert, im Browser über Drucken als PDF exportierbar. Sag das dem Nutzer ehrlich.`
+        filename = filename.replace(/\.(html|pdf)$/, '') + '.html'
+      }
+    } else {
+      content = html
+      if (!filename.endsWith('.html')) filename = filename.replace(/\.pdf$/, '') + '.html'
+    }
   }
 
   const ext = filename.split('.').pop()
   const path = `${ctx.userId || 'system'}/${Date.now()}-${filename}`
+  const body = Buffer.isBuffer(content) || content instanceof Uint8Array ? Buffer.from(content) : Buffer.from(content, 'utf8')
   const { error: upErr } = await db.storage
     .from(BUCKET)
-    .upload(path, Buffer.from(content, 'utf8'), { contentType: MIME[ext] || 'application/octet-stream' })
+    .upload(path, body, { contentType: MIME[ext] || 'application/octet-stream' })
   if (upErr) throw new Error(`Upload fehlgeschlagen: ${upErr.message}`)
 
   const { data: signed, error: signErr } = await db.storage.from(BUCKET).createSignedUrl(path, LINK_TTL)
@@ -91,6 +112,10 @@ export async function runFileTool(name, input, ctx = {}) {
     hinweis:
       'Datei erstellt. Gib dem Nutzer den Link als Markdown-Link im Format [' +
       filename +
-      '](URL). Bei document/presentation: erwähne dass die Datei im Browser geöffnet und dort als PDF gedruckt werden kann (Präsentation: Pfeiltasten zum Blättern).',
+      '](URL).' +
+      (filename.endsWith('.html')
+        ? ' HTML-Datei: öffnet im Browser, dort als PDF druckbar (Präsentation: Pfeiltasten zum Blättern).'
+        : ' PDF: öffnet direkt im Browser und lässt sich herunterladen/teilen.') +
+      pdfNote,
   })
 }

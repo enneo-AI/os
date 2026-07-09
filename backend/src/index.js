@@ -14,7 +14,16 @@ app.use(
   })
 )
 
-app.get('/health', (_req, res) => res.json({ ok: true }))
+app.get('/health', async (_req, res) => {
+  let pdf = 'ok'
+  try {
+    const { chromiumInfo } = await import('./pdf.js')
+    pdf = chromiumInfo()
+  } catch (err) {
+    pdf = err.message
+  }
+  res.json({ ok: true, pdf })
+})
 
 // Von Enni erstellte Dateien inline ausliefern (Supabase Storage serviert HTML
 // als text/plain, Anti-XSS). Autorisierung steckt in der Storage-Signed-URL selbst —
