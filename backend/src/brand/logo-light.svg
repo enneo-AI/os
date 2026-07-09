@@ -1,5 +1,5 @@
 <svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" viewBox="0 0 1006 205">
-  <defs><style>.st2{fill:#292C3F}.st0{fill:url(#Enneo_Logo_Gradient)}.st1{fill:url(#Enneo_Logo_Gradient1)}.st3{fill:url(#Enneo_Logo_Gradient2)}</style>
+  <defs><style>.st2{fill:#292C3F}.st0{fill:url(#linear-gradient)}.st1{fill:url(#linear-gradient1)}.st3{fill:url(#linear-gradient2)}</style>
     <linearGradient id="linear-gradient" x1="37.8" y1="138.4" x2="156.5" y2="167.3" gradientTransform="translate(0 194) scale(1 -1)" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#b09cee"></stop>
       <stop offset="1" stop-color="#7b5ae2"></stop>
