@@ -95,8 +95,21 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
   } catch (err) {
     console.error('Skills-Load fehlgeschlagen:', err.message)
   }
+  // Aktuelles Datum als eigener (uncached) Block — sonst kann Enni "diese Woche",
+  // "gestern", "letzter Monat" nicht einordnen (z.B. bei Attio-/Slack-/Report-Fragen).
+  // Wochen-Grenzen explizit mitgeben: Modelle verrechnen sich sonst gern beim Mo-So-Mapping.
+  const berlin = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Berlin' }))
+  const now = berlin.toLocaleString('de-DE', {
+    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  })
+  const monday = new Date(berlin)
+  monday.setDate(berlin.getDate() - ((berlin.getDay() + 6) % 7))
+  const sunday = new Date(monday)
+  sunday.setDate(monday.getDate() + 6)
+  const d = (x) => x.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
   const systemBlocks = [
     { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: `Aktuelles Datum und Uhrzeit: ${now} (Europe/Berlin). Die aktuelle Woche läuft von Montag, ${d(monday)}, bis Sonntag, ${d(sunday)}. Rechne relative Zeitangaben ("diese Woche", "gestern", "letzter Monat") immer davon ausgehend.` },
     ...(skillsBlock ? [{ type: 'text', text: skillsBlock }] : []),
     ...(extraSystem ? [{ type: 'text', text: extraSystem }] : []),
   ]
