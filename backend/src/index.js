@@ -287,6 +287,29 @@ app.post('/api/enneo-write/:id/reject', async (req, res) => {
   }
 })
 
+// Wissens-Update-Freigabe: Lern-Karte im Chat → hier wird das Wiki wirklich geändert + RAG re-indexiert
+app.post('/api/knowledge-update/:id/approve', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  try {
+    const { applyKnowledgeUpdate } = await import('./tools/wiki.js')
+    res.json(await applyKnowledgeUpdate(req.params.id, user.id))
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+app.post('/api/knowledge-update/:id/reject', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  try {
+    const { rejectKnowledgeUpdate } = await import('./tools/wiki.js')
+    res.json(await rejectKnowledgeUpdate(req.params.id, user.id))
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
 // Connectors (MCP-Server verknüpfen) — nur Admins
 async function requireAdmin(req, res) {
   const user = await getUserFromRequest(req)

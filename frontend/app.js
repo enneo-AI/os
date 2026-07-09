@@ -510,6 +510,7 @@ function renderAgent(text, thinking, toolCalls, cost) {
 
   if (text) wrap.appendChild(agentMeta(() => text, cost))
   renderWriteCards(wrap, toolCalls)
+  renderLearnCards(wrap, toolCalls)
   return wrap
 }
 
@@ -562,6 +563,81 @@ function writeCard(p) {
     actions.querySelectorAll('button').forEach((b) => (b.disabled = true))
     try {
       const res = await fetch(`${BACKEND_URL}/api/enneo-write/${p.id}/${action}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${await token()}` },
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      setState(data.status, data.result)
+    } catch (err) {
+      setState('failed', err.message)
+    }
+    actions.querySelectorAll('button').forEach((b) => (b.disabled = false))
+  }
+  el.querySelector('.wp-approve').addEventListener('click', () => act('approve'))
+  el.querySelector('.wp-reject').addEventListener('click', () => act('reject'))
+  return el
+}
+
+// ============================================================ Wissens-Update-Loop (Lern-Karte)
+// Enni schlägt Wiki-Änderungen nur vor — übernommen wird erst nach Klick auf der Karte.
+async function renderLearnCards(wrap, toolCalls) {
+  const calls = (toolCalls || []).filter((c) => c.name === 'wiki_propose_update' && !c.is_error)
+  for (const call of calls) {
+    let uid = null
+    try { uid = JSON.parse(call.output).update_id } catch { /* Output noch nicht hydriert */ }
+    if (!uid || wrap.querySelector(`[data-kupdate="${uid}"]`)) continue
+    const { data: u } = await sb.from('knowledge_updates').select('*').eq('id', uid).maybeSingle()
+    if (u) wrap.appendChild(learnCard(u))
+  }
+}
+
+function diffHtml(diff) {
+  return (diff || '')
+    .split('\n')
+    .map((l) => {
+      const cls = l.startsWith('+') ? 'add' : l.startsWith('-') ? 'del' : l.startsWith('@@') ? 'hunk' : ''
+      return `<span class="dl ${cls}">${esc(l)}</span>`
+    })
+    .join('\n')
+}
+
+function learnCard(u) {
+  const el = document.createElement('div')
+  el.className = 'wp-card ku-card'
+  el.dataset.kupdate = u.id
+  const isNew = !u.wiki_page_id
+  el.innerHTML = `
+    <div class="wp-top"><span class="wp-title">Wissens-Update · ${esc(u.slug || '')}</span><span class="wp-state"></span></div>
+    <div class="wp-sum">${esc(u.summary)}</div>
+    <div class="wp-req">${isNew ? 'Neue Wiki-Seite' : 'Wiki-Seite aktualisieren'}${u.new_title ? ` · ${esc(u.new_title)}` : ''}</div>
+    <pre class="wp-body ku-diff">${diffHtml(u.diff)}</pre>
+    <div class="wp-actions">
+      <button class="btn quiet wp-reject">Ablehnen</button>
+      <button class="btn dark wp-approve">Übernehmen</button>
+    </div>
+    <div class="wp-result" hidden></div>`
+  const state = el.querySelector('.wp-state')
+  const actions = el.querySelector('.wp-actions')
+  const resultBox = el.querySelector('.wp-result')
+  const setState = (status, result) => {
+    actions.hidden = status !== 'proposed'
+    state.className = 'wp-state ' + (status === 'approved' ? 'executed' : status)
+    state.textContent =
+      status === 'approved' ? '✓ Übernommen' :
+      status === 'failed' ? 'Fehlgeschlagen' :
+      status === 'rejected' ? 'Abgelehnt' :
+      'Wartet auf Freigabe'
+    if (result && status !== 'proposed') {
+      resultBox.hidden = false
+      resultBox.textContent = String(result).slice(0, 600)
+    }
+  }
+  setState(u.status, u.status === 'proposed' ? null : u.result)
+  const act = async (action) => {
+    actions.querySelectorAll('button').forEach((b) => (b.disabled = true))
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/knowledge-update/${u.id}/${action}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${await token()}` },
       })
