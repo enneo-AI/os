@@ -1,6 +1,38 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-05 (Session-Ende — MVP komplett live auf https://enneo-os.netlify.app)
+**Zuletzt aktualisiert:** 2026-07-08 (Session-Ende — Polish-, Connector- & Team-Chat-Runde. MVP live auf https://enneo-os.netlify.app)
+
+### Session 2026-07-06 → 2026-07-08 — Was neu ist (Details in den Punkten 10c–10m unten)
+
+Reine Ausbau-/Polish-Session auf dem live MVP. Reihenfolge wie gebaut:
+1. **Design-Declutter** (10c): Emoji-Icons raus (Sidebar/Pods/Tabs/Badges/Tool-Rows), Lock-SVG nur für Restricted, Stroke-Icons statt Emoji auf Tool-Cards. → Aleksas Design-Regel: **keine Emoji-UI-Icons, keine funktionslosen Badges, keine Boxen um Listen/Empty-States** (gilt für alle künftigen Builds).
+2. **Enneo-Plattform-Connector read-only** (10b): 4 Tools gegen die Mind-API (`https://{instanz}/api/mind`), universeller Production-Token auf Railway (`ENNEO_TOKEN`), Instanz per Name referenziert.
+3. **Enneo-Writes mit Freigabe-Gate** (10d): `enneo_propose_write` → Freigabe-Karte im Chat → Approve/Reject-Endpoints → echte Ausführung, Audit-Tabelle `enneo_write_proposals` (Migration 0007). DELETE gesperrt. Instanz-Auflösung universell ({name}.enneo.ai).
+4. **Enni-IQ-Upgrade** (10e): 15 Plugin-Skills als Wiki-Rezepte unter Slug `enneo-api/{thema}` importiert (43 RAG-Chunks), Prompt-Regel "Rezept lesen statt Endpoints raten". Fixte den Telefonnummern-Chat, wo Enni Endpoints riet.
+5. **Darstellungs-Paket** (10f): Streaming-Absätze (kein Klebe-Text zwischen Tool-Runden), Haiku-Auto-Titel (analysiert 1. Nachricht, 1–5 Wörter), Sidebar-Zeitgruppen + Rename/Delete, **Dark Mode** (Semantik-Variablen + Toggle), Loading-Skeletons, Tool-Output-Clip 20k.
+6. **Pod verlassen / löschen** (10g, Migration 0008): Verlassen für Mitglieder, Löschen nur Ersteller/Admin (RLS-enforced).
+7. **Code-Copy + Profil-Bearbeitung + @enneo.ai-Zwang** (10h, Migration 0009): Copy-Button auf Code-Blöcken, Profil-Modal (Name/Avatar/Passwort), `handle_new_user`-Trigger erzwingt @enneo.ai-Domain, Bucket `avatars`.
+8. **Antwort-Copy** (10i): subtiler Copy-Button in der Meta-Zeile jeder Enni-Antwort (nur Antwort-Text, nicht Gedanken).
+9. **Modellauswahl** (10j): **Fable 5** (`claude-fable-5`, $10/$50) ergänzt, **Opus 4.8 Default bei jedem Chat-Start** (Reset in newConversation), Auto-Titel-Prompt auf 1–5 Wörter + Haiku umgestellt.
+10. **enneo-Logo als Favicon + Tool-Logo** (10k): lila SVG `frontend/icons/enneo-icon.svg` (von enneo.ai/framerusercontent gezogen, auf `#7B5AE2` umgefärbt). Favicon + Logo auf der Enneo-Connection-Zeile.
+11. **Echte Tool-/Connection-Verknüpfung via MCP** (10l, Migration 0010): Tabelle `connectors`, jeder MCP-Server per URL (+Token write-only), Kategorie tool/connection, live-Discovery im Tool-Loop (`src/tools/mcp.js`).
+12. **Pods als Team-Chat nach Dust-Muster** (10m): Enni antwortet nur bei @enni, sonst reine Team-Nachricht; volle Pod-Kontext-Tools (`src/tools/pod.js`); Pod-Startseite mit Direkt-Input + Suche; Mention-Highlighting.
+
+**Theme-Toggle-Position:** direkt neben dem Abmelde-Icon im Sidebar-Footer (2 Icons als Paar).
+
+### Offene Prioritäten für die NÄCHSTE Session (Reihenfolge = Empfehlung)
+
+1. [ ] **Wissens-Update-Loop** — der eigentliche Kern-Differenzierer, seit Tag 1 offen (`knowledge_updates`-Tabelle existiert seit Migration 0001). Enni schlägt nach Konversationen Wiki-Diffs vor → Mensch reviewt (Learn-Card im Chat, siehe mockup-v5 „WISSENS-UPDATE") → Wiki-Seite aktualisiert + Audit-Eintrag. **Nach dem Update: betroffene RAG-Chunks re-embedden** (Script-Pattern `scratchpad/index_rag.py`).
+2. [ ] **Realtime für Pod-Team-Chat** — Supabase Realtime auf `messages`. Jetzt dringender, weil Pods echte Team-Chats sind: Kollegen sehen neue Nachrichten aktuell erst nach Reload.
+3. [ ] **Mention-Autocomplete** — @-Dropdown mit Pod-Mitgliedern + @enni beim Tippen (aktuell sind @-Tags reiner Text, nur farblich hervorgehoben).
+4. [ ] **Space-Rechte im Tool-Layer** — Enni ignoriert Restricted-Spaces beim Antworten noch (wiki/gitlab nicht nach User-Spaces gefiltert). Vertraulichkeit vor Team-Rollout.
+5. [ ] **Eval-Harness** — Golden-Set von 15–20 echten Fragen mit erwarteten Kern-Fakten, per Script durchjagen. Fängt Enni-Regressionen bei Prompt-/Tool-Umbauten (wie beim Telefonnummern-Chat, der nur zufällig auffiel).
+6. [ ] **Routinen/Scheduler** — erstes echtes Power-Feature ("jeden Morgen offene Tickets von Instanz X als Report in den Pod"). `llm_usage.source` kennt 'routine' schon.
+7. [ ] **RAG-Re-Index automatisieren** — aktuell manuell; DB-Trigger/Cron der geänderte Wiki-Seiten re-embedded.
+8. [ ] **Report-Visualisierung** — Enneo-Reports (Telefonie/Ticket-Metriken) als Charts statt Texttabellen.
+9. [ ] Aleksa-Todos: eigene Domain für die Netlify-Seite; Passwort-Änderung/Invite-Flow vor Team-Start (Profil-Modal kann Passwort schon, aber kein Invite).
+
+**Wartung nicht vergessen:** Wenn enneo das Claude-Code-Plugin updated → die 15 `enneo-api/`-Rezeptseiten neu importieren + Chunks re-embedden (Pattern in Punkt 10e). Backend deployt NUR via `railway up` (nicht git push); Frontend via git push (Netlify-Auto-Deploy).
 
 ### Was wurde in dieser Session gemacht (2026-07-03 → 2026-07-05)
 
