@@ -1859,7 +1859,8 @@ async function loadConnectorRows() {
     .select('id, name, url, category, tool_count, kind')
     .order('created_at')
   const { is_admin } = await ownProfile()
-  renderAttioRow((data || []).find((x) => x.kind === 'attio') || null, is_admin)
+  for (const kind of Object.keys(NATIVE_CONNECTORS))
+    renderNativeRow(kind, (data || []).find((x) => x.kind === kind) || null, is_admin)
   for (const target of ['tool', 'connection']) {
     const box = $(target === 'tool' ? 'dyn-tools' : 'dyn-connections')
     if (!box) continue
@@ -1885,21 +1886,42 @@ async function loadConnectorRows() {
   }
 }
 
-// Attio-Zeile: Status live, Klick öffnet das Key-Modal (Admin) bzw. Trennen
-let attioConnector = null
-function renderAttioRow(conn, isAdmin) {
-  attioConnector = conn
-  const status = $('attio-status')
-  const sub = $('attio-sub')
+// Native Connectors (Attio, Slack): Status live, Klick öffnet das Key-Modal (Admin),
+// Trennen über ✕. Ein Config-Eintrag pro Dienst — keine Code-Kopien.
+const NATIVE_CONNECTORS = {
+  attio: {
+    row: 'attio-row', status: 'attio-status', sub: 'attio-sub',
+    overlay: 'attio-overlay', input: 'at-token', err: 'at-err', save: 'at-save', cancel: 'at-cancel',
+    subConnected: 'CRM: Accounts, Kontakte, Deals, Notizen · read-only',
+    subDefault: 'CRM-Daten · read-only',
+    confirmMsg: 'Attio trennen? Enni verliert sofort den CRM-Zugriff.',
+    missingMsg: 'API-Key fehlt.',
+  },
+  slack: {
+    row: 'slack-row', status: 'slack-status', sub: 'slack-sub',
+    overlay: 'slack-overlay', input: 'sl-token', err: 'sl-err', save: 'sl-save', cancel: 'sl-cancel',
+    subConnected: 'Channels lesen: öffentlich automatisch, privat nach Bot-Einladung',
+    subDefault: 'Channels · read-only',
+    confirmMsg: 'Slack trennen? Enni verliert sofort den Lesezugriff.',
+    missingMsg: 'Bot-Token fehlt.',
+  },
+}
+const nativeState = {} // kind -> connector-Row oder null
+
+function renderNativeRow(kind, conn, isAdmin) {
+  const cfg = NATIVE_CONNECTORS[kind]
+  nativeState[kind] = conn
+  const status = $(cfg.status)
+  const sub = $(cfg.sub)
   if (!status) return
   if (conn) {
     status.className = 'c-right ok'
     status.innerHTML = '<span class="dot-s"></span>Verbunden' +
-      (isAdmin ? '<button class="c-del" id="attio-del" title="Trennen" style="display:inline-flex;margin-left:8px"><svg viewBox="0 0 24 24"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg></button>' : '')
-    sub.textContent = 'CRM: Accounts, Kontakte, Deals, Notizen · read-only'
-    document.getElementById('attio-del')?.addEventListener('click', async (e) => {
+      (isAdmin ? `<button class="c-del" data-native-del="${kind}" title="Trennen" style="display:inline-flex;margin-left:8px"><svg viewBox="0 0 24 24"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg></button>` : '')
+    sub.textContent = cfg.subConnected
+    status.querySelector('[data-native-del]')?.addEventListener('click', async (e) => {
       e.stopPropagation()
-      if (!window.confirm('Attio trennen? Enni verliert sofort den CRM-Zugriff.')) return
+      if (!window.confirm(cfg.confirmMsg)) return
       const res = await fetch(`${BACKEND_URL}/api/connectors/${conn.id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${await token()}` },
@@ -1910,42 +1932,44 @@ function renderAttioRow(conn, isAdmin) {
   } else {
     status.className = 'c-right off'
     status.innerHTML = '<span class="dot-s"></span>' + (isAdmin ? 'Verbinden' : 'Nicht verbunden')
-    sub.textContent = isAdmin ? 'CRM-Daten · read-only · Klick zum Verbinden (API-Key)' : 'CRM-Daten · read-only'
+    sub.textContent = isAdmin ? `${cfg.subDefault} · Klick zum Verbinden` : cfg.subDefault
   }
 }
 
-$('attio-row').addEventListener('click', async () => {
-  if (attioConnector) return // verbunden — Trennen läuft über das ✕
-  const { is_admin } = await ownProfile()
-  if (!is_admin) return
-  $('at-token').value = ''
-  $('at-err').textContent = ''
-  $('attio-overlay').classList.add('open')
-  setTimeout(() => $('at-token').focus(), 50)
-})
-$('at-cancel').addEventListener('click', () => $('attio-overlay').classList.remove('open'))
-$('at-save').addEventListener('click', async () => {
-  const err = $('at-err')
-  err.textContent = ''
-  if (!$('at-token').value.trim()) { err.textContent = 'API-Key fehlt.'; return }
-  $('at-save').disabled = true
-  $('at-save').textContent = 'Verbinde …'
-  try {
-    const res = await fetch(`${BACKEND_URL}/api/connectors`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
-      body: JSON.stringify({ kind: 'attio', token: $('at-token').value.trim() }),
-    })
-    const data = await res.json()
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
-    $('attio-overlay').classList.remove('open')
-    loadConnectorRows()
-  } catch (e) {
-    err.textContent = e.message
-  }
-  $('at-save').disabled = false
-  $('at-save').textContent = 'Verbinden'
-})
+for (const [kind, cfg] of Object.entries(NATIVE_CONNECTORS)) {
+  $(cfg.row).addEventListener('click', async () => {
+    if (nativeState[kind]) return // verbunden — Trennen läuft über das ✕
+    const { is_admin } = await ownProfile()
+    if (!is_admin) return
+    $(cfg.input).value = ''
+    $(cfg.err).textContent = ''
+    $(cfg.overlay).classList.add('open')
+    setTimeout(() => $(cfg.input).focus(), 50)
+  })
+  $(cfg.cancel).addEventListener('click', () => $(cfg.overlay).classList.remove('open'))
+  $(cfg.save).addEventListener('click', async () => {
+    const err = $(cfg.err)
+    err.textContent = ''
+    if (!$(cfg.input).value.trim()) { err.textContent = cfg.missingMsg; return }
+    $(cfg.save).disabled = true
+    $(cfg.save).textContent = 'Verbinde …'
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/connectors`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+        body: JSON.stringify({ kind, token: $(cfg.input).value.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      $(cfg.overlay).classList.remove('open')
+      loadConnectorRows()
+    } catch (e) {
+      err.textContent = e.message
+    }
+    $(cfg.save).disabled = false
+    $(cfg.save).textContent = 'Verbinden'
+  })
+}
 
 document.querySelectorAll('.crow-add[data-category]').forEach((b) =>
   b.addEventListener('click', () => {

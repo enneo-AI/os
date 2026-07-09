@@ -382,6 +382,35 @@ app.post('/api/connectors', async (req, res) => {
   if (!user) return
   const { name, url, token, category, kind } = req.body || {}
 
+  // Nativer Slack-Connector: Bot-Token (xoxb-…), Verbindungstest via auth.test
+  if (kind === 'slack') {
+    if (!token?.trim()) return res.status(400).json({ error: 'Bot-Token ist Pflicht' })
+    try {
+      const { probeSlack, invalidateSlackCache } = await import('./tools/slack.js')
+      const info = await probeSlack(token.trim())
+      const { data: existing } = await db.from('connectors').select('id').eq('kind', 'slack').maybeSingle()
+      if (existing) await db.from('connectors').delete().eq('id', existing.id) // Re-Connect ersetzt den Token
+      const { data, error } = await db
+        .from('connectors')
+        .insert({
+          name: 'Slack',
+          url: 'https://slack.com',
+          token: token.trim(),
+          category: 'connection',
+          kind: 'slack',
+          tool_count: 3,
+          created_by: user.id,
+        })
+        .select('id, name')
+        .single()
+      if (error) throw new Error(error.message)
+      invalidateSlackCache()
+      return res.json({ ...data, workspace: info.team, bot: info.bot })
+    } catch (err) {
+      return res.status(400).json({ error: `Slack-Verbindung fehlgeschlagen: ${err.message}` })
+    }
+  }
+
   // Nativer Attio-Connector: nur API-Key nötig, Verbindungstest gegen /v2/self
   if (kind === 'attio') {
     if (!token?.trim()) return res.status(400).json({ error: 'API-Key ist Pflicht' })
@@ -429,6 +458,8 @@ app.delete('/api/connectors/:id', async (req, res) => {
     await removeConnector(req.params.id)
     const { invalidateAttioCache } = await import('./tools/attio.js')
     invalidateAttioCache()
+    const { invalidateSlackCache } = await import('./tools/slack.js')
+    invalidateSlackCache()
     res.json({ ok: true })
   } catch (err) {
     res.status(400).json({ error: err.message })

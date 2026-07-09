@@ -771,7 +771,7 @@
           <div class="crow"><span class="c-logo"><img src="./icons/enneo-icon.svg" alt=""></span><div><div class="c-name">Enneo-Plattform</div><div class="c-sub">Tickets, Kunden, AI-Agenten, Settings · alle Instanzen</div></div><span class="c-right ok"><span class="dot-s"></span>Verbunden</span></div>
           <div class="crow"><span class="c-logo"><img src="./icons/google-drive.svg" alt=""></span><div><div class="c-name">Google Drive</div><div class="c-sub">Dokumente & Ordner</div></div><span class="c-right off"><span class="dot-s"></span>Phase 2</span></div>
           <div class="crow"><span class="c-logo"><img src="./icons/notion.svg" alt=""></span><div><div class="c-name">Notion</div><div class="c-sub">Seiten & Datenbanken</div></div><span class="c-right off"><span class="dot-s"></span>Phase 2</span></div>
-          <div class="crow"><span class="c-logo"><img src="./icons/slack.svg" alt=""></span><div><div class="c-name">Slack</div><div class="c-sub">Channels · read-only Sync</div></div><span class="c-right off"><span class="dot-s"></span>Phase 2</span></div>
+          <button class="crow" id="slack-row"><span class="c-logo"><img src="./icons/slack.svg" alt=""></span><div><div class="c-name">Slack</div><div class="c-sub" id="slack-sub">Channels · read-only</div></div><span class="c-right off" id="slack-status"><span class="dot-s"></span>Nicht verbunden</span></button>
           <button class="crow" id="attio-row"><span class="c-logo"><img src="./icons/attio.ico" alt=""></span><div><div class="c-name">Attio</div><div class="c-sub" id="attio-sub">CRM-Daten · read-only</div></div><span class="c-right off" id="attio-status"><span class="dot-s"></span>Nicht verbunden</span></button>
           <div class="crow"><span class="c-logo"><img src="./icons/whatsapp.svg" alt=""></span><div><div class="c-name">WhatsApp</div><div class="c-sub">Enni mobil steuern — chatten & Routinen-Ergebnisse aufs Handy</div></div><span class="c-right off"><span class="dot-s"></span>Coming soon</span></div>
           <div class="crow"><span class="c-logo"><img src="./icons/telegram.svg" alt=""></span><div><div class="c-name">Telegram</div><div class="c-sub">Enni mobil steuern — Bot-Chat von unterwegs</div></div><span class="c-right off"><span class="dot-s"></span>Coming soon</span></div>
@@ -974,6 +974,21 @@
     <div class="m-actions">
       <button class="btn quiet" id="at-cancel">Abbrechen</button>
       <button class="btn dark" id="at-save">Verbinden</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= SLACK MODAL ================= -->
+<div class="overlay" id="slack-overlay">
+  <div class="modal" role="dialog" aria-modal="true">
+    <h3>Slack verbinden</h3>
+    <label for="sl-token">Bot-Token</label>
+    <input type="password" id="sl-token" autocomplete="off" placeholder="xoxb-…">
+    <p class="pf-hint">Einmalig unter api.slack.com/apps eine App im Workspace anlegen → OAuth &amp; Permissions → Bot Token Scopes: <code>channels:read</code>, <code>channels:history</code>, <code>channels:join</code>, <code>groups:read</code>, <code>groups:history</code>, <code>users:read</code> → Install to Workspace → den xoxb-Token hier einfügen. Enni liest nur — öffentliche Channels automatisch, private nur nach Einladung des Bots. Der Token ist nach dem Speichern aus der App nicht mehr auslesbar.</p>
+    <div class="err" id="sl-err"></div>
+    <div class="m-actions">
+      <button class="btn quiet" id="sl-cancel">Abbrechen</button>
+      <button class="btn dark" id="sl-save">Verbinden</button>
     </div>
   </div>
 </div>
