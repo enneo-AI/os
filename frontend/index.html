@@ -577,6 +577,7 @@
         <button class="sb-item admin-area" data-view="admin-conn"><span class="txt">Connections</span></button>
         <button class="sb-item admin-area" data-view="conn"><span class="txt">Tools</span></button>
         <button class="sb-item admin-area" data-view="skills"><span class="txt">Skills</span></button>
+        <button class="sb-item admin-area" data-view="routines"><span class="txt">Routinen</span></button>
         <div class="sb-sec">Open Spaces <button class="sec-add" id="new-open-space" title="Neuer Open Space">＋</button></div>
         <div id="space-tree-open"></div>
         <div class="sb-sec">Restricted Spaces <button class="sec-add" id="new-restricted-space" title="Neuer Restricted Space">＋</button></div>
@@ -821,6 +822,21 @@
       </div>
     </section>
 
+    <!-- ROUTINEN -->
+    <section class="view" id="v-routines">
+      <div class="page-head">
+        <div class="eyebrow">Routinen</div>
+        <h2>Enni arbeitet nach Zeitplan.</h2>
+        <p>Wiederkehrende Läufe — das Ergebnis erscheint als Konversation, privat oder im Pod fürs ganze Team.</p>
+      </div>
+      <div class="cost-shell">
+        <div class="list-panel">
+          <div id="routine-list"></div>
+          <button class="crow crow-add" id="routine-add"><span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--ink-3);fill:none;stroke-width:1.8;stroke-linecap:round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span><div><div class="c-name" style="color:var(--ink-2)">Neue Routine</div><div class="c-sub">z. B. „Jeden Morgen 08:00: offene Tickets von Instanz X als Report in den Pod"</div></div></button>
+        </div>
+      </div>
+    </section>
+
     <!-- ADMIN -->
     <section class="view" id="v-admin">
       <div class="page-head">
@@ -941,6 +957,61 @@
       <span style="flex:1"></span>
       <button class="btn quiet" id="sk-cancel">Abbrechen</button>
       <button class="btn dark" id="sk-save">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= ROUTINE MODAL ================= -->
+<div class="overlay" id="routine-overlay">
+  <div class="modal wide" role="dialog" aria-modal="true">
+    <h3 id="rt-title">Routine</h3>
+    <label for="rt-name">Name</label>
+    <input type="text" id="rt-name" placeholder="z. B. Morgen-Report offene Tickets">
+    <label for="rt-prompt">Auftrag an Enni <span class="lbl-hint">— wie eine Chat-Nachricht, /skill funktioniert auch</span></label>
+    <textarea id="rt-prompt" rows="4" placeholder="Hole die offenen Tickets der Instanz stawag und fasse sie als Report zusammen: Anzahl, älteste, auffällige Muster."></textarea>
+    <div class="sk-grid">
+      <div>
+        <label for="rt-freq">Zeitplan</label>
+        <select id="rt-freq" class="model-select" style="width:100%;margin-bottom:18px">
+          <option value="daily">Täglich</option>
+          <option value="weekdays">Werktags (Mo–Fr)</option>
+          <option value="weekly">Wöchentlich</option>
+          <option value="monthly">Monatlich (am 1.)</option>
+        </select>
+      </div>
+      <div>
+        <label for="rt-time">Uhrzeit <span class="lbl-hint">(Berlin)</span></label>
+        <input type="time" id="rt-time" value="08:00" style="width:100%;border:1px solid var(--hair);border-radius:12px;background:var(--surface);padding:10px 14px;font-size:14px;outline:0;margin-bottom:18px">
+      </div>
+    </div>
+    <div class="sk-grid">
+      <div id="rt-dow-wrap" hidden>
+        <label for="rt-dow">Wochentag</label>
+        <select id="rt-dow" class="model-select" style="width:100%;margin-bottom:18px">
+          <option value="1">Montag</option><option value="2">Dienstag</option><option value="3">Mittwoch</option>
+          <option value="4">Donnerstag</option><option value="5">Freitag</option><option value="6">Samstag</option><option value="0">Sonntag</option>
+        </select>
+      </div>
+      <div>
+        <label for="rt-pod">Ergebnis geht an</label>
+        <select id="rt-pod" class="model-select" style="width:100%;margin-bottom:18px"><option value="">Privat (nur ich)</option></select>
+      </div>
+      <div>
+        <label for="rt-model">Modell</label>
+        <select id="rt-model" class="model-select" style="width:100%;margin-bottom:18px">
+          <option value="claude-haiku-4-5">Haiku 4.5 (günstig)</option>
+          <option value="claude-sonnet-5">Sonnet 5</option>
+          <option value="claude-opus-4-8">Opus 4.8</option>
+        </select>
+      </div>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-size:13.5px;font-weight:500;letter-spacing:0"><input type="checkbox" id="rt-enabled" checked style="width:auto;margin:0"> Aktiv</label>
+    <div class="err" id="rt-err"></div>
+    <div class="m-actions">
+      <button class="btn quiet danger-link" id="rt-delete" hidden>Routine löschen</button>
+      <span style="flex:1"></span>
+      <button class="btn quiet" id="rt-cancel">Abbrechen</button>
+      <button class="btn dark" id="rt-save">Speichern</button>
     </div>
   </div>
 </div>

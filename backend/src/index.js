@@ -4,6 +4,7 @@ import { db, getUserFromRequest } from './db.js'
 import { runEnniTurn, ALLOWED_MODELS, generateTitle } from './agent.js'
 import { attachmentsToBlocks, attachmentMeta } from './attachments.js'
 import { logUsage } from './usage.js'
+import { startRoutineTicker, runRoutine } from './routines.js'
 
 const app = express()
 app.use(express.json({ limit: '30mb' })) // Anhänge kommen als Base64 im Body
@@ -393,5 +394,21 @@ app.delete('/api/connectors/:id', async (req, res) => {
   }
 })
 
+// Routine sofort ausführen (Test-Lauf) — Owner oder Admin
+app.post('/api/routines/:id/run', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const { data: r } = await db.from('routines').select('*').eq('id', req.params.id).maybeSingle()
+  if (!r) return res.status(404).json({ error: 'Routine nicht gefunden' })
+  if (r.created_by !== user.id) {
+    const { data: prof } = await db.from('profiles').select('is_admin').eq('id', user.id).maybeSingle()
+    if (!prof?.is_admin) return res.status(403).json({ error: 'Nur Ersteller oder Admin' })
+  }
+  const result = await runRoutine(r)
+  if (!result.ok) return res.status(500).json(result)
+  res.json(result)
+})
+
 const port = Number(process.env.PORT || 8080)
 app.listen(port, () => console.log(`enneo OS backend läuft auf :${port}`))
+startRoutineTicker()

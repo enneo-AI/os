@@ -140,7 +140,7 @@ $('pf-save').addEventListener('click', async () => {
 
 // Rail-Navigation — Sidebar-Inhalt wechselt mit dem Bereich
 const views = {
-  chat: 'v-chat', wiki: 'v-wiki', conn: 'v-conn', admin: 'v-admin', skills: 'v-skills',
+  chat: 'v-chat', wiki: 'v-wiki', conn: 'v-conn', admin: 'v-admin', skills: 'v-skills', routines: 'v-routines',
   connected: 'v-connected', pagelist: 'v-pagelist', 'admin-conn': 'v-admin-conn', pod: 'v-pod',
 }
 const sidebars = { chat: 'sb-chat', wiki: 'sb-spaces', admin: 'sb-admin' }
@@ -159,7 +159,7 @@ function syncUrl(area, view) {
   let path = '/chat'
   if (view === 'pod' && activePod) path = `/pod/${activePod.id}`
   else if (area === 'chat') path = currentConv?.id ? `/chat/${currentConv.id}` : '/chat'
-  else if (area === 'wiki') path = view === 'conn' ? '/spaces/tools' : view === 'admin-conn' ? '/spaces/connections' : view === 'skills' ? '/spaces/skills' : '/spaces'
+  else if (area === 'wiki') path = view === 'conn' ? '/spaces/tools' : view === 'admin-conn' ? '/spaces/connections' : view === 'skills' ? '/spaces/skills' : view === 'routines' ? '/spaces/routinen' : '/spaces'
   else if (area === 'admin') path = '/admin'
   if (location.pathname !== path) history.pushState({}, '', path)
 }
@@ -176,8 +176,9 @@ async function route() {
     if (c) return openConversation(c)
   }
   if (p.startsWith('/spaces')) {
-    activateArea('wiki', p === '/spaces/tools' ? 'conn' : p === '/spaces/connections' ? 'admin-conn' : p === '/spaces/skills' ? 'skills' : 'wiki')
+    activateArea('wiki', p === '/spaces/tools' ? 'conn' : p === '/spaces/connections' ? 'admin-conn' : p === '/spaces/skills' ? 'skills' : p === '/spaces/routinen' ? 'routines' : 'wiki')
     if (p === '/spaces/skills') loadSkills()
+    if (p === '/spaces/routinen') loadRoutines()
     return loadSpacesTree()
   }
   if (p.startsWith('/admin')) {
@@ -207,6 +208,7 @@ document.querySelectorAll('.admin-area').forEach((b) =>
   b.addEventListener('click', () => {
     activateArea('wiki', b.dataset.view)
     if (b.dataset.view === 'skills') loadSkills()
+    if (b.dataset.view === 'routines') loadRoutines()
   })
 )
 
@@ -2013,6 +2015,129 @@ $('sk-delete').addEventListener('click', async () => {
   $('skill-overlay').classList.remove('open')
   skillsCache = null
   loadSkills()
+})
+
+// ============================================================ Routinen (Enni nach Zeitplan)
+// Jeder verwaltet eigene Routinen (RLS), Admins sehen alle. Der Ticker läuft im Backend.
+let editingRoutine = null
+
+function cronFromForm() {
+  const [h, m] = $('rt-time').value.split(':').map(Number)
+  const freq = $('rt-freq').value
+  const dow = $('rt-dow').value
+  const pad = (n) => String(n).padStart(2, '0')
+  const time = `${pad(h)}:${pad(m)}`
+  if (freq === 'weekdays') return { cron: `${m} ${h} * * 1,2,3,4,5`, label: `Werktags ${time}` }
+  if (freq === 'weekly') {
+    const names = { 0: 'So', 1: 'Mo', 2: 'Di', 3: 'Mi', 4: 'Do', 5: 'Fr', 6: 'Sa' }
+    return { cron: `${m} ${h} * * ${dow}`, label: `Wöchentlich ${names[dow]} ${time}` }
+  }
+  if (freq === 'monthly') return { cron: `${m} ${h} 1 * *`, label: `Monatlich am 1. um ${time}` }
+  return { cron: `${m} ${h} * * *`, label: `Täglich ${time}` }
+}
+
+function formFromCron(cron) {
+  const [m, h, dom, , dow] = cron.trim().split(/\s+/)
+  $('rt-time').value = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+  if (dom === '1') $('rt-freq').value = 'monthly'
+  else if (dow === '1,2,3,4,5') $('rt-freq').value = 'weekdays'
+  else if (dow !== '*') { $('rt-freq').value = 'weekly'; $('rt-dow').value = dow }
+  else $('rt-freq').value = 'daily'
+  $('rt-dow-wrap').hidden = $('rt-freq').value !== 'weekly'
+}
+
+$('rt-freq').addEventListener('change', () => { $('rt-dow-wrap').hidden = $('rt-freq').value !== 'weekly' })
+
+async function loadRoutines() {
+  const [{ data: routines }, profs] = await Promise.all([
+    sb.from('routines').select('*').order('created_at'),
+    allProfiles(),
+  ])
+  const list = $('routine-list')
+  list.innerHTML = ''
+  if (!(routines || []).length) list.innerHTML = '<div class="empty-plain">Noch keine Routinen.</div>'
+  for (const r of routines || []) {
+    const pod = podsList.find((p) => p.id === r.pod_id)
+    const last = r.last_run_at
+      ? ` · zuletzt ${new Date(r.last_run_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}${r.last_result === 'ok' ? '' : ' ⚠'}`
+      : ''
+    const row = document.createElement('div')
+    row.className = 'crow'
+    row.style.cursor = 'pointer'
+    row.innerHTML = `<span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:var(--lila-deep);fill:none;stroke-width:1.7;stroke-linecap:round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg></span>
+      <div><div class="c-name">${esc(r.name)}</div><div class="c-sub">${esc(r.schedule_label || r.cron)} · ${pod ? `Pod „${esc(pod.name)}“` : 'Privat'} · ${esc(profName(profs, r.created_by))}${last}</div></div>
+      <span class="c-right ${r.enabled ? 'ok' : 'off'}"><span class="dot-s"></span>${r.enabled ? 'Aktiv' : 'Aus'}</span>
+      <button class="c-del rt-run" title="Jetzt ausführen" style="display:inline-flex"><svg viewBox="0 0 24 24" style="fill:none"><polygon points="6 4 20 12 6 20 6 4"/></svg></button>`
+    row.addEventListener('click', (e) => { if (!e.target.closest('.rt-run')) openRoutine(r) })
+    row.querySelector('.rt-run').addEventListener('click', async (ev) => {
+      const btn = ev.currentTarget
+      btn.style.opacity = '.4'
+      const res = await fetch(`${BACKEND_URL}/api/routines/${r.id}/run`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${await token()}` },
+      })
+      const data = await res.json().catch(() => ({}))
+      btn.style.opacity = ''
+      if (!res.ok) { window.alert(data.error || 'Fehler beim Ausführen'); return }
+      loadRoutines()
+      loadConversations()
+    })
+    list.appendChild(row)
+  }
+}
+
+async function openRoutine(r) {
+  editingRoutine = r
+  $('rt-title').textContent = r ? r.name : 'Neue Routine'
+  $('rt-name').value = r?.name || ''
+  $('rt-prompt').value = r?.prompt || ''
+  $('rt-model').value = r?.model || 'claude-haiku-4-5'
+  $('rt-enabled').checked = r ? r.enabled : true
+  const podSel = $('rt-pod')
+  podSel.innerHTML = '<option value="">Privat (nur ich)</option>' +
+    podsList.map((p) => `<option value="${p.id}">Pod: ${esc(p.name)}</option>`).join('')
+  podSel.value = r?.pod_id || ''
+  if (r?.cron) formFromCron(r.cron)
+  else { $('rt-freq').value = 'daily'; $('rt-time').value = '08:00'; $('rt-dow-wrap').hidden = true }
+  $('rt-err').textContent = ''
+  $('rt-delete').hidden = !r
+  $('routine-overlay').classList.add('open')
+}
+
+$('routine-add').addEventListener('click', () => openRoutine(null))
+$('rt-cancel').addEventListener('click', () => $('routine-overlay').classList.remove('open'))
+
+$('rt-save').addEventListener('click', async () => {
+  const err = $('rt-err')
+  err.textContent = ''
+  const name = $('rt-name').value.trim()
+  const prompt = $('rt-prompt').value.trim()
+  if (!name || !prompt) { err.textContent = 'Name und Auftrag sind Pflicht.'; return }
+  const { cron, label } = cronFromForm()
+  const row = {
+    name, prompt, cron, schedule_label: label,
+    pod_id: $('rt-pod').value || null,
+    model: $('rt-model').value,
+    enabled: $('rt-enabled').checked,
+  }
+  $('rt-save').disabled = true
+  const q = editingRoutine
+    ? sb.from('routines').update(row).eq('id', editingRoutine.id)
+    : sb.from('routines').insert({ ...row, created_by: session.user.id })
+  const { error } = await q
+  $('rt-save').disabled = false
+  if (error) { err.textContent = 'Fehler: ' + error.message; return }
+  $('routine-overlay').classList.remove('open')
+  loadRoutines()
+})
+
+$('rt-delete').addEventListener('click', async () => {
+  if (!editingRoutine) return
+  if (!window.confirm(`Routine "${editingRoutine.name}" löschen?`)) return
+  const { error } = await sb.from('routines').delete().eq('id', editingRoutine.id)
+  if (error) { $('rt-err').textContent = 'Fehler: ' + error.message; return }
+  $('routine-overlay').classList.remove('open')
+  loadRoutines()
 })
 
 // Hell/Dunkel-Umschalter (Init passiert inline im <head>, gegen Theme-Flash)
