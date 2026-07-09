@@ -247,6 +247,17 @@
   .msg-copy:hover{color:var(--ink);background:var(--hover)}
   .msg-copy.done{color:var(--good);opacity:1}
   .msg-copy svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .m-agent:hover .msg-fb{opacity:1}
+  .msg-fb{opacity:0}
+  .chat-close{margin-left:auto;width:28px;height:28px;border:0;border-radius:8px;background:none;color:var(--ink-3);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex:none}
+  .chat-close:hover{color:var(--ink);background:var(--hover)}
+  .chat-close svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round}
+  .fb-choice{display:flex;flex-direction:column;gap:8px;margin:4px 0 16px}
+  .fb-choice label{display:flex;align-items:flex-start;gap:9px;font-size:13.5px;font-weight:500;letter-spacing:0;text-transform:none;color:var(--ink);cursor:pointer;margin:0}
+  .fb-choice input{width:auto;margin:3px 0 0}
+  .fb-choice .hint{display:block;font-size:12px;color:var(--ink-3);font-weight:400}
+  .close-actions{display:flex;flex-direction:column;gap:9px;margin-top:6px}
+  .close-actions .btn{width:100%;justify-content:center;text-align:center}
 
   /* Enneo-Write-Freigabe-Karte */
   .wp-card{margin:16px 0 0;border:1px solid var(--edge);border-radius:16px;background:var(--glass-strong);
@@ -591,6 +602,7 @@
         <div class="sb-sec">Administration</div>
         <button class="sb-item admin-link" data-target="k-today"><span class="txt">Kosten</span></button>
         <button class="sb-item admin-link" data-target="panel-knowledge" hidden><span class="txt">Wissens-Updates</span></button>
+        <button class="sb-item admin-link" data-target="panel-learnings" hidden><span class="txt">Learnings</span></button>
         <button class="sb-item admin-link" data-target="panel-model"><span class="txt">Modell</span></button>
         <button class="sb-item admin-link" data-target="panel-members"><span class="txt">Mitglieder</span></button>
       </div>
@@ -621,6 +633,9 @@
             <div class="t" id="chat-title">Neue Konversation</div>
             <div style="font-size:12px;color:var(--ink-3)">Private Konversation · Enni antwortet mit deinen Rechten</div>
           </div>
+          <button class="chat-close" id="chat-close" title="Chat schließen" hidden>
+            <svg viewBox="0 0 24 24"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg>
+          </button>
         </div>
         <div class="msgs" id="msgs"></div>
         <div class="composer">
@@ -871,6 +886,12 @@
           <div id="ku-list"></div>
         </div>
 
+        <div class="list-panel" id="panel-learnings" hidden>
+          <h3>Learning-Vorschläge <span class="ku-count" id="lr-count"></span></h3>
+          <p class="panel-sub">Feedback und Konversations-Learnings der Nutzer — persönlich schon aktiv. Du entscheidest, was Team-weit für alle Accounts gilt.</p>
+          <div id="lr-list"></div>
+        </div>
+
         <div class="list-panel" id="panel-model">
           <h3>Modell</h3>
           <div class="row">
@@ -959,6 +980,40 @@
       <span style="flex:1"></span>
       <button class="btn quiet" id="sk-cancel">Abbrechen</button>
       <button class="btn dark" id="sk-save">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= FEEDBACK MODAL ================= -->
+<div class="overlay" id="fb-overlay">
+  <div class="modal" role="dialog" aria-modal="true">
+    <h3>Feedback an Enni</h3>
+    <label for="fb-text">Was soll Enni sich merken oder anders machen?</label>
+    <textarea id="fb-text" rows="3" placeholder="z. B. Antworte mir immer mit konkreten Zahlen statt Zusammenfassungen."></textarea>
+    <div class="fb-choice">
+      <label><input type="radio" name="fb-scope" value="none" checked>
+        <span>Nur für mich lernen<span class="hint">wirkt sofort in deinen Konversationen</span></span></label>
+      <label><input type="radio" name="fb-scope" value="proposed">
+        <span>Für alle vorschlagen<span class="hint">wirkt sofort für dich — der Admin entscheidet über die Team-weite Übernahme</span></span></label>
+    </div>
+    <div class="err" id="fb-err"></div>
+    <div class="m-actions">
+      <button class="btn quiet" id="fb-cancel">Abbrechen</button>
+      <button class="btn dark" id="fb-save">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= CHAT-SCHLIESSEN MODAL ================= -->
+<div class="overlay" id="close-overlay">
+  <div class="modal" role="dialog" aria-modal="true">
+    <h3>Chat schließen</h3>
+    <p class="pf-hint" style="margin-top:0">Bei „Lernen &amp; Schließen" zieht Enni dauerhafte Learnings aus dieser Konversation — sie wirken sofort für dich, der Admin entscheidet über die Team-weite Übernahme.</p>
+    <div class="err" id="cl-err"></div>
+    <div class="close-actions">
+      <button class="btn dark" id="cl-learn">Lernen &amp; Schließen</button>
+      <button class="btn quiet" id="cl-close">Chat schließen</button>
+      <button class="btn quiet" id="cl-cancel">Abbrechen</button>
     </div>
   </div>
 </div>

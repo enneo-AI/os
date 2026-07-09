@@ -185,6 +185,7 @@ async function route() {
     activateArea('admin')
     refreshCosts()
     loadKnowledgeUpdates()
+    loadLearnings()
     return loadMembers()
   }
   newConversation()
@@ -195,7 +196,7 @@ document.querySelectorAll('.rail-btn').forEach((b) =>
   b.addEventListener('click', () => {
     activateArea(b.dataset.v)
     if (b.dataset.v === 'wiki') loadSpacesTree()
-    if (b.dataset.v === 'admin') { refreshCosts(); loadMembers(); loadKnowledgeUpdates() }
+    if (b.dataset.v === 'admin') { refreshCosts(); loadMembers(); loadKnowledgeUpdates(); loadLearnings() }
   })
 )
 
@@ -303,6 +304,7 @@ function renameConv(btn, c) {
 
 function newConversation() {
   currentConv = null
+  $('chat-close').hidden = true
   $('model-select').value = 'claude-opus-4-8'
   $('composer-input').placeholder = convPod ? 'Nachricht ans Team — @enni ruft Enni …' : 'Frag Enni …'
   $('chat-title').textContent = 'Neue Konversation'
@@ -321,6 +323,7 @@ $('new-chat').addEventListener('click', () => {
 
 async function openConversation(c) {
   currentConv = c
+  $('chat-close').hidden = false
   convPod = c.pod_id ? podsList.find((p) => p.id === c.pod_id) || convPod : null
   $('composer-input').placeholder = convPod ? 'Nachricht ans Team — @enni ruft Enni …' : 'Frag Enni …'
   $('chat-title').textContent = (convPod ? `${convPod.name} · ` : '') + (c.title || 'Ohne Titel')
@@ -457,9 +460,81 @@ function agentMeta(getText, cost) {
     setTimeout(() => { btn.classList.remove('done'); btn.innerHTML = COPY_ICON }, 1600)
   })
   meta.appendChild(btn)
+  // Subtiler Feedback-Button (erscheint bei Hover, wie der Copy-Button)
+  const fb = document.createElement('button')
+  fb.className = 'msg-copy msg-fb'
+  fb.title = 'Feedback — Enni etwas beibringen'
+  fb.innerHTML = '<svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>'
+  fb.addEventListener('click', openFeedback)
+  meta.appendChild(fb)
   if (cost != null) meta.insertAdjacentHTML('beforeend', `<span class="cost">${fmtEur(cost)}</span>`)
   return meta
 }
+
+// ============================================================ Feedback → Learnings
+// Persönlich = wirkt sofort (Prompt-Injection). "Für alle vorschlagen" = zusätzlich
+// Learning-Card beim Admin, der über die Team-weite Übernahme entscheidet.
+function openFeedback() {
+  $('fb-text').value = ''
+  $('fb-err').textContent = ''
+  document.querySelector('input[name="fb-scope"][value="none"]').checked = true
+  $('fb-overlay').classList.add('open')
+  setTimeout(() => $('fb-text').focus(), 50)
+}
+$('fb-cancel').addEventListener('click', () => $('fb-overlay').classList.remove('open'))
+$('fb-save').addEventListener('click', async () => {
+  const content = $('fb-text').value.trim()
+  if (!content) { $('fb-err').textContent = 'Feedback-Text fehlt.'; return }
+  $('fb-save').disabled = true
+  const { error } = await sb.from('learnings').insert({
+    user_id: session.user.id,
+    content,
+    source: 'feedback',
+    source_conversation_id: currentConv?.id || null,
+    share_status: document.querySelector('input[name="fb-scope"]:checked').value,
+  })
+  $('fb-save').disabled = false
+  if (error) { $('fb-err').textContent = 'Fehler: ' + error.message; return }
+  $('fb-overlay').classList.remove('open')
+})
+
+// ============================================================ Chat schließen (mit Lern-Option)
+$('chat-close').addEventListener('click', () => {
+  if (!currentConv) return
+  $('cl-err').textContent = ''
+  $('cl-learn').disabled = false
+  $('cl-learn').textContent = 'Lernen & Schließen'
+  $('close-overlay').classList.add('open')
+})
+$('cl-cancel').addEventListener('click', () => $('close-overlay').classList.remove('open'))
+$('cl-close').addEventListener('click', () => {
+  $('close-overlay').classList.remove('open')
+  newConversation()
+})
+$('cl-learn').addEventListener('click', async () => {
+  if (!currentConv) return
+  $('cl-learn').disabled = true
+  $('cl-learn').textContent = 'Enni lernt …'
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/conversations/${currentConv.id}/learn`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${await token()}` },
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+    $('close-overlay').classList.remove('open')
+    if (data.learnings?.length) {
+      window.alert('Enni hat gelernt:\n\n' + data.learnings.map((l) => '• ' + l).join('\n') + '\n\nWirkt sofort für dich — der Admin prüft die Team-weite Übernahme.')
+    } else {
+      window.alert(data.hinweis || 'Nichts dauerhaft Lernbares in dieser Konversation.')
+    }
+    newConversation()
+  } catch (err) {
+    $('cl-err').textContent = 'Fehler: ' + err.message
+    $('cl-learn').disabled = false
+    $('cl-learn').textContent = 'Lernen & Schließen'
+  }
+})
 
 // Copy-Button auf jedem Code-Block (erscheint bei Hover, ✓-Feedback nach Klick)
 function enhanceCode(container) {
@@ -632,6 +707,64 @@ async function loadKnowledgeUpdates() {
           <div class="r-sub">${esc(u.slug || '')} · von ${esc(names[u.triggered_by] || 'unbekannt')} · ${new Date(u.created_at).toLocaleDateString('de-DE')}</div></div>
           <div></div><span class="role${u.status === 'approved' ? ' admin' : ''}">${label}</span></div>`
       )
+    }
+  }
+}
+
+// Admin-Panel: Learning-Vorschläge (persönlich schon aktiv — Review entscheidet über Team-weit)
+async function loadLearnings() {
+  const { is_admin } = await ownProfile()
+  const panel = $('panel-learnings')
+  const link = document.querySelector('.admin-link[data-target="panel-learnings"]')
+  panel.hidden = !is_admin
+  if (link) link.hidden = !is_admin
+  if (!is_admin) return
+
+  const [{ data: rows }, profs] = await Promise.all([
+    sb.from('learnings').select('*').in('share_status', ['proposed', 'approved']).order('created_at', { ascending: false }).limit(100),
+    allProfiles(),
+  ])
+  const proposed = (rows || []).filter((l) => l.share_status === 'proposed')
+  const approved = (rows || []).filter((l) => l.share_status === 'approved')
+  $('lr-count').textContent = proposed.length ? `${proposed.length} offen` : 'nichts offen'
+  const list = $('lr-list')
+  list.innerHTML = ''
+  const act = async (id, action) => {
+    const res = await fetch(`${BACKEND_URL}/api/learnings/${id}/${action}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${await token()}` },
+    })
+    if (!res.ok) { window.alert((await res.json().catch(() => ({}))).error || 'Fehler'); return }
+    loadLearnings()
+  }
+  if (!proposed.length) {
+    list.insertAdjacentHTML('beforeend', '<div class="empty-plain">Keine offenen Vorschläge.</div>')
+  }
+  for (const l of proposed) {
+    const row = document.createElement('div')
+    row.className = 'row'
+    row.innerHTML = `<div><div class="r-name">${esc(l.content)}</div>
+      <div class="r-sub">von ${esc(profName(profs, l.user_id))} · ${l.source === 'feedback' ? 'Feedback' : 'Konversations-Learning'} · ${new Date(l.created_at).toLocaleDateString('de-DE')} · bei ihm/ihr schon aktiv</div></div>
+      <button class="btn quiet" style="padding:5px 13px;font-size:12px">Ablehnen</button>
+      <button class="btn dark" style="padding:5px 13px;font-size:12px">Für alle übernehmen</button>`
+    const [rejectBtn, approveBtn] = row.querySelectorAll('button')
+    approveBtn.addEventListener('click', () => act(l.id, 'approve'))
+    rejectBtn.addEventListener('click', () => act(l.id, 'reject'))
+    list.appendChild(row)
+  }
+  if (approved.length) {
+    list.insertAdjacentHTML('beforeend', '<div class="sb-time" style="margin-top:14px">Team-weit aktiv</div>')
+    for (const l of approved) {
+      const row = document.createElement('div')
+      row.className = 'row'
+      row.innerHTML = `<div><div class="r-name">${esc(l.content)}</div>
+        <div class="r-sub">von ${esc(profName(profs, l.user_id))} · seit ${new Date(l.reviewed_at || l.created_at).toLocaleDateString('de-DE')}</div></div>
+        <div></div>
+        <button class="btn quiet" style="padding:5px 13px;font-size:12px" title="Gilt danach nur noch persönlich beim Urheber">Deaktivieren</button>`
+      row.querySelector('button').addEventListener('click', () => {
+        if (window.confirm('Team-weit deaktivieren? Bleibt persönlich beim Urheber aktiv.')) act(l.id, 'demote')
+      })
+      list.appendChild(row)
     }
   }
 }

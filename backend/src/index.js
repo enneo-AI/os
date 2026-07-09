@@ -466,6 +466,49 @@ app.delete('/api/connectors/:id', async (req, res) => {
   }
 })
 
+// "Lernen & Schließen": Haiku destilliert Learnings aus der Konversation —
+// sofort persönlich aktiv, Admin bekommt Learning-Card für Team-weite Freigabe
+app.post('/api/conversations/:id/learn', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const { data: conv } = await db
+    .from('conversations')
+    .select('id, user_id')
+    .eq('id', req.params.id)
+    .maybeSingle()
+  if (!conv || conv.user_id !== user.id) return res.status(404).json({ error: 'Conversation nicht gefunden' })
+  try {
+    const { learnFromConversation } = await import('./learnings.js')
+    res.json(await learnFromConversation(conv.id, user.id))
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Learning-Review — nur Admins: approve = Team-weit, reject = bleibt persönlich
+app.post('/api/learnings/:id/:action(approve|reject)', async (req, res) => {
+  const user = await requireAdmin(req, res)
+  if (!user) return
+  try {
+    const { reviewLearning } = await import('./learnings.js')
+    res.json(await reviewLearning(req.params.id, req.params.action, user.id))
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+// Team-weites Learning deaktivieren (bleibt persönlich beim Urheber)
+app.post('/api/learnings/:id/demote', async (req, res) => {
+  const user = await requireAdmin(req, res)
+  if (!user) return
+  try {
+    const { demoteLearning } = await import('./learnings.js')
+    res.json(await demoteLearning(req.params.id, user.id))
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
 // Routine sofort ausführen (Test-Lauf) — Owner oder Admin
 app.post('/api/routines/:id/run', async (req, res) => {
   const user = await getUserFromRequest(req)

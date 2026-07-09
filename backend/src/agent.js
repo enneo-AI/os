@@ -8,6 +8,7 @@ import { skillToolDefinitions, runSkillTool, loadEnabledSkills, skillsPromptBloc
 import { fileToolDefinitions, runFileTool } from './tools/files.js'
 import { attioToolDefinitions, runAttioTool } from './tools/attio.js'
 import { slackToolDefinitions, runSlackTool } from './tools/slack.js'
+import { learningsPromptBlock } from './learnings.js'
 
 const anthropic = new Anthropic()
 const DEFAULT_MODEL = process.env.ENNI_MODEL || 'claude-opus-4-8'
@@ -95,6 +96,13 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
   } catch (err) {
     console.error('Skills-Load fehlgeschlagen:', err.message)
   }
+  // Learnings des Nutzers + Team-weite Learnings (Feedback-Loop)
+  let learningsBlock = null
+  try {
+    learningsBlock = await learningsPromptBlock(ctx.userId)
+  } catch (err) {
+    console.error('Learnings-Load fehlgeschlagen:', err.message)
+  }
   // Aktuelles Datum als eigener (uncached) Block — sonst kann Enni "diese Woche",
   // "gestern", "letzter Monat" nicht einordnen (z.B. bei Attio-/Slack-/Report-Fragen).
   // Wochen-Grenzen explizit mitgeben: Modelle verrechnen sich sonst gern beim Mo-So-Mapping.
@@ -111,6 +119,7 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
     { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
     { type: 'text', text: `Aktuelles Datum und Uhrzeit: ${now} (Europe/Berlin). Die aktuelle Woche läuft von Montag, ${d(monday)}, bis Sonntag, ${d(sunday)}. Rechne relative Zeitangaben ("diese Woche", "gestern", "letzter Monat") immer davon ausgehend.` },
     ...(skillsBlock ? [{ type: 'text', text: skillsBlock }] : []),
+    ...(learningsBlock ? [{ type: 'text', text: learningsBlock }] : []),
     ...(extraSystem ? [{ type: 'text', text: extraSystem }] : []),
   ]
   // Statische Tools + Pod-Kontext-Tools (nur in Pod-Konversationen)
