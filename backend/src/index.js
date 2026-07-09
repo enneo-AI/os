@@ -427,7 +427,7 @@ app.post('/api/connectors', async (req, res) => {
           token: token.trim(),
           category: 'connection',
           kind: 'attio',
-          tool_count: 5,
+          tool_count: 7,
           created_by: user.id,
         })
         .select('id, name')

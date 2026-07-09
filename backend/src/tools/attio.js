@@ -96,6 +96,39 @@ const TOOL_DEFS = [
     },
   },
   {
+    name: 'attio_list_meetings',
+    description:
+      'Listet Meetings/Calls aus Attio (Kalender-Sync + Call Intelligence), neueste zuerst. Filterbar nach Zeitraum, Titel-Suchwort, Teilnehmer-Emails oder verknüpftem Record. Liefert meeting_id für attio_get_transcript. Tipp: für "Call mit Kunde X" nach dem Firmennamen im Titel filtern (query) ODER über linked_record gehen.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        days_back: { type: 'number', description: 'Meetings der letzten N Tage (Default 7)' },
+        query: { type: 'string', description: 'Suchwort im Meeting-Titel (client-seitig gefiltert)' },
+        participants: { type: 'string', description: 'Komma-getrennte Teilnehmer-Emails (optional)' },
+        linked_object: { type: 'string', description: 'Objekt-Slug für Record-Filter, z. B. "companies" (nur mit linked_record_id)' },
+        linked_record_id: { type: 'string', description: 'Record-ID, deren Meetings gelistet werden sollen' },
+        limit: { type: 'number', description: 'Max. Treffer, Default 30, max 200' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'attio_get_transcript',
+    description:
+      'Holt das Gesprächs-Transkript zu einem Meeting (Attio Call Intelligence) mit Sprecher-Zuordnung. Lange Transkripte kommen in Abschnitten — der Output nennt Gesamtlänge und den from_char-Wert zum Weiterlesen. Für "nächste Schritte / Fazit" lies auch das ENDE (tail=true), das steht fast immer am Schluss des Gesprächs. Wenn das Meeting keine Aufnahme hat, sagt das Tool das klar — dann existiert schlicht kein Transkript.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        meeting_id: { type: 'string', description: 'Die meeting_id aus attio_list_meetings' },
+        call_recording_id: { type: 'string', description: 'Optional: konkrete Aufnahme, sonst wird die erste genommen' },
+        from_char: { type: 'number', description: 'Ab welcher Zeichen-Position lesen (fürs Blättern), Default 0' },
+        tail: { type: 'boolean', description: 'true = die letzten ~30k Zeichen lesen (Gesprächsende: Fazit, nächste Schritte)' },
+      },
+      required: ['meeting_id'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'attio_raw_get',
     description:
       'Generischer READ-Zugriff auf jeden GET-Endpoint der Attio-API v2 (Pfad beginnt mit /, z. B. "/tasks" oder "/lists"). Nur für Fälle, die die anderen attio_-Tools nicht abdecken.',
@@ -149,6 +182,68 @@ export async function runAttioTool(name, input) {
       limit: String(Math.min(input.limit || 10, 50)),
     })
     return clip(await attioFetch(token, `/notes?${qs}`))
+  }
+  if (name === 'attio_list_meetings') {
+    const qs = new URLSearchParams({
+      sort: 'start_desc',
+      limit: String(Math.min(input.limit || 30, 200)),
+      ends_from: new Date(Date.now() - (input.days_back || 7) * 86400000).toISOString(),
+      starts_before: new Date(Date.now() + 86400000).toISOString(),
+    })
+    if (input.participants) qs.set('participants', input.participants)
+    if (input.linked_object && input.linked_record_id) {
+      qs.set('linked_object', input.linked_object)
+      qs.set('linked_record_id', input.linked_record_id)
+    }
+    const res = JSON.parse(await attioFetch(token, `/meetings?${qs}`))
+    let meetings = res.data || []
+    if (input.query) {
+      const q = input.query.toLowerCase()
+      meetings = meetings.filter((m) => (m.title || '').toLowerCase().includes(q))
+    }
+    if (!meetings.length) return 'Keine Meetings im Zeitraum gefunden (ggf. days_back erhöhen oder query weglassen).'
+    return clip(
+      meetings
+        .map((m) => {
+          const start = m.start?.datetime || m.start?.date || '?'
+          const who = (m.participants || []).map((p) => p.email_address).filter(Boolean).slice(0, 5).join(', ')
+          return `${start} | ${m.title || '(ohne Titel)'} | meeting_id=${m.id.meeting_id}${who ? ` | ${who}` : ''}`
+        })
+        .join('\n')
+    )
+  }
+  if (name === 'attio_get_transcript') {
+    const mid = encodeURIComponent(input.meeting_id)
+    const recs = JSON.parse(await attioFetch(token, `/meetings/${mid}/call_recordings`))
+    if (!recs.data?.length) {
+      return 'Dieses Meeting hat KEINE Call-Aufnahme in Attio — es existiert also kein Transkript. Das ist Datenlage, kein Fehler.'
+    }
+    const rid = input.call_recording_id || recs.data[0].id.call_recording_id
+    const tr = JSON.parse(await attioFetch(token, `/meetings/${mid}/call_recordings/${encodeURIComponent(rid)}/transcript`))
+    // Sprech-Segmente lesbar machen: "Sprecher: Text" — Struktur laut Attio-Doku
+    const segments = tr.data?.segments || tr.segments || tr.data || []
+    let full
+    if (Array.isArray(segments) && segments.length) {
+      full = segments
+        .map((s) => {
+          const speaker = s.speaker?.name || s.speaker_name || s.speaker || 'Sprecher'
+          const text = s.text || s.words?.map((w) => w.text || w.word).join(' ') || ''
+          return `${speaker}: ${text}`
+        })
+        .join('\n')
+    } else {
+      full = JSON.stringify(tr) // unbekanntes Format: roh liefern statt raten
+    }
+    // Blätterbar statt hart abgeschnitten: Abschnitt liefern + sagen, wie es weitergeht
+    const CHUNK = 30000
+    const start = input.tail ? Math.max(0, full.length - CHUNK) : Math.max(0, input.from_char || 0)
+    const part = full.slice(start, start + CHUNK)
+    const header = `[Transkript: ${full.length} Zeichen gesamt · Ausschnitt ${start}–${start + part.length}]`
+    const footer =
+      start + part.length < full.length
+        ? `\n\n[... es folgt mehr — weiterlesen mit from_char=${start + part.length}, oder tail=true für das Gesprächsende]`
+        : '\n\n[Ende des Transkripts]'
+    return `${header}\n${part}${footer}`
   }
   if (name === 'attio_raw_get') {
     const path = String(input.path || '')
