@@ -712,13 +712,29 @@
 
   /* ---------- admin ---------- */
   .cost-shell{max-width:760px;margin:0 auto;padding-bottom:50px}
-  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:14px}
-  .kpi{padding:22px 24px}
-  .kpi .k-lbl{font-size:11px;font-weight:650;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
-  .kpi .k-val{font-size:29px;font-weight:620;letter-spacing:-.03em;margin-top:8px;font-variant-numeric:tabular-nums}
-  .kpi .k-val small{font-size:15px;color:var(--ink-3);font-weight:500}
-  .kpi .k-sub{font-size:12.5px;color:var(--ink-2);margin-top:3px}
-  .footnote{margin:22px auto 0;color:var(--ink-3);font-size:12px;max-width:72ch;text-align:center}
+  .admin-shell{max-width:860px;margin:0 auto;padding:38px 0 64px}
+  .admin-head{padding:0 2px 22px;border-bottom:1px solid var(--hair);margin-bottom:26px}
+  .admin-head .eyebrow{font-size:10.5px;font-weight:680;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
+  .admin-head h2{font-size:27px;line-height:1.1;font-weight:650;letter-spacing:-.025em;margin:0}
+  .admin-link:focus-visible{outline:2px solid var(--lila);outline-offset:2px}
+  .admin-pane[hidden]{display:none!important}
+  .admin-pane-head{display:flex;align-items:baseline;gap:12px;margin:0 2px 18px}
+  .admin-pane-head h3{font-size:15px;font-weight:650;margin:0}
+  .admin-pane-head p{font-size:12.5px;color:var(--ink-3);margin:0}
+  .admin-review-stack>.list-panel{padding:0;margin:0;border-top:1px solid var(--hair)}
+  .admin-review-stack>.list-panel:last-child{border-bottom:1px solid var(--hair)}
+  .admin-review-stack>.list-panel>h3{display:flex;align-items:center;font-size:13px;margin:0;padding:15px 2px 10px}
+  .usage-list{border-top:1px solid var(--hair);border-bottom:1px solid var(--hair)}
+  .usage-row{min-height:58px;display:flex;align-items:center;justify-content:space-between;gap:24px;padding:0 2px;border-bottom:1px solid var(--hair)}
+  .usage-row:last-child{border-bottom:0}
+  .usage-row span{font-size:13px;color:var(--ink-2)}
+  .usage-row strong{font-size:16px;font-weight:620;font-variant-numeric:tabular-nums;letter-spacing:-.015em}
+  .usage-row strong small{font-size:12px;font-weight:500;color:var(--ink-3)}
+  .invite-compact{display:flex;gap:9px;margin-top:20px;padding-top:18px;border-top:1px solid var(--hair)}
+  .invite-compact input{flex:1;min-width:0;border:1px solid var(--hair);border-radius:12px;background:var(--surface);padding:9px 13px;font-size:13px;outline:0}
+  .invite-compact input:focus{border-color:var(--lila);box-shadow:0 0 0 3px rgba(123,90,226,.1)}
+  #member-count{margin-left:auto}
+  @media(max-width:900px){.admin-shell{padding:28px 18px 50px}}
 </style>
 </head>
 <body>
@@ -792,13 +808,9 @@
     <div class="sb-ctx" id="sb-admin" hidden>
       <div class="sb-scroll">
         <div class="sb-sec">Administration</div>
-        <button class="sb-item admin-link" data-target="k-today"><span class="txt">Kosten</span></button>
-        <button class="sb-item admin-link" data-target="panel-knowledge" hidden><span class="txt">Wissens-Updates</span></button>
-        <button class="sb-item admin-link" data-target="panel-learnings" hidden><span class="txt">Learnings</span></button>
-        <button class="sb-item admin-link" data-target="panel-skills" hidden><span class="txt">Skill-Vorschläge</span></button>
-        <button class="sb-item admin-link" data-target="panel-tools" hidden><span class="txt">Tool-Vorschläge</span></button>
-        <button class="sb-item admin-link" data-target="panel-model"><span class="txt">Modell</span></button>
-        <button class="sb-item admin-link" data-target="panel-members"><span class="txt">Mitglieder</span></button>
+        <button class="sb-item admin-link on" data-admin-tab="reviews" hidden><span class="txt">Freigaben</span></button>
+        <button class="sb-item admin-link" data-admin-tab="usage"><span class="txt">Nutzung</span></button>
+        <button class="sb-item admin-link" data-admin-tab="members"><span class="txt">Mitglieder</span></button>
       </div>
     </div>
 
@@ -1144,81 +1156,56 @@
 
     <!-- ADMIN -->
     <section class="view" id="v-admin">
-      <div class="page-head">
-        <div class="eyebrow">Admin</div>
-        <h2>Transparent, nicht überwachend.</h2>
-        <p>Kosten stehen an jeder Antwort. Analytics sind metadata-only, Inhalte werden nie ausgewertet.</p>
-      </div>
-      <div class="cost-shell">
-        <div class="kpis">
-          <div class="glass kpi">
-            <div class="k-lbl">Heute</div>
-            <div class="k-val" id="k-today">— <small>€</small></div>
-            <div class="k-sub">deine Anfragen</div>
-          </div>
-          <div class="glass kpi">
-            <div class="k-lbl">Dieser Monat</div>
-            <div class="k-val" id="k-month">— <small>€</small></div>
-            <div class="k-sub">&nbsp;</div>
-          </div>
-          <div class="glass kpi">
-            <div class="k-lbl">Antworten gesamt</div>
-            <div class="k-val" id="k-count">—</div>
-            <div class="k-sub">seit Start</div>
-          </div>
-        </div>
+      <div class="admin-shell">
+        <header class="admin-head">
+          <div><div class="eyebrow">Workspace</div><h2>Administration</h2></div>
+        </header>
 
-        <div class="list-panel" id="panel-knowledge" hidden>
-          <h3>Wissens-Updates <span class="ku-count" id="ku-count"></span></h3>
-          <p class="panel-sub">Enni sammelt aus allen Konversationen Vorschläge fürs Wiki. Nur du entscheidest, was übernommen wird — nach der Übernahme wird die Seite sofort neu indexiert.</p>
-          <div id="ku-list"></div>
-        </div>
-
-        <div class="list-panel" id="panel-learnings" hidden>
-          <h3>Learning-Vorschläge <span class="ku-count" id="lr-count"></span></h3>
-          <p class="panel-sub">Feedback und Konversations-Learnings der Nutzer — persönlich schon aktiv. Du entscheidest, was Team-weit für alle Accounts gilt.</p>
-          <div id="lr-list"></div>
-        </div>
-
-        <div class="list-panel" id="panel-skills" hidden>
-          <h3>Skill-Vorschläge <span class="ku-count" id="sp-count"></span></h3>
-          <p class="panel-sub">Von Mitgliedern gebaute Skills, die sie fürs Team vorschlagen — beim Ersteller schon aktiv. Du entscheidest, was Team-weit für alle Accounts gilt. Zum Prüfen den Skill öffnen.</p>
-          <div id="sp-list"></div>
-        </div>
-
-        <div class="list-panel" id="panel-tools" hidden>
-          <h3>Tool-Vorschläge <span class="ku-count" id="tp-count"></span></h3>
-          <p class="panel-sub">Persönlich verbundene Tools, die Mitglieder fürs Team beantragen. Freischalten macht die hinterlegten Zugangsdaten für alle Accounts nutzbar.</p>
-          <div id="tp-list"></div>
-        </div>
-
-        <div class="list-panel" id="panel-model">
-          <h3>Modell</h3>
-          <div class="row">
-            <div><div class="r-name">Enni läuft auf Claude Opus 4.8</div><div class="r-sub">Anthropic · Provider-Auswahl und weitere Modelle folgen in Phase 2</div></div>
-            <div></div><span class="role">Standard</span>
+        <div class="admin-pane" data-admin-pane="reviews">
+          <div class="admin-pane-head"><h3>Freigaben</h3><p>Offene Änderungen am gemeinsamen Workspace.</p></div>
+          <div class="admin-review-stack">
+            <section class="list-panel" id="panel-knowledge" hidden>
+              <h3>Wissens-Updates <span class="ku-count" id="ku-count"></span></h3>
+              <div id="ku-list"></div>
+            </section>
+            <section class="list-panel" id="panel-learnings" hidden>
+              <h3>Learnings <span class="ku-count" id="lr-count"></span></h3>
+              <div id="lr-list"></div>
+            </section>
+            <section class="list-panel" id="panel-skills" hidden>
+              <h3>Skills <span class="ku-count" id="sp-count"></span></h3>
+              <div id="sp-list"></div>
+            </section>
+            <section class="list-panel" id="panel-tools" hidden>
+              <h3>Tools <span class="ku-count" id="tp-count"></span></h3>
+              <div id="tp-list"></div>
+            </section>
           </div>
         </div>
 
-        <div class="list-panel" id="panel-members">
-          <h3>Mitglieder</h3>
+        <div class="admin-pane" data-admin-pane="usage" hidden>
+          <div class="admin-pane-head"><h3>Nutzung</h3><p>Nur Metadaten und Kosten deines Accounts.</p></div>
+          <div class="usage-list">
+            <div class="usage-row"><span>Heute</span><strong id="k-today">— <small>€</small></strong></div>
+            <div class="usage-row"><span>Dieser Monat</span><strong id="k-month">— <small>€</small></strong></div>
+            <div class="usage-row"><span>Antworten seit Start</span><strong id="k-count">—</strong></div>
+          </div>
+        </div>
+
+        <div class="admin-pane" data-admin-pane="members" hidden>
+          <div class="admin-pane-head"><h3>Mitglieder</h3><p id="member-count"></p></div>
           <div id="member-list"></div>
-          <div id="invite-box" hidden>
-            <h3 style="margin-top:22px">Mitglied einladen</h3>
-            <p class="panel-sub" style="margin-top:-2px">Erzeugt einen persönlichen Einladungslink (nur @enneo.ai) — schick ihn per Slack oder Mail. Der Link loggt direkt ein; Passwort setzt die Person danach im Profil.</p>
-            <div class="task-add">
-              <input type="email" id="inv-email" placeholder="name@enneo.ai">
-              <button class="btn dark" id="inv-create">Link erzeugen</button>
-            </div>
-            <div class="err" id="inv-err"></div>
-            <div class="inv-result" id="inv-result" hidden>
-              <code id="inv-link"></code>
-              <button class="btn quiet" id="inv-copy">Kopieren</button>
-            </div>
+          <div class="invite-compact" id="invite-box" hidden>
+            <input type="email" id="inv-email" name="invite-email" aria-label="E-Mail-Adresse" autocomplete="off" spellcheck="false" placeholder="name@enneo.ai">
+            <button class="btn dark" id="inv-create">Einladen</button>
+          </div>
+          <div class="err" id="inv-err"></div>
+          <div class="inv-result" id="inv-result" hidden>
+            <code id="inv-link"></code>
+            <button class="btn quiet" id="inv-copy">Kopieren</button>
           </div>
         </div>
 
-        <p class="footnote">Jede Antwort schreibt einen Eintrag mit Token-Zahlen und Euro-Betrag. Du siehst nur deine eigenen Kosten — auch als Admin keine fremden Inhalte.</p>
       </div>
     </section>
   </main>

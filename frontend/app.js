@@ -298,12 +298,7 @@ async function route() {
   }
   if (p.startsWith('/admin')) {
     activateArea('admin')
-    refreshCosts()
-    loadKnowledgeUpdates()
-    loadLearnings()
-    loadSkillProposals()
-    loadToolProposals()
-    return loadMembers()
+    return loadAdmin()
   }
   newConversation()
 }
@@ -317,7 +312,7 @@ document.querySelectorAll('.rail-btn').forEach((b) =>
       loadConnectorRows()
       loadSpacesTree()
     }
-    if (b.dataset.v === 'admin') { refreshCosts(); loadMembers(); loadKnowledgeUpdates(); loadLearnings(); loadSkillProposals(); loadToolProposals() }
+    if (b.dataset.v === 'admin') loadAdmin()
   })
 )
 
@@ -335,13 +330,34 @@ document.querySelectorAll('.admin-area').forEach((b) =>
   })
 )
 
-// Admin-Sidebar: zu Panel scrollen
+// Admin-Sidebar: genau einen Arbeitsbereich zeigen
+const ADMIN_TABS = new Set(['reviews', 'usage', 'members'])
+
+function setAdminTab(tab, sync = true) {
+  if (!ADMIN_TABS.has(tab)) tab = 'usage'
+  document.querySelectorAll('.admin-link').forEach((x) => x.classList.toggle('on', x.dataset.adminTab === tab))
+  document.querySelectorAll('[data-admin-pane]').forEach((x) => (x.hidden = x.dataset.adminPane !== tab))
+  window.scrollTo({ top: 0 })
+  if (sync && location.pathname === '/admin') {
+    const url = new URL(location.href)
+    url.searchParams.set('tab', tab)
+    history.pushState({}, '', url)
+  }
+}
+
 document.querySelectorAll('.admin-link').forEach((b) =>
-  b.addEventListener('click', () => {
-    document.querySelectorAll('.admin-link').forEach((x) => x.classList.toggle('on', x === b))
-    document.getElementById(b.dataset.target)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  })
+  b.addEventListener('click', () => setAdminTab(b.dataset.adminTab))
 )
+
+async function loadAdmin() {
+  const { is_admin } = await ownProfile()
+  const requested = new URLSearchParams(location.search).get('tab')
+  const initial = ADMIN_TABS.has(requested) ? requested : is_admin ? 'reviews' : 'usage'
+  setAdminTab(!is_admin && initial === 'reviews' ? 'usage' : initial, false)
+  await Promise.all([
+    refreshCosts(), loadMembers(), loadKnowledgeUpdates(), loadLearnings(), loadSkillProposals(), loadToolProposals(),
+  ])
+}
 
 // ============================================================ Conversations
 function convGroup(dateStr) {
@@ -935,7 +951,7 @@ function writeCard(p) {
 async function loadKnowledgeUpdates() {
   const { is_admin } = await ownProfile()
   const panel = $('panel-knowledge')
-  const link = document.querySelector('.admin-link[data-target="panel-knowledge"]')
+  const link = document.querySelector('.admin-link[data-admin-tab="reviews"]')
   panel.hidden = !is_admin
   if (link) link.hidden = !is_admin
   if (!is_admin) return
@@ -984,7 +1000,7 @@ async function loadKnowledgeUpdates() {
 async function loadLearnings() {
   const { is_admin } = await ownProfile()
   const panel = $('panel-learnings')
-  const link = document.querySelector('.admin-link[data-target="panel-learnings"]')
+  const link = document.querySelector('.admin-link[data-admin-tab="reviews"]')
   panel.hidden = !is_admin
   if (link) link.hidden = !is_admin
   if (!is_admin) return
@@ -1041,7 +1057,7 @@ async function loadLearnings() {
 async function loadSkillProposals() {
   const { is_admin } = await ownProfile()
   const panel = $('panel-skills')
-  const link = document.querySelector('.admin-link[data-target="panel-skills"]')
+  const link = document.querySelector('.admin-link[data-admin-tab="reviews"]')
   panel.hidden = !is_admin
   if (link) link.hidden = !is_admin
   if (!is_admin) return
@@ -1088,7 +1104,7 @@ async function loadSkillProposals() {
 async function loadToolProposals() {
   const { is_admin } = await ownProfile()
   const panel = $('panel-tools')
-  const link = document.querySelector('.admin-link[data-target="panel-tools"]')
+  const link = document.querySelector('.admin-link[data-admin-tab="reviews"]')
   panel.hidden = !is_admin
   if (link) link.hidden = !is_admin
   if (!is_admin) return
@@ -3131,6 +3147,7 @@ async function loadMembers() {
   $('invite-box').hidden = !is_admin
   const list = $('member-list')
   list.innerHTML = ''
+  $('member-count').textContent = `${(data || []).length} Accounts`
   for (const m of data || []) {
     const row = document.createElement('div')
     row.className = 'row'

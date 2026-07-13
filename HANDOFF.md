@@ -1,6 +1,13 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-09 (Wissens-Update-Loop live als Admin-Review + Skillstruktur v1. MVP live auf https://enneo-os.netlify.app)
+**Zuletzt aktualisiert:** 2026-07-13 (Admin-Redesign; MVP live auf https://enneo-os.netlify.app)
+
+### Session 2026-07-13 — Admin-Bereich neu strukturiert
+
+- Die lange gemischte Admin-Seite wurde durch drei klar getrennte Arbeitsbereiche ersetzt: **Freigaben**, **Nutzung** und **Mitglieder**.
+- Die drei Statistik-Karten und der funktionslose Modell-/Systembereich wurden entfernt. Nutzung erscheint als kompakte Zeilenansicht; Freigaben bündeln Wissens-, Learning-, Skill- und Tool-Vorschläge ohne wiederholte Erklärungstexte.
+- Admin-Tabs synchronisieren ihren Zustand über `/admin?tab=reviews|usage|members`; Non-Admins landen automatisch auf Nutzung.
+- Mitgliederverwaltung und Invite-Flow bleiben funktional, sind aber platzsparend in einer Zeile aufgebaut.
 
 ### Session 2026-07-09 — Wissens-Update-Loop (Admin-Review) + Skillstruktur
 
