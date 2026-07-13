@@ -129,14 +129,34 @@ async function onboardingNudge() {
   localStorage.setItem(key, '1')
 }
 
+let currentFirstName = ''
+
+function greetingForCurrentTime() {
+  const hour = new Date().getHours()
+  if (hour < 11) return 'Guten Morgen'
+  if (hour < 18) return 'Guten Tag'
+  return 'Guten Abend'
+}
+
+function renderNewConversationEmpty() {
+  const name = currentFirstName ? ` ${esc(currentFirstName)}` : ''
+  $('msgs').innerHTML = `
+    <div class="empty empty-chat">
+      <div><span class="enni-dot">E</span></div>
+      <div class="empty-greeting">${greetingForCurrentTime()}${name}, wie kann ich dir heute weiterhelfen?</div>
+    </div>`
+}
+
 async function renderFooterProfile() {
   const { data: p } = await sb
     .from('profiles').select('display_name, avatar_url, email').eq('id', session.user.id).maybeSingle()
   const name = p?.display_name || session.user.email
-  $('f-name').textContent = name.split(' ')[0]
+  currentFirstName = p?.display_name?.trim().split(/\s+/)[0] || ''
+  $('f-name').textContent = currentFirstName || name.split(' ')[0]
   const av = $('f-avatar')
   if (p?.avatar_url) av.innerHTML = `<img src="${esc(p.avatar_url)}" alt="">`
   else av.textContent = name.split(' ').map((x) => x[0]).slice(0, 2).join('').toUpperCase()
+  if (!currentConv && $('msgs').querySelector('.empty-chat')) renderNewConversationEmpty()
 }
 
 // ============================================================ Profil bearbeiten
@@ -456,7 +476,7 @@ function newConversation() {
   $('model-select').value = 'claude-opus-4-8'
   $('composer-input').placeholder = convPod ? 'Nachricht ans Team — @enni ruft Enni …' : 'Frag Enni …'
   $('chat-title').textContent = 'Neue Konversation'
-  $('msgs').innerHTML = `<div class="empty"><div><span class="enni-dot">E</span></div></div>`
+  renderNewConversationEmpty()
   document.querySelectorAll('#conv-list .sb-item').forEach((x) => x.classList.remove('on'))
   sidebarPodId = convPod?.id || null
   paintPodHighlight()
