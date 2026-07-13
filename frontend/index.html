@@ -626,14 +626,39 @@
   .role.admin{background:rgba(123,90,226,.1);color:var(--lila-deep)}
 
   /* ---------- pod ---------- */
-  .pod-shell{max-width:860px;margin:0 auto;padding-bottom:50px}
-  .pod-tabs{display:flex;gap:3px;margin:6px 0 20px;padding:4px;border-radius:999px;width:fit-content;
-    background:var(--press);
-    box-shadow:inset 0 1px 3px rgba(29,30,44,.10), inset 0 0 0 1px rgba(29,30,44,.03), 0 1px 0 rgba(255,255,255,.7)}
-  .pt-btn{border:0;background:transparent;border-radius:999px;padding:7px 16px;font-size:12.5px;font-weight:620;color:var(--ink-3);transition:all .3s ease}
-  .pt-btn:hover{color:var(--ink-2)}
-  .pt-btn.on{color:var(--ink);background:linear-gradient(180deg, var(--key-hi), var(--key-lo));
-    box-shadow:inset 0 1px 0 rgba(255,255,255,.75), 0 1px 2px rgba(29,30,44,.08), 0 3px 8px -2px rgba(29,30,44,.10)}
+  .pod-shell{max-width:900px;margin:0 auto;padding:0 2px 42px;min-height:100vh}
+  .pod-head{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:24px 4px 18px}
+  .pod-identity{display:flex;align-items:center;gap:12px;min-width:0}
+  .pod-hero-logo{width:38px;height:38px;border-radius:11px;font-size:12px;box-shadow:0 8px 22px -10px rgba(29,30,44,.35)}
+  .pod-head-copy{min-width:0}
+  .pod-head-copy .t{font-size:17px;font-weight:650;line-height:1.25;letter-spacing:-.012em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pod-head-copy .sub{font-size:12px;color:var(--ink-3);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:62ch}
+  .pod-meta{display:flex;align-items:center;gap:7px;color:var(--ink-3);font-size:11.5px;white-space:nowrap;flex:none}
+  .pod-meta .dot{opacity:.45}
+  .pod-tabs{display:flex;align-items:center;gap:3px;margin:0 0 15px;padding:0 2px 7px;border-bottom:1px solid var(--hair)}
+  .pt-btn{display:inline-flex;align-items:center;gap:6px;border:0;background:transparent;border-radius:8px;padding:7px 10px;font-size:12.5px;font-weight:600;color:var(--ink-3);transition:color .2s ease,background .2s ease}
+  .pt-btn:hover{color:var(--ink);background:var(--hover)}
+  .pt-btn.on{color:var(--ink);background:var(--press)}
+  .pt-count{min-width:17px;padding:0 5px;border-radius:999px;background:var(--surface);font-family:var(--mono);font-size:9.5px;line-height:17px;text-align:center;color:var(--ink-3)}
+  .pt-btn.on .pt-count{color:var(--lila-deep);background:rgba(123,90,226,.11)}
+  .pod-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px;align-items:center;margin-bottom:7px}
+  .pod-toolbar .wiki-search{width:100%;margin:0;padding:9px 13px;border-radius:11px;background:var(--surface-2)}
+  .pod-new-conv{height:38px;border:1px solid var(--hair);border-radius:11px;background:var(--surface);padding:0 14px;color:var(--ink);font-size:12.5px;font-weight:620;white-space:nowrap;box-shadow:inset 0 1px 0 var(--glass-highlight)}
+  .pod-new-conv:hover{border-color:rgba(123,90,226,.24);background:var(--glass-strong)}
+  #ptab-convs{min-height:calc(100vh - 147px);display:flex;flex-direction:column}
+  #ptab-convs .list-panel{margin-bottom:20px;padding:0}
+  #ptab-convs .composer{margin-top:auto}
+  .pod-conv-row{display:grid;grid-template-columns:minmax(0,1fr) auto 18px;align-items:center;gap:14px;width:100%;min-height:58px;padding:9px 8px;border:0;border-bottom:1px solid var(--hair);background:transparent;text-align:left;color:var(--ink);border-radius:0;transition:background .18s ease,padding .18s ease}
+  .pod-conv-row:hover{background:var(--hover);padding-left:12px;padding-right:10px;border-radius:10px}
+  .pod-conv-main{min-width:0}
+  .pod-conv-title{display:flex;align-items:center;gap:7px;font-size:13.5px;font-weight:590;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pod-conv-title > span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .pod-conv-title .c-ind{flex:none}
+  .pod-conv-meta{font-size:11.5px;color:var(--ink-3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pod-conv-date{font-family:var(--mono);font-size:11px;color:var(--ink-3);white-space:nowrap}
+  .pod-conv-arrow{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;color:var(--ink-3);opacity:0;transform:translateX(-4px);transition:opacity .18s ease,transform .18s ease}
+  .pod-conv-row:hover .pod-conv-arrow,.pod-conv-row:focus-visible .pod-conv-arrow{opacity:1;transform:none}
+  @media(max-width:680px){.pod-head{align-items:flex-start}.pod-meta{display:none}.pod-toolbar{grid-template-columns:1fr}.pod-new-conv{width:100%}.pod-conv-date{display:none}}
   .task-add{display:flex;gap:10px;margin-bottom:14px}
   .task-add input{flex:1;border:1px solid var(--hair);border-radius:12px;background:var(--surface);padding:10px 14px;font-size:14px;outline:0}
   .task-add input:focus{border-color:var(--lila)}
@@ -903,21 +928,30 @@
     <!-- POD -->
     <section class="view" id="v-pod">
       <div class="pod-shell">
-        <div class="chat-head" style="padding-top:22px">
-          <div>
-            <div class="t" id="pod-title">Pod</div>
-            <div style="font-size:12px;color:var(--ink-3)" id="pod-sub">Pod · gemeinsamer Kontext für alle Mitglieder</div>
+        <div class="pod-head">
+          <div class="pod-identity">
+            <span class="pod-tile pod-hero-logo" id="pod-hero-logo">·</span>
+            <div class="pod-head-copy">
+              <div class="t" id="pod-title">Pod</div>
+              <div class="sub" id="pod-sub">Gemeinsamer Kontext für alle Mitglieder</div>
+            </div>
+          </div>
+          <div class="pod-meta">
+            <span id="pod-member-count">0 Mitglieder</span><span class="dot">·</span><span id="pod-access">Offener Pod</span>
           </div>
         </div>
         <div class="pod-tabs" id="pod-tabs">
-          <button class="pt-btn on" data-tab="convs">Konversationen</button>
-          <button class="pt-btn" data-tab="tasks">Aufgaben</button>
-          <button class="pt-btn" data-tab="files">Dateien</button>
+          <button class="pt-btn on" data-tab="convs">Konversationen <span class="pt-count" id="pod-conv-count">0</span></button>
+          <button class="pt-btn" data-tab="tasks">Aufgaben <span class="pt-count" id="pod-task-count">0</span></button>
+          <button class="pt-btn" data-tab="files">Dateien <span class="pt-count" id="pod-file-count">0</span></button>
           <button class="pt-btn" data-tab="settings">Einstellungen</button>
         </div>
 
         <div class="pod-tab" id="ptab-convs">
-          <input type="search" class="wiki-search" id="pod-conv-search" placeholder="Konversationen durchsuchen …" style="width:100%;margin:0 0 10px">
+          <div class="pod-toolbar">
+            <input type="search" class="wiki-search" id="pod-conv-search" placeholder="Konversationen durchsuchen …">
+            <button class="pod-new-conv" id="pod-new-conv">＋ Neue Konversation</button>
+          </div>
           <div class="list-panel"><div id="pod-conv-list"></div></div>
           <!-- Vollwertiger Composer wie im Chat: neue Team-Konversation starten (@enni ruft Enni) -->
           <div class="composer">

@@ -1390,11 +1390,30 @@ async function openPod(pod, tab = 'convs') {
   convPod = null
   $('pod-title').textContent = pod.name
   $('pod-sub').textContent = pod.description || 'Pod · gemeinsamer Kontext für alle Mitglieder'
+  const logo = $('pod-hero-logo')
+  logo.className = 'pod-tile pod-hero-logo' + (pod.logo_url ? ' logo' : '')
+  logo.innerHTML = pod.logo_url ? `<img src="${esc(pod.logo_url)}" alt="">` : esc(podInitials(pod.name))
+  const memberCount = new Set([...(pod.members || []), pod.created_by].filter(Boolean)).size
+  $('pod-member-count').textContent = `${memberCount} ${memberCount === 1 ? 'Mitglied' : 'Mitglieder'}`
+  $('pod-access').textContent = pod.open ? 'Offener Pod' : 'Privater Pod'
   sidebarPodId = pod.id
   paintPodHighlight()
   document.querySelectorAll('#conv-list .sb-item').forEach((x) => x.classList.remove('on'))
+  refreshPodCounts(pod.id)
   switchPodTab(tab)
   activateArea('chat', 'pod')
+}
+
+async function refreshPodCounts(podId) {
+  const [convs, tasks, files] = await Promise.all([
+    sb.from('conversations').select('id', { count: 'exact', head: true }).eq('pod_id', podId),
+    sb.from('pod_tasks').select('id', { count: 'exact', head: true }).eq('pod_id', podId),
+    sb.from('pod_files').select('id', { count: 'exact', head: true }).eq('pod_id', podId),
+  ])
+  if (activePod?.id !== podId) return
+  $('pod-conv-count').textContent = convs.count ?? 0
+  $('pod-task-count').textContent = tasks.count ?? 0
+  $('pod-file-count').textContent = files.count ?? 0
 }
 
 function switchPodTab(tab) {
@@ -1415,6 +1434,7 @@ async function loadPodConvs() {
     allProfiles(),
   ])
   podConvsCache = (data || []).map((c) => ({ ...c, starter: profName(profs, c.user_id) }))
+  $('pod-conv-count').textContent = podConvsCache.length
   $('pod-conv-search').value = ''
   $('pod-quick-input').placeholder = `Schreib dem Team in „${activePod.name}“ — @enni ruft Enni dazu …`
   renderPodConvs('')
@@ -1425,15 +1445,15 @@ function renderPodConvs(filter) {
   list.innerHTML = ''
   const items = podConvsCache.filter((c) => !filter || (c.title || '').toLowerCase().includes(filter))
   for (const c of items) {
-    const row = document.createElement('div')
-    row.className = 'row'
-    row.style.cursor = 'pointer'
+    const row = document.createElement('button')
+    row.className = 'pod-conv-row'
     const ind = c.working || activeStreams.has(c.id)
-      ? '<span class="c-ind work" title="Enni arbeitet …"></span> '
-      : c.unread ? '<span class="c-ind done" title="Fertig — noch nicht angesehen"></span> ' : ''
-    row.innerHTML = `<div><div class="r-name">${ind}${esc(c.title || 'Ohne Titel')}</div>
-      <div class="r-sub">gestartet von ${esc(c.starter)}</div></div><div></div>
-      <span class="r-val">${new Date(c.updated_at).toLocaleDateString('de-DE')}</span>`
+      ? '<span class="c-ind work" title="Enni arbeitet …"></span>'
+      : c.unread ? '<span class="c-ind done" title="Fertig — noch nicht angesehen"></span>' : ''
+    row.innerHTML = `<div class="pod-conv-main"><div class="pod-conv-title">${ind}<span>${esc(c.title || 'Ohne Titel')}</span></div>
+      <div class="pod-conv-meta">${esc(c.starter)}</div></div>
+      <span class="pod-conv-date">${compactPodDate(c.updated_at)}</span>
+      <svg class="pod-conv-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>`
     row.addEventListener('click', () => { convPod = activePod; openConversation(c) })
     list.appendChild(row)
   }
@@ -1441,6 +1461,23 @@ function renderPodConvs(filter) {
     list.innerHTML = `<div class="empty-plain">${filter ? 'Keine Treffer.' : 'Noch keine Konversationen — schreib unten die erste Nachricht, alle im Pod können mitlesen und mitschreiben.'}</div>`
 }
 $('pod-conv-search').addEventListener('input', () => renderPodConvs($('pod-conv-search').value.trim().toLowerCase()))
+$('pod-new-conv').addEventListener('click', () => {
+  $('pod-quick-input').scrollIntoView({ behavior: 'smooth', block: 'center' })
+  $('pod-quick-input').focus()
+})
+
+function compactPodDate(value) {
+  const date = new Date(value)
+  const now = new Date()
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const startDate = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  const days = Math.round((startToday - startDate) / 86400000)
+  if (days === 0) return 'Heute'
+  if (days === 1) return 'Gestern'
+  return date.toLocaleDateString('de-DE', {
+    day: 'numeric', month: 'short', year: date.getFullYear() === now.getFullYear() ? undefined : 'numeric',
+  })
+}
 
 // Pod-Composer: vollwertig wie im Chat (Anhänge, Diktat, Mention-Tags) — startet eine
 // neue Team-Konversation und übergibt Text + Dateien an den normalen Send-Pfad.
@@ -1523,6 +1560,7 @@ async function loadPodTasks() {
     allProfiles(),
   ])
   const tasks = data || []
+  $('pod-task-count').textContent = tasks.length
   // Gruppen: "Allgemein" ('') zuerst, dann Abschnitte in Reihenfolge der ersten Verwendung, dann leere Entwürfe
   const groups = new Map([['', []]])
   for (const t of tasks) {
@@ -1800,6 +1838,7 @@ async function loadPodFiles() {
     sb.from('pod_files').select('*').eq('pod_id', activePod.id).order('created_at', { ascending: false }),
     allProfiles(),
   ])
+  $('pod-file-count').textContent = (data || []).length
   const list = $('pod-file-list')
   list.innerHTML = ''
   for (const f of data || []) {
