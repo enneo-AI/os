@@ -124,10 +124,11 @@
   }
   .sb-new{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;border:0;border-radius:11px;background:var(--cta-bg);color:var(--cta-text);padding:9px;font-size:13px;font-weight:600;margin-bottom:16px;transition:background .15s}
   .sb-new:hover{background:var(--cta-hover)}
-  .sb-search{display:flex;align-items:center;gap:8px;width:100%;border:1px solid var(--hair);border-radius:10px;background:var(--surface);color:var(--ink-3);padding:8px 11px;font-size:13px;margin:14px 0 4px;transition:border-color .15s,color .15s}
-  .sb-search:hover{border-color:var(--edge);color:var(--ink-2)}
-  .sb-search svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
-  .sb-search .sb-kbd{margin-left:auto;font-family:var(--mono);font-size:10.5px;border:1px solid var(--hair);border-radius:5px;padding:1px 5px;color:var(--ink-3)}
+  .sb-top{display:flex;gap:8px;margin-bottom:16px}
+  .sb-top .sb-new{flex:1;margin-bottom:0}
+  .sb-lupe{width:38px;flex:none;border:0;border-radius:11px;background:none;color:var(--ink-3);display:inline-flex;align-items:center;justify-content:center;transition:color .15s,background .15s}
+  .sb-lupe:hover{color:var(--ink);background:var(--hover)}
+  .sb-lupe svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 
   /* Globale Suche — Command-Palette (⌘K) */
   .pal-overlay{align-items:flex-start;background:rgba(29,30,44,.28)}
@@ -709,15 +710,14 @@
       </button>
     </nav>
 
-    <button class="sb-search" id="global-search-btn" title="Suchen (⌘K)">
-      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <span>Suchen</span>
-      <kbd class="sb-kbd">⌘K</kbd>
-    </button>
-
     <!-- Sidebar-Inhalt: Chat -->
     <div class="sb-ctx" id="sb-chat">
-      <button class="sb-new" id="new-chat">＋ Neue Konversation</button>
+      <div class="sb-top">
+        <button class="sb-new" id="new-chat">＋ Neue Konversation</button>
+        <button class="sb-lupe" id="global-search-btn" title="Suchen (⌘K)" aria-label="Suchen">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </button>
+      </div>
       <div class="sb-scroll">
         <div class="sb-sec">Pods <button class="sec-add" id="new-pod" title="Neuer Pod">＋</button></div>
         <div id="pod-list"></div>
