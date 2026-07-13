@@ -1873,7 +1873,10 @@ function sttLang() { return localStorage.getItem('enni-stt-lang') || 'de-DE' }
 // versteht Deutsch + Englisch GEMISCHT in derselben Aufnahme). Fällt automatisch auf die
 // Browser-Spracherkennung zurück, wenn der Server-Endpoint nicht konfiguriert ist (503).
 let mediaRec = null
-let sttFallback = localStorage.getItem('sttFallback') === '1'
+// Fallback-Flag bewusst NUR in-memory: nach einem Reload wird Server-STT wieder
+// versucht (sonst bliebe man dauerhaft auf Browser-Erkennung, obwohl der Key längst da ist)
+let sttFallback = false
+localStorage.removeItem('sttFallback') // Altlast aus der Zeit vor dem ELEVENLABS_API_KEY
 async function startDictation(btn, textarea, withLangHint = false) {
   if (sttFallback || !navigator.mediaDevices?.getUserMedia || !window.MediaRecorder)
     return startDictationWebSpeech(btn, textarea, withLangHint)
@@ -1904,8 +1907,7 @@ async function startDictation(btn, textarea, withLangHint = false) {
         body: JSON.stringify({ audio_base64: await fileToBase64(blob), mime: blob.type }),
       })
       if (res.status === 503) {
-        sttFallback = true
-        localStorage.setItem('sttFallback', '1')
+        sttFallback = true // nur für diese Sitzung — Reload versucht Server-STT erneut
         showHint('Server-Diktat noch nicht konfiguriert — Browser-Erkennung übernimmt, bitte nochmal aufs Mikro klicken.')
         return
       }
