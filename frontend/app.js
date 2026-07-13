@@ -23,9 +23,39 @@ let viewSeq = 0
 const activeStreams = new Set() // conversation_ids mit laufendem Enni-Turn (dieser Tab)
 const sendingViews = new Set() // viewSeq-Werte mit laufendem Send (blockt Doppel-Send pro Ansicht)
 
+const SEND_SVG = '<svg viewBox="0 0 24 24"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>'
+const STOP_SVG = '<svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor" stroke="none"/></svg>'
+
 function updateComposerState() {
-  const busy = sendingViews.has(viewSeq) || (currentConv && activeStreams.has(currentConv.id))
-  $('send-btn').disabled = !!busy
+  // Läuft in der offenen Konversation ein Turn (eigener Stream ODER extern/working),
+  // wird der Send-Button zum Stop-Button (Codex-Muster). Ohne Konversations-ID
+  // (Turn startet gerade erst) bleibt er kurz deaktiviert.
+  const streamingHere = !!(currentConv && (activeStreams.has(currentConv.id) || currentConv.working))
+  const btn = $('send-btn')
+  btn.classList.toggle('stop', streamingHere)
+  btn.innerHTML = streamingHere ? STOP_SVG : SEND_SVG
+  btn.title = streamingHere ? 'Enni stoppen' : 'Senden'
+  btn.setAttribute('aria-label', streamingHere ? 'Enni stoppen' : 'Senden')
+  btn.disabled = !streamingHere && sendingViews.has(viewSeq)
+}
+
+function fmtDur(ms) {
+  const s = Math.max(1, Math.round(ms / 1000))
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`
+}
+
+async function stopTurn() {
+  const id = currentConv?.id
+  if (!id) return
+  const btn = $('send-btn')
+  btn.disabled = true
+  try {
+    await fetch(`${BACKEND_URL}/api/conversations/${id}/stop`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${await token()}` },
+    })
+  } catch { /* Stream-Ende räumt den Zustand ohnehin auf */ }
+  btn.disabled = false
 }
 
 // Auto-Scroll nur, wenn der Nutzer ohnehin unten ist — Hochscrollen während des
@@ -392,7 +422,7 @@ async function openConversation(c) {
         box.appendChild(renderPeer(profName(profs, m.author_id), m.content, m.attachments))
       else box.appendChild(renderUser(m.content, m.attachments))
     } else if (m.role === 'assistant')
-      box.appendChild(renderAgent(m.content, m.thinking, m.tool_calls || [], costByMessage[m.id]))
+      box.appendChild(renderAgent(m.content, m.thinking, m.tool_calls || [], costByMessage[m.id], m.duration_ms))
     else if (m.role === 'compaction') box.appendChild(renderCompactionMarker(m.content))
   }
   ctxTokens = computeCtxTokens(msgs || [])
@@ -598,7 +628,7 @@ function enhanceCode(container) {
   })
 }
 
-function renderAgent(text, thinking, toolCalls, cost) {
+function renderAgent(text, thinking, toolCalls, cost, durationMs) {
   const wrap = document.createElement('div')
   wrap.className = 'm-agent'
   wrap.innerHTML = `<div class="who"><span class="enni-dot">E</span><b>Enni</b></div>`
@@ -606,9 +636,10 @@ function renderAgent(text, thinking, toolCalls, cost) {
   if (thinking || toolCalls.length) {
     const think = document.createElement('div')
     think.className = 'think'
-    const label = toolCalls.length
-      ? `Gedanken · ${toolCalls.length} Tool-Aufruf${toolCalls.length > 1 ? 'e' : ''}`
-      : 'Gedanken'
+    const label =
+      (toolCalls.length
+        ? `Gedanken · ${toolCalls.length} Tool-Aufruf${toolCalls.length > 1 ? 'e' : ''}`
+        : 'Gedanken') + (durationMs ? ` · ${fmtDur(durationMs)}` : '')
     think.innerHTML = `<button class="think-head"><span class="chev">▶</span>${label}</button>`
     const body = document.createElement('div')
     body.className = 'think-body'
@@ -632,11 +663,35 @@ function renderAgent(text, thinking, toolCalls, cost) {
   body.className = 'body'
   body.innerHTML = md(text)
   enhanceCode(body)
+  renderFileCards(body)
   wrap.appendChild(body)
 
   if (text) wrap.appendChild(agentMeta(() => text, cost))
   renderWriteCards(wrap, toolCalls)
   return wrap
+}
+
+// Von Enni erstellte Dateien (create_file → GET /files?u=…) als Karte statt nacktem Link
+// rendern (Codex-Muster: Icon, Name, Typ, Öffnen).
+const FILE_SVG = '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'
+function renderFileCards(scope) {
+  scope.querySelectorAll('a[href*="/files?u="]').forEach((a) => {
+    if (a.closest('.file-card')) return
+    const name = a.textContent.trim() || 'Datei'
+    const ext = (name.match(/\.(\w+)$/)?.[1] || '').toUpperCase()
+    const card = document.createElement('a')
+    card.className = 'file-card'
+    card.href = a.href
+    card.target = '_blank'
+    card.rel = 'noopener'
+    card.innerHTML = `<span class="fc-icon">${FILE_SVG}</span>
+      <span class="fc-main"><span class="fc-name">${esc(name)}</span><span class="fc-sub">${ext ? esc(ext) + ' · ' : ''}von Enni erstellt</span></span>
+      <span class="fc-open">Öffnen</span>`
+    // Steht der Link allein in einem Absatz, ersetzt die Karte den ganzen Absatz
+    const p = a.parentElement
+    if (p?.tagName === 'P' && p.textContent.trim() === a.textContent.trim()) p.replaceWith(card)
+    else a.replaceWith(card)
+  })
 }
 
 // ============================================================ Enneo-Write-Freigabe
@@ -1670,12 +1725,22 @@ async function send() {
   const pendingTools = {}
 
   const follow = followIfNearBottom
-  const setStatus = (label, working = true) => {
+  // Arbeitsdauer live im Shimmer-Status (Codex: "Working for 21s")
+  const t0 = Date.now()
+  let statusLabel = 'Enni denkt nach …'
+  const paintStatus = (working = true) => {
     const el = think?.querySelector('.t-status')
     if (!el) return
-    el.textContent = label
+    el.textContent = working ? `${statusLabel} · ${fmtDur(Date.now() - t0)}` : statusLabel
     el.classList.toggle('shimmer', working)
   }
+  const setStatus = (label, working = true) => {
+    statusLabel = label
+    paintStatus(working)
+  }
+  const statusTimer = setInterval(() => {
+    if (think?.isConnected && sendingViews.has(mySeq)) paintStatus()
+  }, 1000)
 
   try {
     const res = await fetch(`${BACKEND_URL}/api/chat`, {
@@ -1713,6 +1778,7 @@ async function send() {
           if (inView() && !currentConv) {
             currentConv = { id: ev.conversation_id, title: text.slice(0, 80), pod_id: convPod?.id || null }
             $('chat-close').hidden = false
+            updateComposerState() // Konversations-ID da → Send-Button wird zum Stop-Button
             if (pendingTaskId) {
               sb.from('pod_tasks').update({ conversation_id: ev.conversation_id }).eq('id', pendingTaskId).then(() => {})
               pendingTaskId = null
@@ -1767,11 +1833,14 @@ async function send() {
         } else if (ev.type === 'done') {
           if (!isTeamMsg) {
             body.innerHTML = md(answerText) // Cursor entfernen — Antwort ist final
+            if (ev.stopped && !answerText.trim()) body.innerHTML = '<p><em>Gestoppt.</em></p>'
             runIndicator.remove()
             enhanceCode(body)
-            thinkBody.insertAdjacentHTML('beforeend', '<div class="think-done">✓ Fertig</div>')
+            renderFileCards(body)
+            thinkBody.insertAdjacentHTML('beforeend', `<div class="think-done">${ev.stopped ? '⏹ Gestoppt' : '✓ Fertig'}</div>`)
             think.classList.remove('open')
-            setStatus(`Gedanken${toolCount ? ` · ${toolCount} Tool-Aufruf${toolCount > 1 ? 'e' : ''}` : ''}`, false)
+            const dur = ev.duration_ms || Date.now() - t0
+            setStatus(`Gedanken${toolCount ? ` · ${toolCount} Tool-Aufruf${toolCount > 1 ? 'e' : ''}` : ''} · ${fmtDur(dur)}`, false)
             wrap.appendChild(agentMeta(() => answerText, ev.cost_eur))
             // volle Tool-Outputs aus der DB nachladen (Stream enthält nur Status)
             hydrateToolOutputs(ev.message_id, thinkBody, wrap)
@@ -1791,6 +1860,7 @@ async function send() {
     ;(body || box).insertAdjacentHTML('beforeend', `<p style="color:var(--high)">Fehler: ${esc(err.message)}</p>`)
   }
 
+  clearInterval(statusTimer)
   sendingViews.delete(mySeq)
   if (streamConvId) activeStreams.delete(streamConvId)
   updateComposerState()
@@ -1825,7 +1895,10 @@ async function hydrateToolOutputs(messageId, thinkBody, wrap) {
   if (wrap) renderWriteCards(wrap, data.tool_calls)
 }
 
-$('send-btn').addEventListener('click', send)
+$('send-btn').addEventListener('click', () => {
+  if ($('send-btn').classList.contains('stop')) stopTurn()
+  else send()
+})
 $('composer-input').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
@@ -2972,7 +3045,7 @@ function subscribeConvMessages(convId) {
         if (m.role === 'user')
           box.appendChild(renderPeer(profName(profs, m.author_id), m.content, m.attachments))
         else if (m.role === 'assistant')
-          box.appendChild(renderAgent(m.content, m.thinking, m.tool_calls || [], undefined))
+          box.appendChild(renderAgent(m.content, m.thinking, m.tool_calls || [], undefined, m.duration_ms))
         window.scrollTo({ top: document.body.scrollHeight })
       }
     )

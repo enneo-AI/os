@@ -381,6 +381,19 @@
   .send:hover{filter:brightness(1.06)}
   .send:active{transform:translateY(1px);box-shadow:inset 0 1px 0 rgba(255,255,255,.3), 0 1px 3px -1px rgba(95,65,196,.4)}
   .send:disabled{background:rgba(29,30,44,.18);box-shadow:none;cursor:default}
+  .send.stop{background:linear-gradient(180deg,#3A3D52 0%,#23242F 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,.18), 0 1px 2px rgba(29,30,44,.2)}
+  .send.stop svg rect{fill:currentColor}
+
+  /* Datei-Karten — von Enni erstellte Dateien als Karte statt nacktem Link */
+  .file-card{display:flex;align-items:center;gap:12px;max-width:440px;margin:10px 0;padding:11px 14px;border:1px solid var(--hair);border-radius:13px;background:var(--surface);text-decoration:none;color:var(--ink);transition:border-color .15s, box-shadow .15s}
+  .file-card:hover{border-color:var(--lila);box-shadow:0 2px 10px -4px rgba(95,65,196,.25)}
+  .file-card .fc-icon{width:34px;height:34px;border-radius:9px;background:rgba(123,90,226,.1);display:inline-flex;align-items:center;justify-content:center;flex:none}
+  .file-card .fc-icon svg{width:16px;height:16px;stroke:var(--lila-deep);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .file-card .fc-main{display:flex;flex-direction:column;min-width:0}
+  .file-card .fc-name{font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .file-card .fc-sub{font-size:11.5px;color:var(--ink-3)}
+  .file-card .fc-open{margin-left:auto;flex:none;font-size:12px;font-weight:600;color:var(--lila-deep);border:1px solid var(--hair);border-radius:999px;padding:5px 13px}
+  .file-card:hover .fc-open{background:rgba(123,90,226,.08)}
 
   /* ---------- tool detail panel ---------- */
   .tool-panel{position:fixed;top:0;right:0;bottom:0;width:min(400px,92vw);z-index:80;background:var(--glass-strong);

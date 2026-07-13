@@ -35,6 +35,7 @@ Antworte IMMER in der Sprache der letzten Nachricht des Nutzers. Schreibt er auf
 - DATEIEN & PRÄSENTATIONEN: Mit create_file erstellst du herunterladbare Dokumente und Slide-Decks im enneo-Brand-Design (standardmäßig als echtes PDF; format="html" nur auf Wunsch für interaktive Decks) sowie rohe Textdateien (CSV/Markdown). Nutze es, wenn der Nutzer ein Dokument, ein PDF, einen Brief/Report/Plan "als Datei" oder eine Präsentation will. Inhalte darin: Deutsch, Sie-Form, pragmatisch, kein Hype, keine Emojis. Nach dem Erstellen: Link als Markdown-Link ausgeben.
 - Wenn du etwas im Wiki nicht findest, sag das ehrlich. Erfinde keine internen Fakten.
 - Sei direkt und knapp. Keine Floskeln.
+- ABSCHLUSS BEI ARBEITSAUFTRÄGEN: Wenn du etwas erstellt, geändert oder ausgeführt hast (Datei, Wiki-Vorschlag, Write-Vorschlag, mehrstufige Recherche mit Ergebnis), beende die Antwort mit 3-5 kompakten Bullets: was getan wurde, was bewusst NICHT getan wurde (falls relevant), und woran du das Ergebnis geprüft hast. Bei einfachen Fragen und kurzen Antworten: KEINE Bullets — normale Antwort.
 
 # Grenzen
 - GitLab ist read-only. Wiki-Änderungen gehen AUSSCHLIESSLICH über wiki_propose_update (Freigabe durch den Admin). Enneo-Instanzen kannst du nur über den Freigabe-Mechanismus ändern — nie direkt. DELETE-Operationen gibt es gar nicht.
@@ -144,6 +145,8 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
     console.error('Slack-Tool-Discovery fehlgeschlagen:', err.message)
   }
   const messages = [...history]
+  const signal = ctx.signal || null // Stop-Button: AbortController-Signal aus index.js
+  let aborted = false
   const totalUsage = {
     input_tokens: 0,
     output_tokens: 0,
@@ -156,6 +159,7 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
   let finalText = ''
 
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
+    if (signal?.aborted) { aborted = true; break }
     setCacheBreakpoint(messages)
     const supportsThinking = !MODEL.startsWith('claude-haiku')
     const stream = anthropic.messages.stream({
@@ -165,24 +169,34 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
       ...(supportsThinking ? { thinking: { type: 'adaptive', display: 'summarized' } } : {}),
       tools: turnTools,
       messages,
-    })
+    }, signal ? { signal } : undefined)
 
     // Text DIESER Iteration separat sammeln. Folgt danach ein Tool-Call, war es
     // Arbeits-Narrativ (→ Gedanken); war es die letzte Iteration, ist es die Antwort.
     let iterText = ''
-    for await (const event of stream) {
-      if (event.type === 'content_block_delta') {
-        if (event.delta.type === 'text_delta') {
-          iterText += event.delta.text
-          emit({ type: 'text_delta', text: event.delta.text })
-        } else if (event.delta.type === 'thinking_delta') {
-          thinkingText += event.delta.thinking
-          emit({ type: 'thinking_delta', text: event.delta.thinking })
+    let response
+    try {
+      for await (const event of stream) {
+        if (event.type === 'content_block_delta') {
+          if (event.delta.type === 'text_delta') {
+            iterText += event.delta.text
+            emit({ type: 'text_delta', text: event.delta.text })
+          } else if (event.delta.type === 'thinking_delta') {
+            thinkingText += event.delta.thinking
+            emit({ type: 'thinking_delta', text: event.delta.thinking })
+          }
         }
       }
+      response = await stream.finalMessage()
+    } catch (err) {
+      // Vom Nutzer gestoppt: Teil-Text dieser Iteration wird zur (Teil-)Antwort
+      if (signal?.aborted) {
+        aborted = true
+        if (iterText.trim()) finalText = iterText
+        break
+      }
+      throw err
     }
-
-    const response = await stream.finalMessage()
     totalUsage.input_tokens += response.usage.input_tokens
     totalUsage.output_tokens += response.usage.output_tokens
     totalUsage.cache_creation_input_tokens += response.usage.cache_creation_input_tokens || 0
@@ -206,6 +220,7 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
     const toolResults = []
     for (const block of response.content) {
       if (block.type !== 'tool_use') continue
+      if (signal?.aborted) { aborted = true; break }
       emit({ type: 'tool_use', name: block.name, input: block.input })
       const started = Date.now()
       const result = await executeTool(block.name, block.input, ctx)
@@ -225,13 +240,14 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
         is_error: result.isError,
       })
     }
+    if (aborted) break
     messages.push({ role: 'user', content: toolResults })
   }
 
   // Zwischen-Narrativ dem Gedanken-Text voranstellen (bleibt so beim Neuladen im Panel,
   // nicht in der Antwort). Trenner, damit Modell-Thinking und Narrativ unterscheidbar bleiben.
   const mergedThinking = [narrative.join('\n\n'), thinkingText].filter((s) => s && s.trim()).join('\n\n')
-  return { text: finalText, thinking: mergedThinking, toolCalls, usage: totalUsage, model: MODEL }
+  return { text: finalText, thinking: mergedThinking, toolCalls, usage: totalUsage, model: MODEL, aborted }
 }
 
 // Auto-Titel: Haiku (unser günstigstes Modell, $1/$5 pro MTok) analysiert die ERSTE

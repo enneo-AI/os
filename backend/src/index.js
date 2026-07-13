@@ -97,6 +97,34 @@ async function buildHistory(convId, isPod = false) {
 // Konversations-Liste + Verlauf holt das Frontend direkt aus Supabase (RLS: owner-only).
 // Das Backend braucht nur den Chat-Endpoint.
 
+// Laufende Turns pro Konversation — Grundlage für den Stop-Button (POST /:id/stop).
+// Ein Prozess pro Railway-Service, daher reicht eine In-Memory-Map.
+const activeTurns = new Map() // convId -> AbortController
+
+app.post('/api/conversations/:id/stop', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const { data: c } = await db
+    .from('conversations')
+    .select('id, user_id, pod_id')
+    .eq('id', req.params.id)
+    .maybeSingle()
+  if (!c) return res.status(404).json({ error: 'Conversation nicht gefunden' })
+  if (c.pod_id) {
+    if (!(await podIfVisible(c.pod_id, user.id))) return res.status(404).json({ error: 'Kein Zugriff' })
+  } else if (c.user_id !== user.id) {
+    return res.status(404).json({ error: 'Conversation nicht gefunden' })
+  }
+  const ctl = activeTurns.get(c.id)
+  if (!ctl) {
+    // Kein laufender Turn in diesem Prozess (z.B. nach Restart hängengebliebenes Flag) → aufräumen
+    await db.from('conversations').update({ working: false }).eq('id', c.id)
+    return res.json({ ok: true, running: false })
+  }
+  ctl.abort()
+  res.json({ ok: true, running: true })
+})
+
 app.post('/api/chat', async (req, res) => {
   const user = await getUserFromRequest(req)
   if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
@@ -258,16 +286,23 @@ app.post('/api/chat', async (req, res) => {
     }
 
     let result
+    const abortCtl = new AbortController()
+    activeTurns.set(convId, abortCtl)
+    const turnStarted = Date.now()
     try {
       result = await runEnniTurn(history, emit, model, extraSystem, {
         userId: user.id,
         conversationId: convId,
         podId: pod?.id || null,
+        signal: abortCtl.signal,
       })
     } catch (err) {
       await db.from('conversations').update({ working: false }).eq('id', convId)
       throw err
+    } finally {
+      activeTurns.delete(convId)
     }
+    const durationMs = Date.now() - turnStarted
 
     // Assistant-Message inkl. Gedankenkette + Tool-Calls persistieren
     const { data: msg } = await db
@@ -275,9 +310,10 @@ app.post('/api/chat', async (req, res) => {
       .insert({
         conversation_id: convId,
         role: 'assistant',
-        content: result.text,
+        content: result.text || (result.aborted ? '_Gestoppt._' : ''),
         thinking: result.thinking || null,
         tool_calls: result.toolCalls.length ? result.toolCalls : null,
+        duration_ms: durationMs,
       })
       .select('id')
       .single()
@@ -295,7 +331,7 @@ app.post('/api/chat', async (req, res) => {
       .update({ updated_at: new Date().toISOString(), working: false, unread: true })
       .eq('id', convId)
 
-    emit({ type: 'done', message_id: msg?.id, cost_eur: cost, usage: result.usage })
+    emit({ type: 'done', message_id: msg?.id, cost_eur: cost, usage: result.usage, duration_ms: durationMs, stopped: result.aborted || undefined })
 
     if (titlePromise) {
       const t = await titlePromise
