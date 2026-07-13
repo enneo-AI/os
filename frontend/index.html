@@ -226,6 +226,16 @@
   .think-head:hover{color:var(--ink-2)}
   .think-head .chev{transition:transform .2s;font-size:10px}
   .think.open .think-head .chev{transform:rotate(90deg)}
+  /* Live-Status im Panel-Header: Shimmer zeigt Aktivität — auch zugeklappt */
+  .t-status{font-weight:560}
+  .t-status.shimmer{background:linear-gradient(90deg,var(--ink-3) 30%,var(--ink) 50%,var(--ink-3) 70%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:tshimmer 2.2s linear infinite}
+  @keyframes tshimmer{to{background-position:-200% 0}}
+  /* Streaming-Cursor: solange er blinkt, kommt noch Text */
+  .scursor{display:inline-block;width:8px;height:14px;background:var(--lila);border-radius:2px;margin-left:3px;vertical-align:-2px;animation:curblink 1s steps(2) infinite}
+  @keyframes curblink{50%{opacity:0}}
+  /* Zwischen-Narrativ (Text zwischen Tool-Aufrufen) — gehört zu den Gedanken, nicht zur Antwort */
+  .think-body .tp.narr{white-space:normal;opacity:.9}
+  .think-body .tp.narr p{margin:0 0 8px;font-size:12.5px;color:var(--ink-2)}
   .think-body{position:relative;overflow:hidden;max-height:46px;cursor:pointer;
     -webkit-mask-image:linear-gradient(180deg,#000 0%,#000 8px,transparent 44px);
     mask-image:linear-gradient(180deg,#000 0%,#000 8px,transparent 44px);

@@ -28,6 +28,13 @@ function updateComposerState() {
   $('send-btn').disabled = !!busy
 }
 
+// Auto-Scroll nur, wenn der Nutzer ohnehin unten ist — Hochscrollen während des
+// Streamens unterbricht das Mitführen, statt dagegen anzukämpfen.
+function followIfNearBottom() {
+  const dist = document.body.scrollHeight - (window.scrollY + window.innerHeight)
+  if (dist < 160) window.scrollTo({ top: document.body.scrollHeight })
+}
+
 // ============================================================ Auth
 async function init() {
   const { data } = await sb.auth.getSession()
@@ -325,6 +332,7 @@ function newConversation() {
   viewSeq++
   updateComposerState()
   subscribeConvMessages(null) // alten Message-Kanal schließen
+  closeProgressChannel()
   $('chat-close').hidden = true
   $('model-select').value = 'claude-opus-4-8'
   $('composer-input').placeholder = convPod ? 'Nachricht ans Team — @enni ruft Enni …' : 'Frag Enni …'
@@ -384,6 +392,7 @@ async function openConversation(c) {
   ctxTokens = computeCtxTokens(msgs || [])
   renderCtx()
   subscribeConvMessages(c.id) // Live-Nachrichten (Pod-Team-Chat, fremde Geräte)
+  renderLiveProgressIfWorking(c) // läuft hier gerade ein Turn? → Gedanken live zeigen
   window.scrollTo({ top: document.body.scrollHeight })
 }
 
@@ -1425,8 +1434,9 @@ async function send() {
     wrap.className = 'm-agent'
     wrap.innerHTML = `<div class="who"><span class="enni-dot">E</span><b>Enni</b></div>`
     think = document.createElement('div')
-    think.className = 'think open'
-    think.innerHTML = `<button class="think-head"><span class="chev">▶</span>Gedanken</button>`
+    // Zugeklappt starten — der Shimmer-Status im Header zeigt jederzeit, WAS Enni tut
+    think.className = 'think'
+    think.innerHTML = `<button class="think-head"><span class="chev">▶</span><span class="t-status shimmer">Enni denkt nach …</span></button>`
     thinkBody = document.createElement('div')
     thinkBody.className = 'think-body'
     runIndicator = document.createElement('div')
@@ -1452,7 +1462,13 @@ async function send() {
   let toolCount = 0
   const pendingTools = {}
 
-  const follow = () => window.scrollTo({ top: document.body.scrollHeight })
+  const follow = followIfNearBottom
+  const setStatus = (label, working = true) => {
+    const el = think?.querySelector('.t-status')
+    if (!el) return
+    el.textContent = label
+    el.classList.toggle('shimmer', working)
+  }
 
   try {
     const res = await fetch(`${BACKEND_URL}/api/chat`, {
@@ -1503,17 +1519,28 @@ async function send() {
             thinkBody.insertBefore(thinkPara, runIndicator)
           }
           thinkPara.textContent = thinkingText
+          setStatus('Enni denkt nach …')
           follow()
         } else if (ev.type === 'tool_use') {
           toolCount++
           thinkPara = null // nächster Thinking-Block wird neuer Absatz
+          thinkingText = ''
+          // Text VOR einem Tool-Aufruf war Arbeits-Narrativ, keine finale Antwort —
+          // er wandert ins Gedanken-Panel, der Antwortbereich bleibt sauber.
+          if (answerText.trim()) {
+            const narr = document.createElement('div')
+            narr.className = 'tp narr'
+            narr.innerHTML = md(answerText)
+            thinkBody.insertBefore(narr, runIndicator)
+            answerText = ''
+            body.innerHTML = ''
+          }
           const call = { name: ev.name, input: ev.input, output: 'läuft …', is_error: false }
           const row = toolRow(call)
           pendingTools[ev.name + ':' + toolCount] = { call, row }
           pendingTools['last:' + ev.name] = { call, row }
           thinkBody.insertBefore(row, runIndicator)
-          think.querySelector('.think-head').innerHTML =
-            `<span class="chev">▶</span>Gedanken · ${toolCount} Tool-Aufruf${toolCount > 1 ? 'e' : ''}`
+          setStatus(`Nutzt ${ev.name} …`)
           follow()
         } else if (ev.type === 'tool_result') {
           const p = pendingTools['last:' + ev.name]
@@ -1525,14 +1552,19 @@ async function send() {
           }
         } else if (ev.type === 'text_delta') {
           answerText += ev.text
+          // Blinkender Cursor = es kommt noch Text; verschwindet erst bei "done"
           body.innerHTML = md(answerText)
+          body.insertAdjacentHTML('beforeend', '<span class="scursor"></span>')
+          setStatus('Schreibt …')
           follow()
         } else if (ev.type === 'done') {
           if (!isTeamMsg) {
+            body.innerHTML = md(answerText) // Cursor entfernen — Antwort ist final
             runIndicator.remove()
             enhanceCode(body)
             thinkBody.insertAdjacentHTML('beforeend', '<div class="think-done">✓ Fertig</div>')
             think.classList.remove('open')
+            setStatus(`Gedanken${toolCount ? ` · ${toolCount} Tool-Aufruf${toolCount > 1 ? 'e' : ''}` : ''}`, false)
             wrap.appendChild(agentMeta(() => answerText, ev.cost_eur))
             // volle Tool-Outputs aus der DB nachladen (Stream enthält nur Status)
             hydrateToolOutputs(ev.message_id, thinkBody, wrap)
@@ -1562,7 +1594,9 @@ async function send() {
   }
   // Nutzer schaut gerade auf diese Konversation → "fertig"-Punkt direkt löschen;
   // kam er mittendrin zurück (andere Ansicht, gleiche Konv), Ansicht mit finaler Antwort neu laden
+  if (streamConvId) statusSnapshot.set(streamConvId, { working: false, unread: false })
   if (streamConvId && currentConv?.id === streamConvId) {
+    currentConv.working = false // sonst baut der Reload einen Geister-Live-Container
     sb.from('conversations').update({ unread: false }).eq('id', streamConvId).then(() => {})
     if (!inView()) openConversation(currentConv)
   }
@@ -2476,6 +2510,67 @@ function subscribeConvMessages(convId) {
       }
     )
     .subscribe()
+}
+
+// Live-Wiedereinstieg: öffnet man eine Konversation, in der Enni GERADE arbeitet
+// (nach Wegnavigieren, anderes Gerät, Routine), zeigt dieser Container die aktuellen
+// Gedanken/Tools/Text aus dem Progress-Broadcast des Backends — nicht erst das Endergebnis.
+let progressChannel = null
+function closeProgressChannel() {
+  if (progressChannel) {
+    sb.removeChannel(progressChannel)
+    progressChannel = null
+  }
+}
+
+function renderLiveProgressIfWorking(c) {
+  closeProgressChannel()
+  // Realtime-Snapshot ist frischer als das gecachte Konversations-Objekt aus der Sidebar
+  const snap = statusSnapshot.get(c.id)
+  const working = (snap ? snap.working : c.working) || activeStreams.has(c.id)
+  if (!working) return
+  const box = $('msgs')
+  const wrap = document.createElement('div')
+  wrap.className = 'm-agent'
+  wrap.innerHTML = `<div class="who"><span class="enni-dot">E</span><b>Enni</b></div>
+    <div class="think"><button class="think-head"><span class="chev">▶</span><span class="t-status shimmer">Enni arbeitet …</span></button>
+      <div class="think-body"><div class="tp"></div><div class="think-run"><span class="pulse"></span>Enni arbeitet …</div></div>
+    </div>
+    <div class="body"></div>`
+  const thinkEl = wrap.querySelector('.think')
+  thinkEl.addEventListener('click', (e) => {
+    if (e.target.closest('.tool-row')) return
+    thinkEl.classList.toggle('open')
+  })
+  box.appendChild(wrap)
+  const tstatus = wrap.querySelector('.t-status')
+  const tp = wrap.querySelector('.tp')
+  const body = wrap.querySelector('.body')
+  progressChannel = sb
+    .channel('progress-' + c.id)
+    .on('broadcast', { event: 'progress' }, ({ payload: p }) => {
+      if (currentConv?.id !== c.id || !p) return
+      tp.textContent = p.thinking || ''
+      const tools = p.tools?.length ? ` · ${p.tools.length} Tool-Aufruf${p.tools.length > 1 ? 'e' : ''}` : ''
+      tstatus.textContent =
+        p.phase === 'text' ? `Schreibt …${tools}` :
+        p.phase === 'tool' ? `Nutzt ${p.tools[p.tools.length - 1]} …` :
+        p.phase === 'done' ? 'Schließt ab …' : `Enni denkt nach …${tools}`
+      body.innerHTML = p.text ? md(p.text) : ''
+      if (p.text && p.phase !== 'done') body.insertAdjacentHTML('beforeend', '<span class="scursor"></span>')
+      followIfNearBottom()
+    })
+    .subscribe()
+  // Frisch-Check gegen die DB: war der Turn beim Öffnen schon vorbei (Race mit dem
+  // Realtime-Event), Container wieder entfernen — die finale Antwort ist ja schon gerendert.
+  sb.from('conversations').select('working').eq('id', c.id).maybeSingle().then(({ data }) => {
+    if (data && !data.working && !activeStreams.has(c.id)) {
+      closeProgressChannel()
+      wrap.remove()
+    }
+  })
+  // Fertigstellung lädt die Konversation neu (onConvChange working→false) und
+  // räumt diesen Kanal über closeProgressChannel() beim Re-Open ab.
 }
 
 // Fallback-Poll (60s): fängt verpasste Events nach Netz-Abrissen/Schlaf-Modus ab

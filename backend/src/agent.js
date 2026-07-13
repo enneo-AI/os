@@ -152,6 +152,7 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
   }
   const toolCalls = []
   let thinkingText = ''
+  const narrative = [] // Zwischen-Texte vor Tool-Calls — gehören zu den Gedanken, nicht zur Antwort
   let finalText = ''
 
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
@@ -166,18 +167,13 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
       messages,
     })
 
-    // Text aus einer neuen Tool-Loop-Iteration ist ein neuer Gedanke → eigener Absatz,
-    // sonst kleben Zwischensätze im gestreamten Markdown aneinander.
-    let needSeparator = finalText.length > 0 && !finalText.endsWith('\n\n')
+    // Text DIESER Iteration separat sammeln. Folgt danach ein Tool-Call, war es
+    // Arbeits-Narrativ (→ Gedanken); war es die letzte Iteration, ist es die Antwort.
+    let iterText = ''
     for await (const event of stream) {
       if (event.type === 'content_block_delta') {
         if (event.delta.type === 'text_delta') {
-          if (needSeparator) {
-            needSeparator = false
-            finalText += '\n\n'
-            emit({ type: 'text_delta', text: '\n\n' })
-          }
-          finalText += event.delta.text
+          iterText += event.delta.text
           emit({ type: 'text_delta', text: event.delta.text })
         } else if (event.delta.type === 'thinking_delta') {
           thinkingText += event.delta.thinking
@@ -197,7 +193,13 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
       break
     }
 
-    if (response.stop_reason !== 'tool_use') break
+    if (response.stop_reason !== 'tool_use') {
+      finalText = iterText // letzte Iteration = die eigentliche Antwort
+      break
+    }
+
+    // Text vor diesem Tool-Call war Zwischen-Narrativ → in die Gedanken, nicht in die Antwort
+    if (iterText.trim()) narrative.push(iterText.trim())
 
     // Tool-Calls ausführen, Ergebnisse zurückgeben, Loop fortsetzen
     messages.push({ role: 'assistant', content: response.content })
@@ -226,7 +228,10 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
     messages.push({ role: 'user', content: toolResults })
   }
 
-  return { text: finalText, thinking: thinkingText, toolCalls, usage: totalUsage, model: MODEL }
+  // Zwischen-Narrativ dem Gedanken-Text voranstellen (bleibt so beim Neuladen im Panel,
+  // nicht in der Antwort). Trenner, damit Modell-Thinking und Narrativ unterscheidbar bleiben.
+  const mergedThinking = [narrative.join('\n\n'), thinkingText].filter((s) => s && s.trim()).join('\n\n')
+  return { text: finalText, thinking: mergedThinking, toolCalls, usage: totalUsage, model: MODEL }
 }
 
 // Auto-Titel: Haiku (unser günstigstes Modell, $1/$5 pro MTok) analysiert die ERSTE

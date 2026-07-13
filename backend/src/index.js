@@ -168,10 +168,17 @@ app.post('/api/chat', async (req, res) => {
   res.flushHeaders()
   // Multi-Session: der Client darf wegnavigieren/schließen — der Turn läuft serverseitig
   // weiter und persistiert. res.write nach Disconnect darf den Loop nicht crashen.
+  // Zusätzlich spiegelt der Progress-Broadcaster den Fortschritt über Supabase Realtime,
+  // damit ein Wiedereinstieg mittendrin die aktuellen Gedanken live sieht.
+  const { createProgressBroadcaster } = await import('./progress.js')
+  const progress = createProgressBroadcaster(convId)
   const emit = (event) => {
     try {
       res.write(`data: ${JSON.stringify(event)}\n\n`)
     } catch { /* Client weg — Turn läuft weiter, Ergebnis landet in der DB */ }
+    try {
+      progress.take(event)
+    } catch { /* Broadcast ist Best-Effort */ }
   }
   emit({ type: 'conversation', conversation_id: convId })
 
@@ -202,6 +209,7 @@ app.post('/api/chat', async (req, res) => {
       }
       await db.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', convId)
       emit({ type: 'done', message_id: null, cost_eur: 0, team_message: true })
+      progress.close()
       res.end()
       return
     }
@@ -244,6 +252,7 @@ app.post('/api/chat', async (req, res) => {
       .select('id')
     if (!lock?.length) {
       emit({ type: 'error', message: 'Enni arbeitet in dieser Konversation gerade an einer anderen Nachricht — kurz warten, deine Nachricht ist gespeichert.' })
+      progress.close()
       res.end()
       return
     }
@@ -300,6 +309,7 @@ app.post('/api/chat', async (req, res) => {
     console.error('chat error:', err)
     emit({ type: 'error', message: err.message })
   }
+  progress.close()
   res.end()
 })
 
