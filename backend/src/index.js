@@ -166,7 +166,13 @@ app.post('/api/chat', async (req, res) => {
   res.setHeader('Cache-Control', 'no-cache')
   res.setHeader('Connection', 'keep-alive')
   res.flushHeaders()
-  const emit = (event) => res.write(`data: ${JSON.stringify(event)}\n\n`)
+  // Multi-Session: der Client darf wegnavigieren/schließen — der Turn läuft serverseitig
+  // weiter und persistiert. res.write nach Disconnect darf den Loop nicht crashen.
+  const emit = (event) => {
+    try {
+      res.write(`data: ${JSON.stringify(event)}\n\n`)
+    } catch { /* Client weg — Turn läuft weiter, Ergebnis landet in der DB */ }
+  }
   emit({ type: 'conversation', conversation_id: convId })
 
   // Auto-Titel läuft PARALLEL zum Turn: Haiku (günstigstes Modell) analysiert die erste
@@ -228,11 +234,31 @@ app.post('/api/chat', async (req, res) => {
       }
     }
 
-    const result = await runEnniTurn(history, emit, model, extraSystem, {
-      userId: user.id,
-      conversationId: convId,
-      podId: pod?.id || null,
-    })
+    // Multi-Session-Lock: pro Konversation nur EIN laufender Turn. Atomar via
+    // UPDATE … WHERE working=false — verlieren beide gleichzeitig, gewinnt genau einer.
+    const { data: lock } = await db
+      .from('conversations')
+      .update({ working: true })
+      .eq('id', convId)
+      .eq('working', false)
+      .select('id')
+    if (!lock?.length) {
+      emit({ type: 'error', message: 'Enni arbeitet in dieser Konversation gerade an einer anderen Nachricht — kurz warten, deine Nachricht ist gespeichert.' })
+      res.end()
+      return
+    }
+
+    let result
+    try {
+      result = await runEnniTurn(history, emit, model, extraSystem, {
+        userId: user.id,
+        conversationId: convId,
+        podId: pod?.id || null,
+      })
+    } catch (err) {
+      await db.from('conversations').update({ working: false }).eq('id', convId)
+      throw err
+    }
 
     // Assistant-Message inkl. Gedankenkette + Tool-Calls persistieren
     const { data: msg } = await db
@@ -254,7 +280,11 @@ app.post('/api/chat', async (req, res) => {
       model: result.model,
       usage: result.usage,
     })
-    await db.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', convId)
+    // unread=true → grüner Sidebar-Punkt; der Client löscht es sofort, wenn er live zuschaut
+    await db
+      .from('conversations')
+      .update({ updated_at: new Date().toISOString(), working: false, unread: true })
+      .eq('id', convId)
 
     emit({ type: 'done', message_id: msg?.id, cost_eur: cost, usage: result.usage })
 

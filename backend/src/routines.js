@@ -62,7 +62,7 @@ export async function runRoutine(r) {
     const title = `${r.name} · ${new Date().toLocaleDateString('de-DE')}`
     const { data: conv, error: convErr } = await db
       .from('conversations')
-      .insert({ user_id: r.created_by, pod_id: r.pod_id || null, title })
+      .insert({ user_id: r.created_by, pod_id: r.pod_id || null, title, working: true })
       .select('id')
       .single()
     if (convErr) throw new Error(convErr.message)
@@ -86,11 +86,17 @@ export async function runRoutine(r) {
       }
     }
 
-    const result = await runEnniTurn([{ role: 'user', content: r.prompt }], () => {}, model, extraSystem, {
-      userId: r.created_by,
-      conversationId: conv.id,
-      podId: r.pod_id || null,
-    })
+    let result
+    try {
+      result = await runEnniTurn([{ role: 'user', content: r.prompt }], () => {}, model, extraSystem, {
+        userId: r.created_by,
+        conversationId: conv.id,
+        podId: r.pod_id || null,
+      })
+    } catch (err) {
+      await db.from('conversations').update({ working: false }).eq('id', conv.id)
+      throw err
+    }
 
     const { data: msg } = await db
       .from('messages')
@@ -111,6 +117,8 @@ export async function runRoutine(r) {
       usage: result.usage,
       source: 'routine',
     })
+    // Fertig → grüner Punkt in der Sidebar, bis der Nutzer das Ergebnis öffnet
+    await db.from('conversations').update({ working: false, unread: true }).eq('id', conv.id)
 
     await db
       .from('routines')

@@ -14,8 +14,19 @@ const esc = (s) =>
 
 let session = null
 let currentConv = null // {id, title} oder null = neue Konversation
-let streaming = false
 let costByMessage = {}
+
+// Multi-Sessions: Streams laufen pro Konversation weiter, auch wenn man wegnavigiert.
+// viewSeq erhöht sich bei jedem Ansichts-Wechsel — Hintergrund-Streams prüfen damit,
+// ob sie die Ansicht noch anfassen dürfen (DOM-Refs selbst sind detached = harmlos).
+let viewSeq = 0
+const activeStreams = new Set() // conversation_ids mit laufendem Enni-Turn (dieser Tab)
+const sendingViews = new Set() // viewSeq-Werte mit laufendem Send (blockt Doppel-Send pro Ansicht)
+
+function updateComposerState() {
+  const busy = sendingViews.has(viewSeq) || (currentConv && activeStreams.has(currentConv.id))
+  $('send-btn').disabled = !!busy
+}
 
 // ============================================================ Auth
 async function init() {
@@ -234,7 +245,7 @@ function convGroup(dateStr) {
 async function loadConversations() {
   const { data } = await sb
     .from('conversations')
-    .select('id, title, updated_at')
+    .select('id, title, updated_at, working, unread')
     .is('pod_id', null)
     .eq('user_id', session.user.id)
     .order('updated_at', { ascending: false })
@@ -256,7 +267,13 @@ function convItem(c) {
   const btn = document.createElement('button')
   btn.className = 'sb-item conv' + (currentConv?.id === c.id ? ' on' : '')
   btn.dataset.conv = c.id
-  btn.innerHTML = `<span class="txt">${esc(c.title || 'Ohne Titel')}</span>
+  // Status-Indikator: pulsierender Punkt = Enni arbeitet, grün = fertig & ungelesen
+  const ind = c.working || activeStreams.has(c.id)
+    ? '<span class="c-ind work" title="Enni arbeitet …"></span>'
+    : c.unread
+      ? '<span class="c-ind done" title="Fertig — noch nicht angesehen"></span>'
+      : ''
+  btn.innerHTML = `${ind}<span class="txt">${esc(c.title || 'Ohne Titel')}</span>
     <span class="sb-acts">
       <span class="sb-act rename" title="Umbenennen"><svg viewBox="0 0 24 24"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></span>
       <span class="sb-act delete" title="Löschen"><svg viewBox="0 0 24 24"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg></span>
@@ -304,6 +321,8 @@ function renameConv(btn, c) {
 
 function newConversation() {
   currentConv = null
+  viewSeq++
+  updateComposerState()
   $('chat-close').hidden = true
   $('model-select').value = 'claude-opus-4-8'
   $('composer-input').placeholder = convPod ? 'Nachricht ans Team — @enni ruft Enni …' : 'Frag Enni …'
@@ -323,6 +342,13 @@ $('new-chat').addEventListener('click', () => {
 
 async function openConversation(c) {
   currentConv = c
+  viewSeq++
+  updateComposerState()
+  // Grüner "fertig"-Punkt erlischt beim Öffnen
+  if (c.unread) {
+    c.unread = false
+    sb.from('conversations').update({ unread: false }).eq('id', c.id).then(() => loadConversations())
+  }
   $('chat-close').hidden = false
   convPod = c.pod_id ? podsList.find((p) => p.id === c.pod_id) || convPod : null
   $('composer-input').placeholder = convPod ? 'Nachricht ans Team — @enni ruft Enni …' : 'Frag Enni …'
@@ -988,7 +1014,7 @@ document.querySelectorAll('.pt-btn').forEach((b) => b.addEventListener('click', 
 let podConvsCache = []
 async function loadPodConvs() {
   const [{ data }, profs] = await Promise.all([
-    sb.from('conversations').select('id, title, updated_at, user_id, pod_id').eq('pod_id', activePod.id).order('updated_at', { ascending: false }),
+    sb.from('conversations').select('id, title, updated_at, user_id, pod_id, working, unread').eq('pod_id', activePod.id).order('updated_at', { ascending: false }),
     allProfiles(),
   ])
   podConvsCache = (data || []).map((c) => ({ ...c, starter: profName(profs, c.user_id) }))
@@ -1005,7 +1031,10 @@ function renderPodConvs(filter) {
     const row = document.createElement('div')
     row.className = 'row'
     row.style.cursor = 'pointer'
-    row.innerHTML = `<div><div class="r-name">${esc(c.title || 'Ohne Titel')}</div>
+    const ind = c.working || activeStreams.has(c.id)
+      ? '<span class="c-ind work" title="Enni arbeitet …"></span> '
+      : c.unread ? '<span class="c-ind done" title="Fertig — noch nicht angesehen"></span> ' : ''
+    row.innerHTML = `<div><div class="r-name">${ind}${esc(c.title || 'Ohne Titel')}</div>
       <div class="r-sub">gestartet von ${esc(c.starter)}</div></div><div></div>
       <span class="r-val">${new Date(c.updated_at).toLocaleDateString('de-DE')}</span>`
     row.addEventListener('click', () => { convPod = activePod; openConversation(c) })
@@ -1347,13 +1376,21 @@ $('composer-input').addEventListener('input', autosize)
 async function send() {
   const input = $('composer-input')
   const text = input.value.trim()
-  if ((!text && !pendingFiles.length) || streaming || compacting) return
+  if (!text && !pendingFiles.length) return
+  if (compacting || sendingViews.has(viewSeq)) return
+  if (currentConv && activeStreams.has(currentConv.id)) return // Enni arbeitet hier schon
   if (ctxPct() >= 80) { renderCtx(); return } // Pflicht-Kompaktierung (Dust: 80%)
   if (dictating) recognition?.stop()
   input.value = ''
   autosize()
-  streaming = true
-  $('send-btn').disabled = true
+  // Multi-Session: dieser Stream gehört zu DIESER Ansicht — wechselt der Nutzer weg,
+  // läuft er weiter (Backend persistiert), fasst aber die neue Ansicht nicht mehr an.
+  const mySeq = viewSeq
+  const inView = () => viewSeq === mySeq
+  let streamConvId = currentConv?.id || null
+  if (streamConvId) activeStreams.add(streamConvId)
+  sendingViews.add(mySeq)
+  updateComposerState()
 
   // Anhänge einsammeln (Base64)
   const files = pendingFiles
@@ -1441,11 +1478,19 @@ async function send() {
         if (!part.startsWith('data: ')) continue
         const ev = JSON.parse(part.slice(6))
 
-        if (ev.type === 'conversation' && !currentConv) {
-          currentConv = { id: ev.conversation_id, title: text.slice(0, 80), pod_id: convPod?.id || null }
-          if (pendingTaskId) {
-            sb.from('pod_tasks').update({ conversation_id: ev.conversation_id }).eq('id', pendingTaskId).then(() => {})
-            pendingTaskId = null
+        if (ev.type === 'conversation') {
+          if (!streamConvId) {
+            streamConvId = ev.conversation_id
+            activeStreams.add(streamConvId)
+            loadConversations() // neue Konversation sofort mit Puls-Punkt in der Sidebar
+          }
+          if (inView() && !currentConv) {
+            currentConv = { id: ev.conversation_id, title: text.slice(0, 80), pod_id: convPod?.id || null }
+            $('chat-close').hidden = false
+            if (pendingTaskId) {
+              sb.from('pod_tasks').update({ conversation_id: ev.conversation_id }).eq('id', pendingTaskId).then(() => {})
+              pendingTaskId = null
+            }
           }
         } else if (ev.type === 'thinking_delta') {
           thinkingText += ev.text
@@ -1490,8 +1535,8 @@ async function send() {
             hydrateToolOutputs(ev.message_id, thinkBody, wrap)
           }
         } else if (ev.type === 'title') {
-          if (currentConv) currentConv.title = ev.title
-          if (!convPod) $('chat-title').textContent = ev.title
+          if (currentConv?.id === streamConvId) currentConv.title = ev.title
+          if (inView() && !convPod) $('chat-title').textContent = ev.title
           loadConversations()
         } else if (ev.type === 'error') {
           runIndicator?.remove()
@@ -1504,13 +1549,22 @@ async function send() {
     ;(body || box).insertAdjacentHTML('beforeend', `<p style="color:var(--high)">Fehler: ${esc(err.message)}</p>`)
   }
 
-  streaming = false
-  $('send-btn').disabled = false
-  ctxTokens += Math.round((text.length + answerText.length) / 4)
-  renderCtx()
+  sendingViews.delete(mySeq)
+  if (streamConvId) activeStreams.delete(streamConvId)
+  updateComposerState()
+  if (inView()) {
+    ctxTokens += Math.round((text.length + answerText.length) / 4)
+    renderCtx()
+    $('composer-input').focus()
+  }
+  // Nutzer schaut gerade auf diese Konversation → "fertig"-Punkt direkt löschen;
+  // kam er mittendrin zurück (andere Ansicht, gleiche Konv), Ansicht mit finaler Antwort neu laden
+  if (streamConvId && currentConv?.id === streamConvId) {
+    sb.from('conversations').update({ unread: false }).eq('id', streamConvId).then(() => {})
+    if (!inView()) openConversation(currentConv)
+  }
   loadConversations()
   refreshCosts()
-  $('composer-input').focus()
 }
 
 async function hydrateToolOutputs(messageId, thinkBody, wrap) {
@@ -2359,6 +2413,34 @@ $('rt-delete').addEventListener('click', async () => {
   $('routine-overlay').classList.remove('open')
   loadRoutines()
 })
+
+// ============================================================ Status-Poll (Multi-Sessions)
+// Alle 5s Konversations-Status ziehen: Sidebar-Punkte aktuell halten (auch für
+// Routinen-Läufe und Turns von anderen Geräten) und die gerade offene Konversation
+// neu laden, wenn sie extern fertig wurde.
+const statusSnapshot = new Map()
+setInterval(async () => {
+  if (document.hidden || !session) return
+  const { data } = await sb
+    .from('conversations')
+    .select('id, working, unread')
+    .eq('user_id', session.user.id)
+    .is('pod_id', null)
+    .order('updated_at', { ascending: false })
+    .limit(50)
+  if (!data) return
+  let changed = false
+  for (const c of data) {
+    const prev = statusSnapshot.get(c.id)
+    if (!prev || prev.working !== c.working || prev.unread !== c.unread) changed = true
+    // Offene Konversation wurde außerhalb dieses Tabs fertig (Routine, anderes Gerät) → neu laden
+    if (prev?.working && !c.working && currentConv?.id === c.id && !activeStreams.has(c.id) && !sendingViews.size) {
+      openConversation(currentConv)
+    }
+    statusSnapshot.set(c.id, { working: c.working, unread: c.unread })
+  }
+  if (changed) loadConversations()
+}, 5000)
 
 // Hell/Dunkel-Umschalter (Init passiert inline im <head>, gegen Theme-Flash)
 $('theme-toggle').addEventListener('click', () => {
