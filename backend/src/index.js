@@ -486,6 +486,34 @@ async function requireAdmin(req, res) {
   return user
 }
 
+// Kollegen einladen (Admin): erzeugt einen Invite-/Login-Link zum Weitergeben.
+// Bewusst Link-basiert statt E-Mail-Versand — Supabase-SMTP ist rate-limitiert und
+// der Admin verschickt den Link ohnehin persönlich (Slack/Mail).
+const SITE_URL = process.env.SITE_URL || 'https://enneo-os.netlify.app'
+app.post('/api/invite', async (req, res) => {
+  const user = await requireAdmin(req, res)
+  if (!user) return
+  const email = String(req.body?.email || '').trim().toLowerCase()
+  if (!/^[a-z0-9._%+-]+@enneo\.ai$/.test(email)) {
+    return res.status(400).json({ error: 'Nur @enneo.ai-Adressen können eingeladen werden.' })
+  }
+  const opts = { redirectTo: SITE_URL }
+  let existing = false
+  let { data, error } = await db.auth.admin.generateLink({
+    type: 'invite', email,
+    options: { ...opts, data: { full_name: String(req.body?.name || '').trim() } },
+  })
+  if (error && /already|registered|exists/i.test(error.message)) {
+    // User existiert schon → Login-Link statt Invite
+    existing = true
+    ;({ data, error } = await db.auth.admin.generateLink({ type: 'magiclink', email, options: opts }))
+  }
+  if (error) return res.status(400).json({ error: error.message })
+  const link = data?.properties?.action_link || data?.action_link
+  if (!link) return res.status(500).json({ error: 'Kein Link erzeugt' })
+  res.json({ link, existing })
+})
+
 app.post('/api/connectors', async (req, res) => {
   const user = await requireAdmin(req, res)
   if (!user) return

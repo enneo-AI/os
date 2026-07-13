@@ -156,14 +156,37 @@ export const wikiToolDefinitions = [
   },
 ]
 
+// Space-Rechte im Tool-Layer: Enni sieht beim Antworten NUR Spaces, die der fragende
+// Nutzer sehen darf (open + eigene Restricted-Mitgliedschaften; Admins alles).
+// Rückgabe null = kein Filter nötig (Admin), sonst Array erlaubter space_ids.
+async function allowedSpaceIds(userId) {
+  if (!userId) {
+    const { data } = await db.from('spaces').select('id').eq('restricted', false)
+    return (data || []).map((s) => s.id)
+  }
+  const [{ data: prof }, { data: spaces }, { data: members }] = await Promise.all([
+    db.from('profiles').select('is_admin').eq('id', userId).maybeSingle(),
+    db.from('spaces').select('id, restricted, created_by'),
+    db.from('space_members').select('space_id').eq('user_id', userId),
+  ])
+  if (prof?.is_admin) return null
+  const memberOf = new Set((members || []).map((m) => m.space_id))
+  return (spaces || [])
+    .filter((s) => !s.restricted || s.created_by === userId || memberOf.has(s.id))
+    .map((s) => s.id)
+}
+
 export async function runWikiTool(name, input, ctx = {}) {
+  const spaceIds = await allowedSpaceIds(ctx.userId)
   if (name === 'wiki_propose_update') {
     const slug = input.slug.trim().toLowerCase()
-    const { data: page } = await db
+    let { data: page } = await db
       .from('wiki_pages')
-      .select('id, title, content')
+      .select('id, title, content, space_id')
       .eq('slug', slug)
       .maybeSingle()
+    // Restricted-Seite, die der Nutzer nicht sehen darf → wie "existiert nicht" behandeln
+    if (page && spaceIds !== null && !spaceIds.includes(page.space_id)) page = null
     if (!page && !input.title) {
       return `Es gibt keine Seite "${slug}" — für eine neue Seite ist title Pflicht.`
     }
@@ -196,32 +219,40 @@ export async function runWikiTool(name, input, ctx = {}) {
 
   if (name === 'wiki_semantic_search') {
     const embedding = await embedQuery(input.query)
+    // Mehr Kandidaten holen, dann auf sichtbare Spaces filtern und auf 8 kürzen
     const { data, error } = await db.rpc('match_wiki_chunks', {
       query_embedding: JSON.stringify(embedding),
-      match_count: 8,
+      match_count: spaceIds === null ? 8 : 24,
     })
     if (error) throw new Error(error.message)
-    if (!data?.length) return `Keine relevanten Abschnitte für "${input.query}" gefunden.`
-    return data
+    let hits = data || []
+    if (spaceIds !== null && hits.length) {
+      const { data: pages } = await db
+        .from('wiki_pages').select('slug, space_id').in('slug', [...new Set(hits.map((c) => c.slug))])
+      const okSlugs = new Set((pages || []).filter((p) => spaceIds.includes(p.space_id)).map((p) => p.slug))
+      hits = hits.filter((c) => okSlugs.has(c.slug)).slice(0, 8)
+    }
+    if (!hits.length) return `Keine relevanten Abschnitte für "${input.query}" gefunden.`
+    return hits
       .map((c) => `[${c.slug} · Relevanz ${c.similarity.toFixed(2)}]\n${c.content}`)
       .join('\n\n---\n\n')
   }
 
   if (name === 'wiki_list_pages') {
-    const { data, error } = await db
-      .from('wiki_pages')
-      .select('slug, title, updated_at')
-      .order('title')
+    let q = db.from('wiki_pages').select('slug, title, updated_at').order('title')
+    if (spaceIds !== null) q = q.in('space_id', spaceIds)
+    const { data, error } = await q
     if (error) throw new Error(error.message)
     return JSON.stringify(data)
   }
 
   if (name === 'wiki_read_page') {
-    const { data, error } = await db
+    let q = db
       .from('wiki_pages')
-      .select('slug, title, content, updated_at')
+      .select('slug, title, content, updated_at, space_id')
       .eq('slug', input.slug)
-      .maybeSingle()
+    if (spaceIds !== null) q = q.in('space_id', spaceIds)
+    const { data, error } = await q.maybeSingle()
     if (error) throw new Error(error.message)
     if (!data) return `Keine Wiki-Seite mit Slug "${input.slug}" gefunden. Nutze wiki_list_pages.`
     return `# ${data.title}\n\n${data.content}`
@@ -229,11 +260,13 @@ export async function runWikiTool(name, input, ctx = {}) {
 
   if (name === 'wiki_search') {
     const q = input.query.replaceAll('%', '').trim()
-    const { data, error } = await db
+    let query = db
       .from('wiki_pages')
       .select('slug, title, content')
       .or(`title.ilike.%${q}%,content.ilike.%${q}%`)
       .limit(8)
+    if (spaceIds !== null) query = query.in('space_id', spaceIds)
+    const { data, error } = await query
     if (error) throw new Error(error.message)
     if (!data.length) return `Keine Treffer für "${input.query}".`
     // Pro Treffer ein Snippet um die Fundstelle, nicht die ganze Seite.

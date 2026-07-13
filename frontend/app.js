@@ -112,6 +112,21 @@ async function showApp() {
   subscribeRealtime()
   await Promise.all([loadConversations(), loadPods(), refreshCosts(), loadConnectorRows()])
   route()
+  onboardingNudge()
+}
+
+// Onboarding: beim ersten Login (Rolle + Über-mich noch leer) einmalig das Profil öffnen,
+// damit Enni von Anfang an personalisiert. Einmal pro Account, danach nie wieder.
+async function onboardingNudge() {
+  const key = 'onboarded-' + session.user.id
+  if (localStorage.getItem(key)) return
+  const { data: p } = await sb
+    .from('profiles').select('role_title, about').eq('id', session.user.id).maybeSingle()
+  if (p && !p.role_title && !p.about) {
+    await openProfile()
+    $('pf-welcome').hidden = false
+  }
+  localStorage.setItem(key, '1')
 }
 
 async function renderFooterProfile() {
@@ -127,6 +142,7 @@ async function renderFooterProfile() {
 // ============================================================ Profil bearbeiten
 let pendingAvatar = null
 async function openProfile() {
+  $('pf-welcome').hidden = true // nur der Onboarding-Nudge blendet den Willkommens-Hinweis ein
   const { data: p } = await sb
     .from('profiles').select('display_name, avatar_url, email, role_title, about').eq('id', session.user.id).maybeSingle()
   pendingAvatar = null
@@ -2865,17 +2881,55 @@ $('pe-delete').addEventListener('click', async () => {
 
 // ============================================================ Mitglieder (Admin)
 async function loadMembers() {
-  const { data } = await sb.from('profiles').select('email, display_name, is_admin').order('created_at')
+  const [{ data }, { is_admin }] = await Promise.all([
+    sb.from('profiles').select('email, display_name, is_admin, role_title').order('created_at'),
+    ownProfile(),
+  ])
+  $('invite-box').hidden = !is_admin
   const list = $('member-list')
   list.innerHTML = ''
   for (const m of data || []) {
     const row = document.createElement('div')
     row.className = 'row'
-    row.innerHTML = `<div><div class="r-name">${esc(m.display_name || m.email)}</div><div class="r-sub">${esc(m.email)}</div></div>
+    row.innerHTML = `<div><div class="r-name">${esc(m.display_name || m.email)}</div><div class="r-sub">${esc(m.email)}${m.role_title ? ' · ' + esc(m.role_title) : ''}</div></div>
       <div></div><span class="role${m.is_admin ? ' admin' : ''}">${m.is_admin ? 'Admin' : 'Member'}</span>`
     list.appendChild(row)
   }
 }
+
+// Mitglied einladen (Admin): Backend erzeugt Invite-/Login-Link zum Weitergeben
+async function createInvite() {
+  const email = $('inv-email').value.trim()
+  $('inv-err').textContent = ''
+  $('inv-result').hidden = true
+  if (!email) return
+  $('inv-create').disabled = true
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/invite`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ email }),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+    $('inv-link').textContent = data.link
+    $('inv-result').hidden = false
+    $('inv-copy').textContent = data.existing ? 'Login-Link kopieren' : 'Einladungslink kopieren'
+    $('inv-email').value = ''
+    loadMembers()
+  } catch (err) {
+    $('inv-err').textContent = err.message
+  }
+  $('inv-create').disabled = false
+}
+$('inv-create').addEventListener('click', createInvite)
+$('inv-email').addEventListener('keydown', (e) => { if (e.key === 'Enter') createInvite() })
+$('inv-copy').addEventListener('click', async () => {
+  if (await copyText($('inv-link').textContent)) {
+    $('inv-copy').textContent = 'Kopiert ✓'
+    setTimeout(() => ($('inv-copy').textContent = 'Kopieren'), 1600)
+  }
+})
 
 // ============================================================ Kosten
 async function refreshCosts() {
