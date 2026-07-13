@@ -182,6 +182,8 @@
     @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
   }
   .page-head{text-align:center;margin:44px auto 32px;max-width:60ch}
+  .page-actions{display:flex;gap:10px;justify-content:center;margin-top:16px}
+  .page-actions .btn{padding:7px 15px;font-size:12.5px}
   .page-head .eyebrow{font-size:12px;font-weight:620;letter-spacing:.14em;text-transform:uppercase;color:var(--lila);margin-bottom:10px}
   .page-head h2{font-size:32px;line-height:1.15;font-weight:640;letter-spacing:-.025em;margin:0 0 10px;text-wrap:balance}
   .page-head p{margin:0;color:var(--ink-2);font-size:15px}
@@ -784,13 +786,14 @@
         <div class="eyebrow" id="pl-crumb">Space</div>
         <h2 id="pl-title">Ordner</h2>
         <p id="pl-sub"></p>
+        <div class="page-actions">
+          <button class="btn dark" id="pl-new-page">＋ Neue Seite</button>
+          <button class="btn quiet" id="pl-import-url">Von URL importieren</button>
+        </div>
       </div>
       <div class="cost-shell">
         <input type="search" class="wiki-search" id="pl-filter" placeholder="Seiten filtern …" style="max-width:420px;margin:0 0 14px">
-        <div class="list-panel"><div id="pl-list"></div>
-          <button class="crow crow-add" id="pl-new-page"><span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--ink-3);fill:none;stroke-width:1.8;stroke-linecap:round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span><div><div class="c-name" style="color:var(--ink-2)">Neue Seite</div><div class="c-sub">Markdown selbst schreiben</div></div></button>
-          <button class="crow crow-add" id="pl-import-url"><span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--ink-3);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg></span><div><div class="c-name" style="color:var(--ink-2)">Seite von URL importieren</div><div class="c-sub">Webseite einfügen · wird gecrawlt und indexiert</div></div></button>
-        </div>
+        <div class="list-panel"><div id="pl-list"></div></div>
       </div>
     </section>
 
@@ -837,6 +840,10 @@
         <div class="eyebrow">Space</div>
         <h2 id="sh-title">Space</h2>
         <p id="sh-sub"></p>
+        <div class="page-actions">
+          <button class="btn dark" id="sh-new-page">＋ Neue Seite</button>
+          <button class="btn quiet" id="sh-import-url">Von URL importieren</button>
+        </div>
       </div>
       <div class="cost-shell">
         <input type="search" class="wiki-search" id="sh-search" placeholder="Alle Seiten in diesem Space durchsuchen …" style="max-width:520px;margin:0 0 18px">
@@ -845,8 +852,6 @@
           <div class="list-panel">
             <h3>Inhalte</h3>
             <div id="sh-groups"></div>
-            <button class="crow crow-add" id="sh-new-page"><span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--ink-3);fill:none;stroke-width:1.8;stroke-linecap:round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span><div><div class="c-name" style="color:var(--ink-2)">Neue Seite</div><div class="c-sub">Markdown selbst schreiben · sofort in Ennis Wissen</div></div></button>
-            <button class="crow crow-add" id="sh-import-url"><span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--ink-3);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg></span><div><div class="c-name" style="color:var(--ink-2)">Seite von URL importieren</div><div class="c-sub">Webseite einfügen · wird gecrawlt und indexiert</div></div></button>
           </div>
           <div class="list-panel">
             <h3>Zuletzt geändert</h3>
@@ -867,8 +872,17 @@
         <h2 id="pe-heading">Neue Seite</h2>
       </div>
       <div class="cost-shell" style="max-width:860px">
-        <label class="pe-label" for="pe-title">Titel</label>
-        <input type="text" id="pe-title" class="wiki-search" placeholder="z. B. Onboarding-Prozess Neukunden" style="max-width:520px;margin:0 0 4px">
+        <div style="display:flex;gap:16px;flex-wrap:wrap">
+          <div style="flex:1;min-width:260px">
+            <label class="pe-label" for="pe-title">Titel</label>
+            <input type="text" id="pe-title" class="wiki-search" placeholder="z. B. Onboarding-Prozess Neukunden" style="margin:0 0 4px">
+          </div>
+          <div style="flex:1;min-width:220px">
+            <label class="pe-label" for="pe-folder">Ordner <span class="lbl-hint">— optional, neuer Name legt einen an</span></label>
+            <input type="text" id="pe-folder" class="wiki-search" list="pe-folder-list" placeholder="z. B. Prozesse" style="margin:0 0 4px">
+            <datalist id="pe-folder-list"></datalist>
+          </div>
+        </div>
         <div class="pe-slug" id="pe-slug"></div>
         <div class="pe-toolbar">
           <label class="pe-label" style="margin:0">Inhalt (Markdown)</label>
@@ -1120,6 +1134,9 @@
     <h3>Seite von URL importieren</h3>
     <label for="iu-url">URL</label>
     <input type="url" id="iu-url" placeholder="https://docs.enneo.ai/de/…">
+    <label for="iu-folder">Ordner <span class="lbl-hint">— optional, Standard „Importierte Seiten"</span></label>
+    <input type="text" id="iu-folder" list="iu-folder-list" placeholder="z. B. Wettbewerber">
+    <datalist id="iu-folder-list"></datalist>
     <p class="pf-hint">Die Seite wird gecrawlt, als Markdown gespeichert und sofort für Ennis Suche indexiert. Der Import dauert ein paar Sekunden.</p>
     <div class="err" id="iu-err"></div>
     <div class="m-actions">

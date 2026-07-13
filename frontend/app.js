@@ -1805,19 +1805,39 @@ const CONNECTIONS = {
 }
 // Inhaltsgruppen nach Slug-Prefix — jede Seite landet in GENAU einer Gruppe
 // (erste Übereinstimmung gewinnt; "Weitere" fängt unbekannte Prefixe auf).
-const PAGE_GROUPS = [
-  { label: 'Unternehmen & eigene Seiten', match: (s) => !s.includes('/') },
-  { label: 'Enneo Produkt-Doku', sub: 'importiert aus docs.enneo.ai', match: (s) => s.startsWith('product-docs/') },
-  { label: 'Enneo API-Referenz', sub: 'importiert aus docs.enneo.ai/api-reference', match: (s) => s.startsWith('api-docs/') },
-  { label: 'Enneo-API-Rezepte', sub: 'Rezepte für Enni aus dem Claude-Code-Plugin', match: (s) => s.startsWith('enneo-api/') },
-  { label: 'enneo.ai Website', sub: 'importiert aus enneo.ai', match: (s) => s.startsWith('marketing-site/') },
-  { label: 'Importierte Seiten', sub: 'per URL importiert', match: (s) => s.startsWith('import/') },
-  { label: 'Weitere', match: () => true },
-]
+// Ordner = erstes Slug-Segment. Bekannte Crawl-Prefixe bekommen sprechende Labels,
+// alles andere ist ein nutzerdefinierter Ordner (entsteht einfach durch Benutzung).
+const KNOWN_GROUPS = {
+  '': { label: 'Unternehmen & eigene Seiten' },
+  'product-docs': { label: 'Enneo Produkt-Doku', sub: 'importiert aus docs.enneo.ai' },
+  'api-docs': { label: 'Enneo API-Referenz', sub: 'importiert aus docs.enneo.ai/api-reference' },
+  'enneo-api': { label: 'Enneo-API-Rezepte', sub: 'Rezepte für Enni aus dem Claude-Code-Plugin' },
+  'marketing-site': { label: 'enneo.ai Website', sub: 'importiert aus enneo.ai' },
+  'import': { label: 'Importierte Seiten', sub: 'per URL importiert' },
+}
+const folderLabel = (prefix) =>
+  KNOWN_GROUPS[prefix]?.label || prefix.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+
 function groupPages(pages) {
-  const groups = PAGE_GROUPS.map((g) => ({ ...g, pages: [] }))
-  for (const p of pages) groups.find((g) => g.match(p.slug)).pages.push(p)
-  return groups.filter((g) => g.pages.length)
+  const map = new Map()
+  for (const p of pages) {
+    const prefix = p.slug.includes('/') ? p.slug.split('/')[0] : ''
+    if (!map.has(prefix))
+      map.set(prefix, { prefix, label: folderLabel(prefix), sub: KNOWN_GROUPS[prefix]?.sub, pages: [] })
+    map.get(prefix).pages.push(p)
+  }
+  return [...map.values()].sort((a, b) =>
+    a.prefix === '' ? -1 : b.prefix === '' ? 1 : a.label.localeCompare(b.label)
+  )
+}
+
+// Vorhandene Ordner eines Space (für die Datalist-Vorschläge in Editor + Import)
+function spaceFolderPrefixes(spaceId) {
+  return [...new Set(
+    (wikiPages || [])
+      .filter((p) => p.space_id === spaceId && p.slug.includes('/'))
+      .map((p) => p.slug.split('/')[0])
+  )].sort()
 }
 
 let spacesList = []
@@ -1881,7 +1901,7 @@ function renderSpaceTree() {
     const spacePages = (wikiPages || []).filter((p) => p.space_id === s.id)
     for (const g of groupPages(spacePages)) {
       const item = treeItem({ label: `${g.label} · ${g.pages.length}` })
-      item.addEventListener('click', () => openPagelist(s, g.label, g.pages))
+      item.addEventListener('click', () => openPagelist(s, g.label, g.pages, g.prefix))
       kids.appendChild(item)
     }
     if (!spacePages.length)
@@ -1909,9 +1929,11 @@ function openSpaceHome(space) {
     row.className = 'crow'
     row.innerHTML = `<span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:var(--lila-deep);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.2 3.9A2 2 0 0 0 7.5 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></svg></span>
       <div><div class="c-name">${esc(g.label)}</div><div class="c-sub">${g.pages.length} Seiten${g.sub ? ' · ' + esc(g.sub) : ''}</div></div>`
-    row.addEventListener('click', () => openPagelist(space, g.label, g.pages))
+    row.addEventListener('click', () => openPagelist(space, g.label, g.pages, g.prefix))
     groupsBox.appendChild(row)
   }
+  if (!groupsBox.children.length)
+    groupsBox.innerHTML = '<div class="empty-plain">Noch keine Inhalte — leg oben eine Seite an oder importiere eine URL. Ordner entstehen automatisch beim Anlegen.</div>'
 
   const recentBox = $('sh-recent')
   recentBox.innerHTML = ''
@@ -1970,18 +1992,22 @@ $('sh-search').addEventListener('input', () => {
     box.appendChild(row)
   }
 })
-$('sh-new-page').addEventListener('click', () => openPageEditor(null))
-$('pl-new-page').addEventListener('click', () => openPageEditor(null))
+$('sh-new-page').addEventListener('click', () => openPageEditor(null, ''))
+$('pl-new-page').addEventListener('click', () => openPageEditor(null, currentFolderPrefix))
 
 // ---------- Seite per URL importieren (Crawl → Markdown → Auto-Reindex)
-function openImportModal() {
+function openImportModal(folderPrefix = '') {
   $('iu-url').value = ''
+  $('iu-folder').value = folderPrefix
+  $('iu-folder-list').innerHTML = spaceFolderPrefixes(currentSpace?.id)
+    .map((f) => `<option value="${esc(f)}">`)
+    .join('')
   $('iu-err').textContent = ''
   $('iu-overlay').classList.add('open')
   setTimeout(() => $('iu-url').focus(), 50)
 }
-$('sh-import-url').addEventListener('click', openImportModal)
-$('pl-import-url').addEventListener('click', openImportModal)
+$('sh-import-url').addEventListener('click', () => openImportModal(''))
+$('pl-import-url').addEventListener('click', () => openImportModal(currentFolderPrefix))
 $('iu-cancel').addEventListener('click', () => $('iu-overlay').classList.remove('open'))
 $('iu-save').addEventListener('click', async () => {
   const err = $('iu-err')
@@ -1994,7 +2020,7 @@ $('iu-save').addEventListener('click', async () => {
     const res = await fetch(`${BACKEND_URL}/api/wiki/import-url`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
-      body: JSON.stringify({ url, space_id: currentSpace?.id || null }),
+      body: JSON.stringify({ url, space_id: currentSpace?.id || null, folder: slugify2($('iu-folder').value) || undefined }),
     })
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
@@ -2056,14 +2082,16 @@ $('cdm-save').addEventListener('click', async () => {
   openConnectedData(spacesList.find((s) => s.id === currentSpace.id))
 })
 
-// ---------- Seiten-Liste (Folders / Websites)
+// ---------- Seiten-Liste (ein Ordner eines Space)
 let plPages = []
-function openPagelist(space, label, pages) {
+let currentFolderPrefix = '' // Ordner-Kontext für "+ Neue Seite" aus einer Liste heraus
+function openPagelist(space, label, pages, prefix = '') {
   currentSpace = space
   plPages = pages
+  currentFolderPrefix = prefix
   $('pl-crumb').textContent = space.name
   $('pl-title').textContent = label
-  $('pl-sub').textContent = pages.length ? `${pages.length} Seiten` : 'Noch keine Inhalte — Datei-Upload folgt in Phase 2.'
+  $('pl-sub').textContent = pages.length ? `${pages.length} Seiten` : 'Noch keine Inhalte.'
   $('pl-filter').value = ''
   renderPagelist('')
   activateArea('wiki', 'pagelist')
@@ -2156,12 +2184,19 @@ $('doc-edit').addEventListener('click', () => { if (currentPage) openPageEditor(
 let editingPage = null // null = neue Seite
 const slugify2 = (t) => t.toLowerCase().replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/ß/g,'ss').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80)
 
-async function openPageEditor(page) {
+async function openPageEditor(page, folderPrefix = '') {
   editingPage = page
   $('pe-crumb').textContent = currentSpace?.name || 'Space'
   $('pe-heading').textContent = page ? 'Seite bearbeiten' : 'Neue Seite'
   $('pe-title').value = page ? page.title : ''
   $('pe-title').disabled = false
+  // Ordner: bei bestehender Seite fix (Slug ändert sich nicht), bei neuer Seite frei
+  // wählbar — vorbefüllt mit dem Ordner, aus dem heraus man "Neue Seite" geklickt hat
+  $('pe-folder').value = page ? (page.slug.includes('/') ? page.slug.split('/')[0] : '') : folderPrefix
+  $('pe-folder').disabled = !!page
+  $('pe-folder-list').innerHTML = spaceFolderPrefixes(currentSpace?.id)
+    .map((f) => `<option value="${esc(f)}">`)
+    .join('')
   $('pe-slug').textContent = page ? page.slug : ''
   $('pe-content').value = page ? page.content : ''
   $('pe-preview').hidden = true
@@ -2174,9 +2209,14 @@ async function openPageEditor(page) {
   setTimeout(() => (page ? $('pe-content') : $('pe-title')).focus(), 50)
 }
 
-$('pe-title').addEventListener('input', () => {
-  if (!editingPage) $('pe-slug').textContent = slugify2($('pe-title').value) || ''
-})
+function updateSlugPreview() {
+  if (editingPage) return
+  const folder = slugify2($('pe-folder').value)
+  const title = slugify2($('pe-title').value)
+  $('pe-slug').textContent = title ? (folder ? `${folder}/${title}` : title) : ''
+}
+$('pe-title').addEventListener('input', updateSlugPreview)
+$('pe-folder').addEventListener('input', updateSlugPreview)
 $('pe-preview-btn').addEventListener('click', () => {
   const showPreview = $('pe-preview').hidden
   $('pe-preview').hidden = !showPreview
@@ -2214,8 +2254,10 @@ $('pe-save').addEventListener('click', async () => {
       const { error } = await sb.from('wiki_pages').update({ title, content, updated_by: session.user.id }).eq('id', editingPage.id)
       if (error) throw new Error(error.message)
     } else {
-      slug = slugify2(title)
-      if (!slug) throw new Error('Aus dem Titel lässt sich kein Slug bilden.')
+      const folder = slugify2($('pe-folder').value)
+      const titleSlug = slugify2(title)
+      slug = folder ? `${folder}/${titleSlug}` : titleSlug
+      if (!titleSlug) throw new Error('Aus dem Titel lässt sich kein Slug bilden.')
       const { error } = await sb.from('wiki_pages').insert({
         slug, title, content,
         space_id: currentSpace?.id || null,

@@ -593,9 +593,11 @@ app.post('/api/wiki/import-url', async (req, res) => {
       .toString().slice(0, 140)
     if (!markdown?.trim()) throw new Error('Die Seite lieferte keinen lesbaren Inhalt')
 
-    const slug = ('import/' + title.toLowerCase()
+    const slugPart = (t) => t.toLowerCase()
       .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
-      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')).slice(0, 90)
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+    const folder = slugPart(String(req.body?.folder || '')) || 'import'
+    const slug = `${folder}/${slugPart(title)}`.slice(0, 90)
     const content = `> Quelle: ${url} · importiert am ${new Date().toLocaleDateString('de-DE')}\n\n${markdown}`
     const { data: page, error } = await db
       .from('wiki_pages')
