@@ -8,6 +8,7 @@ import { skillToolDefinitions, runSkillTool, loadEnabledSkills, skillsPromptBloc
 import { fileToolDefinitions, runFileTool } from './tools/files.js'
 import { attioToolDefinitions, runAttioTool } from './tools/attio.js'
 import { slackToolDefinitions, runSlackTool } from './tools/slack.js'
+import { registrationToolDefinitions, runRegistrationTool } from './tools/registration.js'
 import { learningsPromptBlock } from './learnings.js'
 import { db } from './db.js'
 
@@ -30,6 +31,7 @@ Antworte IMMER in der Sprache der letzten Nachricht des Nutzers. Schreibt er auf
 - WICHTIG — API-Rezepte statt Endpoint-Raten: Im Wiki liegen unter dem Slug-Prefix "enneo-api/" 15 Rezept-Seiten mit den dokumentierten Mind-API-Endpoints (ai-agents, customers, events, exports, knowledge, quality, reports, settings-config, tags, telephony, templates, tickets, tools, troubleshooting, users). BEVOR du enneo_api_get gegen einen Endpoint aufrufst, den du nicht sicher kennst, hole dir das passende Rezept: wiki_read_page mit slug "enneo-api/{thema}" (oder wiki_semantic_search). Beispiel: Telefonnummern/Leitungen/Anruf-Metriken → "enneo-api/telephony" (dort: /report/telephonyLines, /telephony/getRouting u.a.). Rate NIE mehrfach blind — ein 405/404 heißt: Rezept nachschlagen.
 - ÄNDERUNGEN an einer Enneo-Instanz (Settings setzen: PUT /settings/{name} mit dem neuen Wert als Body; Tag anlegen: POST /tag mit {name, reference, type}; Ticket ändern; Agent-Konfiguration) machst du AUSSCHLIESSLICH über enneo_propose_write. Das erstellt eine Freigabe-Karte — der Nutzer bestätigt oder lehnt ab. Kündige nie an, etwas "gemacht zu haben", solange es nur vorgeschlagen ist. Lies vor einem Änderungs-Vorschlag den Ist-Zustand (z.B. das aktuelle Setting), damit die summary "alt → neu" zeigt.
 - Zusätzlich können via Administration verknüpfte MCP-Server verfügbar sein — deren Tools beginnen mit "mcp__". Nutze sie gemäß ihrer Beschreibung wie jedes andere Tool.
+- FEHLENDES TOOL: Wenn eine Aufgabe oder ein Skill-Workflow ein Tool braucht, das nicht verbunden ist (kein attio_/slack_/passendes mcp__-Tool verfügbar), oder der Nutzer ein neues Tool anbinden will: rufe SOFORT request_tool_connection auf — frag NICHT erst nach URL oder Zugangsdaten. Die Karte im Chat hat Felder für alles; der Nutzer trägt URL und Key dort selbst ein (du siehst sie nie). url im Tool-Call nur vorbefüllen, wenn du sie sicher kennst — sonst weglassen. Danach erscheint das Tool als persönliches Tool des Nutzers unter Spaces → Tools.
 - CRM-Fragen (Kunden-Accounts, Ansprechpartner, Deals, Discovery-Notizen): wenn attio_-Tools verfügbar sind, ist Attio die Quelle — erst attio_query_records (Filter z.B. {"name":{"$contains":"..."}}), dann attio_get_record / attio_list_notes für Details. Für Calls/Meetings und deren Gesprächs-Transkripte: attio_list_meetings (nach Titel/Zeitraum/Teilnehmern filtern) → attio_get_transcript mit der meeting_id. Attio ist read-only.
 - Slack-Fragen ("was wurde in #channel besprochen", Diskussionen, Entscheidungen aus Threads): wenn slack_-Tools verfügbar sind — erst slack_list_channels, dann slack_read_channel, Threads über slack_read_thread. Slack ist read-only; private Channels siehst du nur, wenn der Bot dort eingeladen wurde — sag das ehrlich, wenn ein Channel fehlt.
 - WISSENS-UPDATE-LOOP: Wenn du in einer Konversation dauerhaft gültiges Firmenwissen lernst — neue Fakten, Korrekturen an Wiki-Inhalten, getroffene Entscheidungen, Prozessänderungen — schlage PROAKTIV ein Wiki-Update vor: erst wiki_read_page auf die Zielseite (falls vorhanden), dann wiki_propose_update mit dem kompletten neuen Inhalt. Die Vorschläge sieht NUR der Admin in einer Review-Liste und prüft sie gesammelt — nicht der Nutzer im Chat. Sag dem Nutzer nur kurz, dass du dir das als Wissens-Vorschlag notiert hast. Kein Vorschlag für Flüchtiges (Termine, Smalltalk, Debug-Zwischenstände). Behaupte nie, das Wiki sei aktualisiert, solange es nur vorgeschlagen ist.
@@ -44,6 +46,7 @@ Antworte IMMER in der Sprache der letzten Nachricht des Nutzers. Schreibt er auf
 - Vertrauliche Inhalte bleiben intern; verweise nie auf externe Dienste.`
 
 const TOOLS = [
+  ...registrationToolDefinitions,
   ...wikiToolDefinitions,
   ...gitlabToolDefinitions,
   ...enneoToolDefinitions,
@@ -53,14 +56,15 @@ const TOOLS = [
 
 async function executeTool(name, input, ctx) {
   try {
-    if (name.startsWith('mcp__')) return { content: await runMcpTool(name, input), isError: false }
+    if (name === 'request_tool_connection') return { content: await runRegistrationTool(name, input), isError: false }
+    if (name.startsWith('mcp__')) return { content: await runMcpTool(name, input, ctx), isError: false }
     if (name.startsWith('pod_')) return { content: await runPodTool(name, input, ctx), isError: false }
     if (name.startsWith('wiki_')) return { content: await runWikiTool(name, input, ctx), isError: false }
     if (name.startsWith('gitlab_')) return { content: await runGitlabTool(name, input), isError: false }
     if (name.startsWith('enneo_')) return { content: await runEnneoTool(name, input, ctx), isError: false }
     if (name.startsWith('skill_')) return { content: await runSkillTool(name, input, ctx), isError: false }
-    if (name.startsWith('attio_')) return { content: await runAttioTool(name, input), isError: false }
-    if (name.startsWith('slack_')) return { content: await runSlackTool(name, input), isError: false }
+    if (name.startsWith('attio_')) return { content: await runAttioTool(name, input, ctx), isError: false }
+    if (name.startsWith('slack_')) return { content: await runSlackTool(name, input, ctx), isError: false }
     if (name === 'create_file') return { content: await runFileTool(name, input, ctx), isError: false }
     return { content: `Unbekanntes Tool: ${name}`, isError: true }
   } catch (err) {
@@ -146,19 +150,19 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
   // + live geladene Tools der verknüpften MCP-Server (gecacht, nicht-fatal)
   let turnTools = ctx.podId ? [...TOOLS, ...podToolDefinitions] : TOOLS
   try {
-    const mcpDefs = await mcpToolDefinitions()
+    const mcpDefs = await mcpToolDefinitions(ctx.userId)
     if (mcpDefs.length) turnTools = [...turnTools, ...mcpDefs]
   } catch (err) {
     console.error('MCP-Tool-Discovery fehlgeschlagen:', err.message)
   }
   try {
-    const attioDefs = await attioToolDefinitions() // leer, solange Attio nicht verbunden ist
+    const attioDefs = await attioToolDefinitions(ctx.userId) // leer, solange Attio nicht verbunden ist (team-weit oder persoenlich)
     if (attioDefs.length) turnTools = [...turnTools, ...attioDefs]
   } catch (err) {
     console.error('Attio-Tool-Discovery fehlgeschlagen:', err.message)
   }
   try {
-    const slackDefs = await slackToolDefinitions() // leer, solange Slack nicht verbunden ist
+    const slackDefs = await slackToolDefinitions(ctx.userId) // leer, solange Slack nicht verbunden ist (team-weit oder persoenlich)
     if (slackDefs.length) turnTools = [...turnTools, ...slackDefs]
   } catch (err) {
     console.error('Slack-Tool-Discovery fehlgeschlagen:', err.message)

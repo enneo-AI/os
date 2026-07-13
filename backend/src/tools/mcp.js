@@ -7,7 +7,8 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { db } from '../db.js'
 
 const CACHE_TTL_MS = 60_000
-let cache = { at: 0, defs: [], routes: new Map() } // routes: namespacedName -> {url, token, realName}
+// Per-User-Caches: jeder Nutzer sieht Team-Connectors + seine eigenen persoenlichen
+const caches = new Map() // userId||'team' -> { at, defs, routes: namespacedName -> {url, token, realName} }
 
 const slugify = (name) =>
   name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 24) || 'mcp'
@@ -32,7 +33,7 @@ export async function probeMcpServer(url, token) {
   }
 }
 
-export async function addConnector({ name, url, token, category }, userId) {
+export async function addConnector({ name, url, token, category, owner = null, visibility = 'team' }, userId) {
   const tools = await probeMcpServer(url, token) // wirft bei unerreichbar/ungültig
   const { data, error } = await db
     .from('connectors')
@@ -43,27 +44,39 @@ export async function addConnector({ name, url, token, category }, userId) {
       category: category === 'connection' ? 'connection' : 'tool',
       tool_count: tools.length,
       created_by: userId,
+      owner,
+      visibility,
     })
     .select('id, name, category, tool_count')
     .single()
   if (error) throw new Error(error.message)
-  cache.at = 0
+  caches.clear()
   return { ...data, tools: tools.map((t) => t.name) }
 }
 
 export async function removeConnector(id) {
   const { error } = await db.from('connectors').delete().eq('id', id)
   if (error) throw new Error(error.message)
-  cache.at = 0
+  caches.clear()
+}
+
+export function invalidateMcpCache() {
+  caches.clear()
 }
 
 // Tool-Definitionen aller Connectors — gecacht, Fehler pro Server nicht-fatal
-export async function mcpToolDefinitions() {
-  if (Date.now() - cache.at < CACHE_TTL_MS) return cache.defs
-  const { data: connectors } = await db.from('connectors').select('id, name, url, token').eq('kind', 'mcp')
+export async function mcpToolDefinitions(userId) {
+  const key = userId || 'team'
+  const cached = caches.get(key)
+  if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.defs
+  const { data: connectors } = await db
+    .from('connectors').select('id, name, url, token, owner, visibility').eq('kind', 'mcp')
+  const visible = (connectors || []).filter(
+    (c) => c.visibility === 'team' || (userId && c.owner === userId)
+  )
   const defs = []
   const routes = new Map()
-  for (const c of connectors || []) {
+  for (const c of visible) {
     try {
       const client = await connect(c.url, c.token)
       try {
@@ -86,13 +99,14 @@ export async function mcpToolDefinitions() {
       console.error(`MCP-Connector "${c.name}" nicht erreichbar:`, err.message)
     }
   }
-  cache = { at: Date.now(), defs, routes }
+  caches.set(key, { at: Date.now(), defs, routes })
   return defs
 }
 
-export async function runMcpTool(name, input) {
-  if (Date.now() - cache.at >= CACHE_TTL_MS) await mcpToolDefinitions()
-  const route = cache.routes.get(name)
+export async function runMcpTool(name, input, ctx = {}) {
+  const key = ctx.userId || 'team'
+  if (!caches.get(key) || Date.now() - caches.get(key).at >= CACHE_TTL_MS) await mcpToolDefinitions(ctx.userId)
+  const route = caches.get(key)?.routes.get(name)
   if (!route) throw new Error(`Unbekanntes MCP-Tool: ${name} (Connector entfernt?)`)
   const client = await connect(route.url, route.token)
   try {

@@ -8,18 +8,25 @@ import { db } from '../db.js'
 
 const BASE = 'https://slack.com/api'
 const CACHE_TTL_MS = 60_000
-let cache = { at: 0, token: null }
+const cache = new Map() // userId||'team' -> { at, token }
 let userCache = { at: 0, names: new Map() } // Slack-User-ID -> Anzeigename
 
-async function slackToken() {
-  if (Date.now() - cache.at < CACHE_TTL_MS) return cache.token
-  const { data } = await db.from('connectors').select('token').eq('kind', 'slack').limit(1).maybeSingle()
-  cache = { at: Date.now(), token: data?.token || null }
-  return cache.token
+// Per-User-Aufloesung: eigener persoenlicher Connector hat Vorrang vor dem Team-Connector
+async function slackToken(userId) {
+  const key = userId || 'team'
+  const c = cache.get(key)
+  if (c && Date.now() - c.at < CACHE_TTL_MS) return c.token
+  const { data } = await db.from('connectors').select('token, owner, visibility').eq('kind', 'slack')
+  const rows = data || []
+  const own = userId ? rows.find((r) => r.owner === userId && r.visibility !== 'team') : null
+  const team = rows.find((r) => r.visibility === 'team')
+  const token = (own || team)?.token || null
+  cache.set(key, { at: Date.now(), token })
+  return token
 }
 
 export function invalidateSlackCache() {
-  cache.at = 0
+  cache.clear()
   userCache.at = 0
 }
 
@@ -113,15 +120,15 @@ const TOOL_DEFS = [
   },
 ]
 
-export async function slackToolDefinitions() {
-  return (await slackToken()) ? TOOL_DEFS : []
+export async function slackToolDefinitions(userId) {
+  return (await slackToken(userId)) ? TOOL_DEFS : []
 }
 
 const clip = (s) => (s.length > 40000 ? s.slice(0, 40000) + '\n\n[... gekürzt]' : s)
 
-export async function runSlackTool(name, input) {
-  const token = await slackToken()
-  if (!token) throw new Error('Slack ist nicht verbunden — der Admin kann es unter Connections verknüpfen.')
+export async function runSlackTool(name, input, ctx = {}) {
+  const token = await slackToken(ctx.userId)
+  if (!token) throw new Error('Slack ist nicht verbunden — verbinde es unter Spaces → Connections (persönlich) oder bitte den Admin.')
 
   if (name === 'slack_list_channels') {
     const out = []

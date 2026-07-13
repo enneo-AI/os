@@ -7,22 +7,24 @@ import { db } from '../db.js'
 
 const BASE = 'https://api.attio.com/v2'
 const CACHE_TTL_MS = 60_000
-let cache = { at: 0, token: null }
+const cache = new Map() // userId||'team' -> { at, token }
 
-async function attioToken() {
-  if (Date.now() - cache.at < CACHE_TTL_MS) return cache.token
-  const { data } = await db
-    .from('connectors')
-    .select('token')
-    .eq('kind', 'attio')
-    .limit(1)
-    .maybeSingle()
-  cache = { at: Date.now(), token: data?.token || null }
-  return cache.token
+// Per-User-Aufloesung: eigener persoenlicher Connector hat Vorrang vor dem Team-Connector
+async function attioToken(userId) {
+  const key = userId || 'team'
+  const c = cache.get(key)
+  if (c && Date.now() - c.at < CACHE_TTL_MS) return c.token
+  const { data } = await db.from('connectors').select('token, owner, visibility').eq('kind', 'attio')
+  const rows = data || []
+  const own = userId ? rows.find((r) => r.owner === userId && r.visibility !== 'team') : null
+  const team = rows.find((r) => r.visibility === 'team')
+  const token = (own || team)?.token || null
+  cache.set(key, { at: Date.now(), token })
+  return token
 }
 
 export function invalidateAttioCache() {
-  cache.at = 0
+  cache.clear()
 }
 
 async function attioFetch(token, path, opts = {}) {
@@ -144,15 +146,15 @@ const TOOL_DEFS = [
 ]
 
 // Tools nur anbieten, wenn ein Attio-Connector existiert
-export async function attioToolDefinitions() {
-  return (await attioToken()) ? TOOL_DEFS : []
+export async function attioToolDefinitions(userId) {
+  return (await attioToken(userId)) ? TOOL_DEFS : []
 }
 
 const clip = (s) => (s.length > 40000 ? s.slice(0, 40000) + '\n\n[... gekürzt]' : s)
 
-export async function runAttioTool(name, input) {
-  const token = await attioToken()
-  if (!token) throw new Error('Attio ist nicht verbunden — der Admin kann es unter Connections verknüpfen.')
+export async function runAttioTool(name, input, ctx = {}) {
+  const token = await attioToken(ctx.userId)
+  if (!token) throw new Error('Attio ist nicht verbunden — verbinde es unter Spaces → Connections (persönlich) oder bitte den Admin.')
 
   if (name === 'attio_list_objects') {
     return clip(await attioFetch(token, '/objects'))

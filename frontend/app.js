@@ -301,6 +301,7 @@ async function route() {
     loadKnowledgeUpdates()
     loadLearnings()
     loadSkillProposals()
+    loadToolProposals()
     return loadMembers()
   }
   newConversation()
@@ -311,7 +312,7 @@ document.querySelectorAll('.rail-btn').forEach((b) =>
   b.addEventListener('click', () => {
     activateArea(b.dataset.v)
     if (b.dataset.v === 'wiki') loadSpacesTree().then(() => { if (spacesList[0]) openSpaceHome(spacesList[0]) })
-    if (b.dataset.v === 'admin') { refreshCosts(); loadMembers(); loadKnowledgeUpdates(); loadLearnings(); loadSkillProposals() }
+    if (b.dataset.v === 'admin') { refreshCosts(); loadMembers(); loadKnowledgeUpdates(); loadLearnings(); loadSkillProposals(); loadToolProposals() }
   })
 )
 
@@ -325,6 +326,7 @@ document.querySelectorAll('.admin-area').forEach((b) =>
     activateArea('wiki', b.dataset.view)
     if (b.dataset.view === 'skills') loadSkills()
     if (b.dataset.view === 'routines') loadRoutines()
+    if (b.dataset.view === 'conn' || b.dataset.view === 'admin-conn') loadConnectorRows()
   })
 )
 
@@ -750,6 +752,7 @@ function renderAgent(text, thinking, toolCalls, cost, durationMs) {
 
   if (text) wrap.appendChild(agentMeta(() => text, cost))
   renderWriteCards(wrap, toolCalls)
+  renderConnectCards(wrap, toolCalls)
   return wrap
 }
 
@@ -787,6 +790,65 @@ async function renderWriteCards(wrap, toolCalls) {
     const { data: p } = await sb.from('enneo_write_proposals').select('*').eq('id', pid).maybeSingle()
     if (p) wrap.appendChild(writeCard(p))
   }
+}
+
+// Tool-Verbindungs-Karte (request_tool_connection): Credentials-Eingabe direkt im Chat.
+// Der Key geht an POST /api/connectors (write-only gespeichert) — Enni sieht ihn nie.
+function renderConnectCards(wrap, toolCalls) {
+  const calls = (toolCalls || []).filter((c) => c.name === 'request_tool_connection' && !c.is_error)
+  calls.forEach((call, i) => {
+    const inp = call.input || {}
+    const key = ('tc-' + (inp.kind || '') + '-' + (inp.name || '') + '-' + i).replace(/[^a-zA-Z0-9-]/g, '_')
+    if (wrap.querySelector(`[data-connect-card="${key}"]`)) return
+    const isMcp = inp.kind === 'mcp'
+    const el = document.createElement('div')
+    el.className = 'wp-card'
+    el.dataset.connectCard = key
+    el.innerHTML = `
+      <div class="wp-top"><span class="wp-title">Tool verbinden · ${esc(inp.name || inp.kind)}</span><span class="wp-state"></span></div>
+      <div class="wp-sum">${esc(inp.reason || '')}</div>
+      <div class="tc-form">
+        ${isMcp ? `<input type="text" class="tc-name" placeholder="Name" value="${esc(inp.name || '')}">
+        <input type="text" class="tc-url" placeholder="https://… (MCP-Server-URL)" value="${esc(inp.url || '')}">` : ''}
+        <input type="password" class="tc-token" placeholder="${inp.kind === 'slack' ? 'Bot-Token (xoxb-…)' : isMcp ? 'Bearer-Token (optional)' : 'API-Key'}" autocomplete="off">
+      </div>
+      <div class="wp-req">Wird sicher gespeichert — Enni sieht deine Zugangsdaten nie. Erscheint danach als dein persönliches Tool unter Spaces → Tools.</div>
+      <div class="wp-actions"><button class="btn dark tc-save">Verbinden</button></div>
+      <div class="wp-result" hidden></div>`
+    const saveBtn = el.querySelector('.tc-save')
+    const result = el.querySelector('.wp-result')
+    saveBtn.addEventListener('click', async () => {
+      const tokenVal = el.querySelector('.tc-token').value.trim()
+      const nameVal = isMcp ? el.querySelector('.tc-name').value.trim() : inp.name
+      const urlVal = isMcp ? el.querySelector('.tc-url').value.trim() : undefined
+      if (!isMcp && !tokenVal) { result.hidden = false; result.textContent = 'Bitte den Key eintragen.'; return }
+      if (isMcp && (!nameVal || !/^https:\/\//.test(urlVal || ''))) { result.hidden = false; result.textContent = 'Name und https-URL sind Pflicht.'; return }
+      saveBtn.disabled = true
+      saveBtn.textContent = 'Verbinde …'
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/connectors`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+          body: JSON.stringify({ kind: inp.kind, name: nameVal, url: urlVal, token: tokenVal || undefined, scope: 'personal', category: 'tool' }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+        el.querySelector('.tc-form').remove()
+        el.querySelector('.wp-actions').remove()
+        el.querySelector('.wp-state').textContent = '✓ Verbunden'
+        el.querySelector('.wp-state').className = 'wp-state ok'
+        result.hidden = false
+        result.textContent = 'Als dein persönliches Tool angelegt — teilen kannst du es unter Spaces → Tools. Enni kann es ab der nächsten Nachricht nutzen.'
+        loadConnectorRows()
+      } catch (err) {
+        result.hidden = false
+        result.textContent = 'Fehler: ' + err.message
+        saveBtn.disabled = false
+        saveBtn.textContent = 'Verbinden'
+      }
+    })
+    wrap.appendChild(el)
+  })
 }
 
 function writeCard(p) {
@@ -993,6 +1055,48 @@ async function loadSkillProposals() {
     rejectBtn.addEventListener('click', () => {
       if (window.confirm(`"${s.name}" ablehnen? Bleibt persönlich beim Ersteller aktiv, wird aber nicht Team-weit.`)) act(s.id, 'reject')
     })
+    list.appendChild(row)
+  }
+}
+
+async function loadToolProposals() {
+  const { is_admin } = await ownProfile()
+  const panel = $('panel-tools')
+  const link = document.querySelector('.admin-link[data-target="panel-tools"]')
+  panel.hidden = !is_admin
+  if (link) link.hidden = !is_admin
+  if (!is_admin) return
+  const [{ data: rows }, profs] = await Promise.all([
+    sb.from('connectors').select('id, name, kind, url, tool_count, owner, visibility').eq('visibility', 'proposed').order('created_at'),
+    allProfiles(),
+  ])
+  const proposed = rows || []
+  $('tp-count').textContent = proposed.length ? `${proposed.length} offen` : 'nichts offen'
+  const list = $('tp-list')
+  list.innerHTML = ''
+  if (!proposed.length) {
+    list.innerHTML = '<div class="empty-plain">Keine offenen Tool-Vorschläge.</div>'
+    return
+  }
+  const act = async (id, action) => {
+    const res = await fetch(`${BACKEND_URL}/api/connectors/${id}/${action}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${await token()}` },
+    })
+    if (!res.ok) { window.alert((await res.json().catch(() => ({}))).error || 'Fehler'); return }
+    loadToolProposals()
+    loadConnectorRows()
+  }
+  for (const c of proposed) {
+    const row = document.createElement('div')
+    row.className = 'row'
+    row.innerHTML = `<div><div class="r-name">${esc(c.name)}</div>
+      <div class="r-sub">${esc(c.kind.toUpperCase())}${c.tool_count ? ` · ${c.tool_count} Tools` : ''} · von ${esc(profName(profs, c.owner))} · mit dessen Zugangsdaten</div></div>
+      <button class="btn quiet" style="padding:5px 13px;font-size:12px">Ablehnen</button>
+      <button class="btn dark" style="padding:5px 13px;font-size:12px">Für alle freischalten</button>`
+    const [rejectBtn, approveBtn] = row.querySelectorAll('button')
+    approveBtn.addEventListener('click', () => act(c.id, 'approve'))
+    rejectBtn.addEventListener('click', () => act(c.id, 'reject'))
     list.appendChild(row)
   }
 }
@@ -2254,7 +2358,10 @@ async function hydrateToolOutputs(messageId, thinkBody, wrap) {
     const fresh = toolRow(call)
     row.replaceWith(fresh)
   })
-  if (wrap) renderWriteCards(wrap, data.tool_calls)
+  if (wrap) {
+    renderWriteCards(wrap, data.tool_calls)
+    renderConnectCards(wrap, data.tool_calls)
+  }
 }
 
 $('send-btn').addEventListener('click', () => {
@@ -3013,25 +3120,52 @@ $('model-select').value = 'claude-opus-4-8'
 // ============================================================ Connectors (MCP-Server verknüpfen)
 let cnCategory = 'tool'
 
+// Teilen-Antrag eines eigenen Tools (personal → proposed, Admin entscheidet)
+async function shareConnector(id) {
+  const res = await fetch(`${BACKEND_URL}/api/connectors/${id}/share`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${await token()}` },
+  })
+  if (!res.ok) { window.alert((await res.json().catch(() => ({}))).error || 'Fehler'); return }
+  loadConnectorRows()
+}
+
+const connScopeBadge = (c, me) => {
+  if (c.visibility === 'team') return ''
+  if (c.visibility === 'proposed') return '<span class="sk-badge prop">Team-weit vorgeschlagen</span>'
+  return c.owner === me ? '<span class="sk-badge">Persönlich</span>' : ''
+}
+
 async function loadConnectorRows() {
   const { data } = await sb
     .from('connectors')
-    .select('id, name, url, category, tool_count, kind')
+    .select('id, name, url, category, tool_count, kind, owner, visibility')
     .order('created_at')
   const { is_admin } = await ownProfile()
-  for (const kind of Object.keys(NATIVE_CONNECTORS))
-    renderNativeRow(kind, (data || []).find((x) => x.kind === kind) || null, is_admin)
+  const me = session.user.id
+  // Sichtbar: team-weite + eigene (personal/proposed)
+  const visible = (data || []).filter((c) => c.visibility === 'team' || c.owner === me)
+  for (const kind of Object.keys(NATIVE_CONNECTORS)) {
+    // Eigener persönlicher Connector hat Vorrang vor dem Team-Connector (wie im Tool-Loop)
+    const rows = visible.filter((x) => x.kind === kind)
+    const conn = rows.find((x) => x.owner === me && x.visibility !== 'team') || rows.find((x) => x.visibility === 'team') || null
+    renderNativeRow(kind, conn, is_admin, me)
+  }
   for (const target of ['tool', 'connection']) {
     const box = $(target === 'tool' ? 'dyn-tools' : 'dyn-connections')
     if (!box) continue
     box.innerHTML = ''
-    for (const c of (data || []).filter((x) => x.category === target && x.kind === 'mcp')) {
+    for (const c of visible.filter((x) => x.category === target && x.kind === 'mcp')) {
+      const mine = c.owner === me
       const row = document.createElement('div')
       row.className = 'crow'
       row.innerHTML = `<span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:var(--lila-deep);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></span>
         <div><div class="c-name">${esc(c.name)}</div><div class="c-sub">${esc(new URL(c.url).hostname)} · ${c.tool_count ?? '?'} Tools · MCP</div></div>
+        ${connScopeBadge(c, me)}
+        ${mine && c.visibility === 'personal' ? '<button class="btn quiet c-share" style="padding:4px 12px;font-size:11.5px" title="Team-weite Nutzung beantragen — der Admin entscheidet">Teilen</button>' : ''}
         <span class="c-right ok"><span class="dot-s"></span>Verbunden</span>` +
-        (is_admin ? '<button class="c-del" title="Trennen"><svg viewBox="0 0 24 24"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg></button>' : '')
+        (is_admin || mine ? '<button class="c-del" title="Trennen"><svg viewBox="0 0 24 24"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg></button>' : '')
+      row.querySelector('.c-share')?.addEventListener('click', () => shareConnector(c.id))
       row.querySelector('.c-del')?.addEventListener('click', async () => {
         if (!window.confirm(`"${c.name}" trennen? Enni verliert sofort den Zugriff auf diese Tools.`)) return
         const res = await fetch(`${BACKEND_URL}/api/connectors/${c.id}`, {
@@ -3068,17 +3202,24 @@ const NATIVE_CONNECTORS = {
 }
 const nativeState = {} // kind -> connector-Row oder null
 
-function renderNativeRow(kind, conn, isAdmin) {
+function renderNativeRow(kind, conn, isAdmin, me) {
   const cfg = NATIVE_CONNECTORS[kind]
   nativeState[kind] = conn
   const status = $(cfg.status)
   const sub = $(cfg.sub)
   if (!status) return
   if (conn) {
+    const mine = conn.owner === me
+    const scope = conn.visibility === 'team' ? 'Verbunden' : conn.visibility === 'proposed' ? 'Verbunden · vorgeschlagen' : 'Verbunden · persönlich'
     status.className = 'c-right ok'
-    status.innerHTML = '<span class="dot-s"></span>Verbunden' +
-      (isAdmin ? `<button class="c-del" data-native-del="${kind}" title="Trennen" style="display:inline-flex;margin-left:8px"><svg viewBox="0 0 24 24"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg></button>` : '')
+    status.innerHTML = `<span class="dot-s"></span>${scope}` +
+      (mine && conn.visibility === 'personal' ? `<button class="btn quiet" data-native-share="${kind}" style="padding:3px 10px;font-size:11px;margin-left:8px" title="Team-weite Nutzung beantragen">Teilen</button>` : '') +
+      (isAdmin || mine ? `<button class="c-del" data-native-del="${kind}" title="Trennen" style="display:inline-flex;margin-left:8px"><svg viewBox="0 0 24 24"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg></button>` : '')
     sub.textContent = cfg.subConnected
+    status.querySelector('[data-native-share]')?.addEventListener('click', (e) => {
+      e.stopPropagation()
+      shareConnector(conn.id)
+    })
     status.querySelector('[data-native-del]')?.addEventListener('click', async (e) => {
       e.stopPropagation()
       if (!window.confirm(cfg.confirmMsg)) return
@@ -3091,16 +3232,14 @@ function renderNativeRow(kind, conn, isAdmin) {
     })
   } else {
     status.className = 'c-right off'
-    status.innerHTML = '<span class="dot-s"></span>' + (isAdmin ? 'Verbinden' : 'Nicht verbunden')
-    sub.textContent = isAdmin ? `${cfg.subDefault} · Klick zum Verbinden` : cfg.subDefault
+    status.innerHTML = '<span class="dot-s"></span>Verbinden'
+    sub.textContent = `${cfg.subDefault} · Klick zum Verbinden (persönlich; Admin: team-weit)`
   }
 }
 
 for (const [kind, cfg] of Object.entries(NATIVE_CONNECTORS)) {
   $(cfg.row).addEventListener('click', async () => {
-    if (nativeState[kind]) return // verbunden — Trennen läuft über das ✕
-    const { is_admin } = await ownProfile()
-    if (!is_admin) return
+    if (nativeState[kind]) return // verbunden — Trennen läuft über das ✕ (jeder darf verbinden)
     $(cfg.input).value = ''
     $(cfg.err).textContent = ''
     $(cfg.overlay).classList.add('open')
@@ -3239,7 +3378,60 @@ function renderSkillList(filter = '') {
 }
 $('skill-search').addEventListener('input', () => renderSkillList($('skill-search').value))
 
+// ============================================================ Workflow-Diagramm
+// EINE einheitliche Visualisierung für alle Skill-Workflows: der Text (nummerierte
+// Schritte) bleibt Source of Truth, das Diagramm ist eine generierte Read-only-Ansicht.
+function parseWorkflowSteps(text) {
+  const steps = []
+  let current = null
+  for (const line of (text || '').split('\n')) {
+    const m = line.match(/^\s*(\d+)[.)]\s+(.*)$/)
+    if (m) {
+      if (current) steps.push(current)
+      current = { num: m[1], text: m[2] }
+    } else if (current && line.trim()) {
+      current.text += ' ' + line.trim()
+    }
+  }
+  if (current) steps.push(current)
+  return steps
+}
+
+const TOOL_NAME_RE = /\b((?:wiki|attio|slack|enneo|gitlab|pod|skill|dashboard)_[a-z0-9_]+|mcp__[a-zA-Z0-9_]+|create_file|request_tool_connection)\b/g
+
+function renderWorkflowFlow(container, text, toolsList = []) {
+  const steps = parseWorkflowSteps(text)
+  container.innerHTML = ''
+  if (!steps.length) {
+    container.innerHTML = '<div class="wf-empty">Kein nummerierter Workflow erkannt — schreibe Schritte als „1. …", „2. …", dann erscheint hier das Diagramm.</div>'
+    return
+  }
+  for (const s of steps) {
+    const found = [...new Set([...(s.text.match(TOOL_NAME_RE) || []), ...toolsList.filter((tl) => s.text.includes(tl))])]
+    const node = document.createElement('div')
+    node.className = 'wf-node'
+    node.innerHTML = `<span class="wf-num">${esc(s.num)}</span>
+      <div class="wf-body"><div class="wf-text">${esc(s.text.length > 260 ? s.text.slice(0, 260) + ' …' : s.text)}</div>
+      ${found.length ? `<div class="wf-chips">${found.map((f) => `<span class="wf-chip">${esc(f)}</span>`).join('')}</div>` : ''}</div>`
+    container.appendChild(node)
+  }
+}
+
+function setWorkflowView(view) {
+  document.querySelectorAll('[data-wfview]').forEach((b) => b.classList.toggle('on', b.dataset.wfview === view))
+  $('sk-workflow').hidden = view === 'flow'
+  $('sk-workflow-flow').hidden = view !== 'flow'
+  if (view === 'flow') {
+    const tools = $('sk-tools').value.split('\n').map((x) => x.trim()).filter(Boolean)
+    renderWorkflowFlow($('sk-workflow-flow'), $('sk-workflow').value, tools)
+  }
+}
+document.querySelectorAll('[data-wfview]').forEach((b) =>
+  b.addEventListener('click', () => setWorkflowView(b.dataset.wfview))
+)
+
 function openSkill(s, isAdmin) {
+  setWorkflowView('text')
   editingSkill = s
   // Bearbeiten dürfen: Admins alles; Mitglieder ihre eigenen persönlichen/vorgeschlagenen Skills
   const isOwner = s && s.created_by === session.user.id && s.visibility !== 'team'

@@ -515,9 +515,16 @@ app.post('/api/invite', async (req, res) => {
 })
 
 app.post('/api/connectors', async (req, res) => {
-  const user = await requireAdmin(req, res)
-  if (!user) return
+  // Jeder Account darf Tools verbinden: Non-Admins immer als persoenliches Tool
+  // (owner = eigener Account); Admins legen standardmaessig team-weit an.
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const { data: prof } = await db.from('profiles').select('is_admin').eq('id', user.id).maybeSingle()
+  const isAdmin = !!prof?.is_admin
   const { name, url, token, category, kind } = req.body || {}
+  const personal = !isAdmin || req.body?.scope === 'personal'
+  const owner = personal ? user.id : null
+  const visibility = personal ? 'personal' : 'team'
 
   // Nativer Slack-Connector: Bot-Token (xoxb-…), Verbindungstest via auth.test
   if (kind === 'slack') {
@@ -525,8 +532,10 @@ app.post('/api/connectors', async (req, res) => {
     try {
       const { probeSlack, invalidateSlackCache } = await import('./tools/slack.js')
       const info = await probeSlack(token.trim())
-      const { data: existing } = await db.from('connectors').select('id').eq('kind', 'slack').maybeSingle()
-      if (existing) await db.from('connectors').delete().eq('id', existing.id) // Re-Connect ersetzt den Token
+      // Re-Connect ersetzt den Token — im jeweiligen Scope (persoenlich vs. team)
+      let delQ = db.from('connectors').delete().eq('kind', 'slack')
+      delQ = personal ? delQ.eq('owner', user.id).neq('visibility', 'team') : delQ.eq('visibility', 'team')
+      await delQ
       const { data, error } = await db
         .from('connectors')
         .insert({
@@ -537,6 +546,8 @@ app.post('/api/connectors', async (req, res) => {
           kind: 'slack',
           tool_count: 3,
           created_by: user.id,
+          owner,
+          visibility,
         })
         .select('id, name')
         .single()
@@ -554,8 +565,10 @@ app.post('/api/connectors', async (req, res) => {
     try {
       const { probeAttio, invalidateAttioCache } = await import('./tools/attio.js')
       const workspace = await probeAttio(token.trim())
-      const { data: existing } = await db.from('connectors').select('id').eq('kind', 'attio').maybeSingle()
-      if (existing) await db.from('connectors').delete().eq('id', existing.id) // Re-Connect ersetzt den Key
+      // Re-Connect ersetzt den Key — im jeweiligen Scope (persoenlich vs. team)
+      let delQ = db.from('connectors').delete().eq('kind', 'attio')
+      delQ = personal ? delQ.eq('owner', user.id).neq('visibility', 'team') : delQ.eq('visibility', 'team')
+      await delQ
       const { data, error } = await db
         .from('connectors')
         .insert({
@@ -566,6 +579,8 @@ app.post('/api/connectors', async (req, res) => {
           kind: 'attio',
           tool_count: 7,
           created_by: user.id,
+          owner,
+          visibility,
         })
         .select('id, name')
         .single()
@@ -581,15 +596,57 @@ app.post('/api/connectors', async (req, res) => {
   if (!/^https:\/\//.test(url.trim())) return res.status(400).json({ error: 'URL muss mit https:// beginnen' })
   try {
     const { addConnector } = await import('./tools/mcp.js')
-    res.json(await addConnector({ name, url, token, category }, user.id))
+    res.json(await addConnector({ name, url, token, category, owner, visibility }, user.id))
   } catch (err) {
     res.status(400).json({ error: `Verbindung fehlgeschlagen: ${err.message}` })
   }
 })
 
-app.delete('/api/connectors/:id', async (req, res) => {
+// Tool fuers Unternehmen beantragen (Owner) bzw. freigeben/ablehnen (Admin).
+// approve macht die hinterlegten Credentials fuer ALLE Accounts nutzbar ('team');
+// reject stuft zurueck auf 'personal' (bleibt beim Owner nutzbar).
+app.post('/api/connectors/:id/share', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const { data, error } = await db
+    .from('connectors')
+    .update({ visibility: 'proposed' })
+    .eq('id', req.params.id)
+    .eq('owner', user.id)
+    .eq('visibility', 'personal')
+    .select('id')
+    .maybeSingle()
+  if (error) return res.status(400).json({ error: error.message })
+  if (!data) return res.status(404).json({ error: 'Tool nicht gefunden oder nicht deins' })
+  res.json({ ok: true, visibility: 'proposed' })
+})
+
+app.post('/api/connectors/:id/:action(approve|reject)', async (req, res) => {
   const user = await requireAdmin(req, res)
   if (!user) return
+  const target = req.params.action === 'approve' ? 'team' : 'personal'
+  const { data: conn } = await db.from('connectors').select('id, kind, visibility').eq('id', req.params.id).maybeSingle()
+  if (!conn) return res.status(404).json({ error: 'Tool nicht gefunden' })
+  // Bei attio/slack gibt es max. EINEN Team-Connector — alter wird ersetzt
+  if (target === 'team' && (conn.kind === 'attio' || conn.kind === 'slack')) {
+    await db.from('connectors').delete().eq('kind', conn.kind).eq('visibility', 'team').neq('id', conn.id)
+  }
+  const { error } = await db.from('connectors').update({ visibility: target }).eq('id', conn.id)
+  if (error) return res.status(400).json({ error: error.message })
+  const { invalidateAttioCache } = await import('./tools/attio.js')
+  const { invalidateSlackCache } = await import('./tools/slack.js')
+  const { invalidateMcpCache } = await import('./tools/mcp.js')
+  invalidateAttioCache(); invalidateSlackCache(); invalidateMcpCache()
+  res.json({ ok: true, visibility: target })
+})
+
+app.delete('/api/connectors/:id', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const { data: prof } = await db.from('profiles').select('is_admin').eq('id', user.id).maybeSingle()
+  const { data: conn } = await db.from('connectors').select('id, owner').eq('id', req.params.id).maybeSingle()
+  if (!conn) return res.status(404).json({ error: 'Tool nicht gefunden' })
+  if (!prof?.is_admin && conn.owner !== user.id) return res.status(403).json({ error: 'Nur eigene Tools oder Admin' })
   try {
     const { removeConnector } = await import('./tools/mcp.js')
     await removeConnector(req.params.id)

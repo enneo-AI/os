@@ -150,6 +150,26 @@
   .pal-item .pal-t{font-size:13.5px;font-weight:560;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .pal-item .pal-s{font-size:11.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .pal-empty{padding:26px 12px;text-align:center;color:var(--ink-3);font-size:13px}
+
+  /* Tool-Verbindungs-Karte im Chat */
+  .tc-form{display:flex;flex-direction:column;gap:8px;margin:10px 0}
+  .tc-form input{border:1px solid var(--hair);border-radius:10px;background:var(--surface);padding:9px 12px;font-size:13px;outline:0;color:var(--ink)}
+  .tc-form input:focus{border-color:var(--lila)}
+  .wp-state.ok{color:var(--good)}
+
+  /* Workflow-Diagramm (einheitliche Ansicht nummerierter Skill-Workflows) */
+  .wf-label-row{display:flex;align-items:center;margin:0 0 7px}
+  .wf-label-row .m-tabs{padding:2px}
+  .wf-label-row .mt-btn{padding:3px 11px;font-size:11px}
+  .wf-flow{margin-bottom:18px;padding:4px 2px}
+  .wf-node{position:relative;display:flex;gap:12px;padding:0 0 18px 0}
+  .wf-node:not(:last-child)::before{content:"";position:absolute;left:13px;top:28px;bottom:0;width:1.5px;background:var(--hair)}
+  .wf-num{width:27px;height:27px;border-radius:50%;flex:none;display:inline-flex;align-items:center;justify-content:center;background:rgba(123,90,226,.1);color:var(--lila-deep);font-size:12px;font-weight:650;font-family:var(--mono)}
+  .wf-body{min-width:0;padding-top:3px}
+  .wf-text{font-size:13px;color:var(--ink-2);line-height:1.45}
+  .wf-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+  .wf-chip{font-family:var(--mono);font-size:10.5px;padding:2px 8px;border-radius:6px;background:var(--press);color:var(--ink-2);border:1px solid var(--hair)}
+  .wf-empty{font-size:12.5px;color:var(--ink-3);padding:10px 2px}
   .sb-ctx{display:flex;flex-direction:column;flex:1;min-height:0}
   .sb-scroll{flex:1;overflow-y:auto;min-height:0;margin:0 -6px;padding:0 6px}
   .sb-sec{font-size:10.5px;font-weight:680;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:12px 6px 5px}
@@ -757,6 +777,7 @@
         <button class="sb-item admin-link" data-target="panel-knowledge" hidden><span class="txt">Wissens-Updates</span></button>
         <button class="sb-item admin-link" data-target="panel-learnings" hidden><span class="txt">Learnings</span></button>
         <button class="sb-item admin-link" data-target="panel-skills" hidden><span class="txt">Skill-Vorschläge</span></button>
+        <button class="sb-item admin-link" data-target="panel-tools" hidden><span class="txt">Tool-Vorschläge</span></button>
         <button class="sb-item admin-link" data-target="panel-model"><span class="txt">Modell</span></button>
         <button class="sb-item admin-link" data-target="panel-members"><span class="txt">Mitglieder</span></button>
       </div>
@@ -1157,6 +1178,12 @@
           <div id="sp-list"></div>
         </div>
 
+        <div class="list-panel" id="panel-tools" hidden>
+          <h3>Tool-Vorschläge <span class="ku-count" id="tp-count"></span></h3>
+          <p class="panel-sub">Persönlich verbundene Tools, die Mitglieder fürs Team beantragen. Freischalten macht die hinterlegten Zugangsdaten für alle Accounts nutzbar.</p>
+          <div id="tp-list"></div>
+        </div>
+
         <div class="list-panel" id="panel-model">
           <h3>Modell</h3>
           <div class="row">
@@ -1270,8 +1297,15 @@
     </div>
     <label for="sk-context">Kontext <span class="lbl-hint">— warum gibt es diesen Skill, wofür ist er da, typische Use Cases</span></label>
     <textarea id="sk-context" rows="4"></textarea>
-    <label for="sk-workflow">Workflow <span class="lbl-hint">— wann macht man genau was, Schritt für Schritt</span></label>
+    <div class="wf-label-row">
+      <label for="sk-workflow" style="margin:0">Workflow <span class="lbl-hint">— nummerierte Schritte (1., 2., 3. …), Tools im Schritt benennen</span></label>
+      <nav class="m-tabs" style="margin-left:auto">
+        <button class="mt-btn on" type="button" data-wfview="text">Text</button>
+        <button class="mt-btn" type="button" data-wfview="flow">Diagramm</button>
+      </nav>
+    </div>
     <textarea id="sk-workflow" rows="6"></textarea>
+    <div class="wf-flow" id="sk-workflow-flow" hidden></div>
     <label for="sk-tools">Tools <span class="lbl-hint">— ein Tool pro Zeile · Basis für die Ausführung, nicht exklusiv</span></label>
     <textarea id="sk-tools" rows="3" placeholder="wiki_semantic_search&#10;enneo_api_get&#10;gitlab_search_code"></textarea>
     <label for="sk-triggers">Trigger <span class="lbl-hint">— wann greift der Skill: außer /slash auch kontextbasiert, z. B. „User will einen Voicebot bauen"</span></label>
