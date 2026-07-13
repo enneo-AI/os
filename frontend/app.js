@@ -1325,7 +1325,7 @@ let profilesCache = null
 
 async function allProfiles() {
   if (!profilesCache) {
-    const { data } = await sb.from('profiles').select('id, display_name, email')
+    const { data } = await sb.from('profiles').select('id, display_name, email, avatar_url')
     profilesCache = data || []
   }
   return profilesCache
@@ -1334,6 +1334,9 @@ const profName = (list, id) => {
   const p = list.find((x) => x.id === id)
   return p ? p.display_name || p.email : '—'
 }
+const profileAvatarInner = (profile, name) => profile?.avatar_url
+  ? `<img src="${esc(profile.avatar_url)}" alt="">`
+  : esc(podInitials(name))
 
 // Welcher Pod ist in der Sidebar markiert? Folgt der offenen Ansicht (Pod-Seite ODER
 // Pod-Konversation) — nicht activePod, das als Seiten-Zustand auch in 1:1-Chats überlebt.
@@ -1651,11 +1654,15 @@ function renderTaskRow(t, profs) {
   row.className = 'trow'
   const done = t.status === 'done'
   const ind = t.status === 'in_progress' ? '<span class="c-ind work" title="Enni arbeitet …"></span>' : ''
-  const assignee = t.assignee ? profName(profs, t.assignee) : null
+  const assigneeProfile = t.assignee ? profs.find((p) => p.id === t.assignee) : null
+  const assignee = assigneeProfile ? assigneeProfile.display_name || assigneeProfile.email : null
   row.innerHTML = `
-    <input type="checkbox" class="task-check" ${done ? 'checked' : ''}>
+    <label class="task-check-wrap" title="${done ? 'Als offen markieren' : 'Als erledigt markieren'}">
+      <input type="checkbox" class="task-check" ${done ? 'checked' : ''}>
+      <span class="task-check-ui"><svg viewBox="0 0 24 24"><path d="m6 12 4 4 8-9"/></svg></span>
+    </label>
     <div class="t-main"><div class="r-name task-title${done ? ' done' : ''}">${ind}${esc(t.title)}</div>
-      <div class="r-sub">von ${esc(profName(profs, t.created_by))}${t.conversation_id ? ' · <a href="#" class="task-conv" style="color:var(--lila-deep)">zur Konversation</a>' : ''}</div></div>
+      <div class="r-sub">von ${esc(profName(profs, t.created_by))}</div></div>
     <span class="t-meta">
       <span class="t-acts">
         <span class="sb-act t-assign" title="Person zuweisen …">${PERSON_SVG}</span>
@@ -1663,8 +1670,9 @@ function renderTaskRow(t, profs) {
         <span class="sb-act t-del" title="Löschen">${X_SVG}</span>
       </span>
       ${t.due_date ? `<span class="t-due${isOverdue(t) ? ' over' : ''}" title="Fällig">${fmtDue(t.due_date)}</span>` : ''}
-      ${assignee ? `<span class="avatar t-av t-av-btn" title="Zugewiesen an ${esc(assignee)} — Klick ändert" style="cursor:pointer">${esc(podInitials(assignee))}</span>` : ''}
-      <button class="task-run" title="Enni an dieser Aufgabe arbeiten lassen">▶</button>
+      ${t.conversation_id ? `<button class="glass-icon task-conv" title="Konversation öffnen" aria-label="Konversation öffnen"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H5l-2 2V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8z"/></svg></button>` : ''}
+      ${assignee ? `<span class="avatar t-av t-av-btn" title="Zugewiesen an ${esc(assignee)} — Klick ändert" style="cursor:pointer">${profileAvatarInner(assigneeProfile, assignee)}</span>` : ''}
+      <button class="task-run" title="Enni an dieser Aufgabe arbeiten lassen" aria-label="Enni an dieser Aufgabe arbeiten lassen"><span class="enni-mini"></span></button>
     </span>
     <input type="date" class="t-date-input" style="position:absolute;width:0;height:0;opacity:0;border:0;padding:0">`
   row.querySelector('.task-check').addEventListener('change', async (e) => {
@@ -1774,7 +1782,7 @@ function openAssignMenu(anchor, t, profs) {
   menu.appendChild(entry('<span class="none-av"></span>Niemand zugewiesen', null))
   for (const p of candidates) {
     const name = p.display_name || p.email
-    menu.appendChild(entry(`<span class="avatar t-av">${esc(podInitials(name))}</span>${esc(name)}`, p.id))
+    menu.appendChild(entry(`<span class="avatar t-av">${profileAvatarInner(p, name)}</span>${esc(name)}`, p.id))
   }
   document.body.appendChild(menu)
   const r = anchor.getBoundingClientRect()
@@ -1833,6 +1841,21 @@ $('tm-start').addEventListener('click', async () => {
 })
 
 // --- Tab: Dateien
+const FILE_DOC_SVG = '<svg viewBox="0 0 24 24"><path d="M6 2h8l4 4v16H6z"/><path d="M14 2v5h5"/><path d="M9 13h6M9 17h5"/></svg>'
+const FILE_EYE_SVG = '<svg viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"/><circle cx="12" cy="12" r="2.5"/></svg>'
+const FILE_DOWNLOAD_SVG = '<svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>'
+const FILE_TRASH_SVG = '<svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="m6 7 1 14h10l1-14"/><path d="M10 11v6M14 11v6"/></svg>'
+
+async function signedPodFileUrl(file, download = false) {
+  const options = download ? { download: file.name } : undefined
+  const { data, error } = await sb.storage.from('pod-files').createSignedUrl(file.storage_path, 300, options)
+  if (error || !data?.signedUrl) {
+    alert('Datei konnte nicht geöffnet werden.')
+    return null
+  }
+  return data.signedUrl
+}
+
 async function loadPodFiles() {
   const [{ data }, profs] = await Promise.all([
     sb.from('pod_files').select('*').eq('pod_id', activePod.id).order('created_at', { ascending: false }),
@@ -1843,17 +1866,33 @@ async function loadPodFiles() {
   list.innerHTML = ''
   for (const f of data || []) {
     const row = document.createElement('div')
-    row.className = 'row'
-    row.innerHTML = `<div><div class="r-name">${esc(f.name)}</div>
-      <div class="r-sub">${f.media_type || ''} · ${(f.size / 1024 / 1024).toFixed(1)} MB · von ${esc(profName(profs, f.uploaded_by))}</div></div>
-      <a href="#" class="src-link f-dl" style="color:var(--lila-deep);font-size:12.5px">Herunterladen</a>
-      <button class="task-run f-del" title="Löschen">✕</button>`
-    row.querySelector('.f-dl').addEventListener('click', async (e) => {
-      e.preventDefault()
-      const { data: signed } = await sb.storage.from('pod-files').createSignedUrl(f.storage_path, 300)
-      if (signed?.signedUrl) window.open(signed.signedUrl, '_blank')
+    row.className = 'file-row'
+    row.innerHTML = `<span class="file-kind">${FILE_DOC_SVG}</span>
+      <div class="file-main"><div class="file-name">${esc(f.name)}</div>
+      <div class="file-sub">${esc(f.media_type || 'Datei')} · ${(f.size / 1024 / 1024).toFixed(1)} MB · ${esc(profName(profs, f.uploaded_by))}</div></div>
+      <div class="file-actions">
+        <button class="glass-icon f-preview" title="Vorschau öffnen" aria-label="${esc(f.name)} ansehen">${FILE_EYE_SVG}</button>
+        <button class="glass-icon f-download" title="Herunterladen" aria-label="${esc(f.name)} herunterladen">${FILE_DOWNLOAD_SVG}</button>
+        <button class="glass-icon danger f-del" title="Löschen" aria-label="${esc(f.name)} löschen">${FILE_TRASH_SVG}</button>
+      </div>`
+    row.querySelector('.f-preview').addEventListener('click', async () => {
+      const preview = window.open('about:blank', '_blank')
+      const url = await signedPodFileUrl(f)
+      if (url && preview) preview.location.href = url
+      else preview?.close()
+    })
+    row.querySelector('.f-download').addEventListener('click', async () => {
+      const url = await signedPodFileUrl(f, true)
+      if (!url) return
+      const a = document.createElement('a')
+      a.href = url
+      a.download = f.name
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
     })
     row.querySelector('.f-del').addEventListener('click', async () => {
+      if (!window.confirm(`Datei "${f.name}" löschen?`)) return
       await sb.storage.from('pod-files').remove([f.storage_path])
       await sb.from('pod_files').delete().eq('id', f.id)
       loadPodFiles()
