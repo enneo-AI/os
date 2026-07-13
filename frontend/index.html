@@ -466,6 +466,12 @@
   .danger-link:hover{opacity:1;text-decoration:underline}
   .list-panel h3{font-size:13.5px;font-weight:640;margin:18px 0 6px}
   .panel-sub{font-size:12.5px;color:var(--ink-3);margin:0 0 10px}
+  /* Seiten-Editor */
+  .pe-label{display:block;font-size:11px;font-weight:650;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:0 0 7px}
+  .pe-slug{font-family:var(--mono);font-size:11.5px;color:var(--ink-3);margin:0 0 18px;min-height:15px}
+  .pe-toolbar{display:flex;align-items:center;margin:0 0 8px}
+  #pe-content{width:100%;min-height:56vh;resize:vertical;font-family:var(--mono);font-size:13px;line-height:1.6;border:1px solid var(--hair);border-radius:14px;background:var(--surface);padding:16px 18px;outline:0}
+  #pe-content:focus{border-color:var(--lila);box-shadow:0 0 0 3px rgba(123,90,226,.12)}
   .ku-count{font-weight:500;color:var(--ink-3);margin-left:6px}
   .modal.wide{width:min(720px,calc(100vw - 40px));max-height:calc(100vh - 60px);overflow-y:auto}
   .mention-menu{position:fixed;z-index:80;background:var(--glass-strong);-webkit-backdrop-filter:blur(30px) saturate(1.6);backdrop-filter:blur(30px) saturate(1.6);border:1px solid var(--edge);border-radius:14px;box-shadow:0 20px 50px -12px rgba(29,30,44,.3);padding:5px;max-height:240px;overflow-y:auto}
@@ -604,10 +610,8 @@
         <button class="sb-item admin-area" data-view="conn"><span class="txt">Tools</span></button>
         <button class="sb-item admin-area" data-view="skills"><span class="txt">Skills</span></button>
         <button class="sb-item admin-area" data-view="routines"><span class="txt">Routinen</span></button>
-        <div class="sb-sec">Open Spaces <button class="sec-add" id="new-open-space" title="Neuer Open Space">＋</button></div>
-        <div id="space-tree-open"></div>
-        <div class="sb-sec">Restricted Spaces <button class="sec-add" id="new-restricted-space" title="Neuer Restricted Space">＋</button></div>
-        <div id="space-tree-restricted"></div>
+        <div class="sb-sec">Spaces <button class="sec-add" id="new-space" title="Neuer Space">＋</button></div>
+        <div id="space-tree"></div>
       </div>
     </div>
 
@@ -815,10 +819,68 @@
     <section class="view" id="v-wiki">
       <article class="doc" style="margin:0 auto">
         <div class="doc-crumb" id="doc-crumb">Company Data</div>
-        <h1 id="doc-title">Company Data</h1>
+        <div style="display:flex;align-items:flex-start;gap:16px">
+          <h1 id="doc-title" style="flex:1">Company Data</h1>
+          <button class="btn quiet" id="doc-edit" hidden style="flex:none;margin-top:6px">Bearbeiten</button>
+        </div>
         <div class="doc-meta" id="doc-meta"></div>
-        <div class="doc-body" id="doc-body"><p style="color:var(--ink-3)">Der Open Space fürs ganze Team: 303 Seiten enneo-Wissen plus die verbundenen Tools. Enni nutzt genau diese Quellen für seine Antworten. Wähle links eine Seite.</p></div>
+        <div class="doc-body" id="doc-body"><p style="color:var(--ink-3)">Wähle links einen Space — oder eine Seite über die Suche.</p></div>
       </article>
+    </section>
+
+    <!-- SPACE-ÜBERSICHT -->
+    <section class="view" id="v-space-home">
+      <div class="page-head">
+        <div class="eyebrow">Space</div>
+        <h2 id="sh-title">Space</h2>
+        <p id="sh-sub"></p>
+      </div>
+      <div class="cost-shell">
+        <input type="search" class="wiki-search" id="sh-search" placeholder="Alle Seiten in diesem Space durchsuchen …" style="max-width:520px;margin:0 0 18px">
+        <div class="list-panel" id="sh-results-panel" hidden><h3>Treffer</h3><div id="sh-results"></div></div>
+        <div id="sh-main">
+          <div class="list-panel">
+            <h3>Inhalte</h3>
+            <div id="sh-groups"></div>
+            <button class="crow crow-add" id="sh-new-page"><span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--ink-3);fill:none;stroke-width:1.8;stroke-linecap:round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span><div><div class="c-name" style="color:var(--ink-2)">Neue Seite</div><div class="c-sub">Markdown · sofort in Ennis Wissen (automatisch indexiert)</div></div></button>
+          </div>
+          <div class="list-panel">
+            <h3>Zuletzt geändert</h3>
+            <div id="sh-recent"></div>
+          </div>
+          <div class="list-panel">
+            <h3>Quellen</h3>
+            <div id="sh-sources"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SEITEN-EDITOR -->
+    <section class="view" id="v-page-edit">
+      <div class="page-head">
+        <div class="eyebrow" id="pe-crumb">Space</div>
+        <h2 id="pe-heading">Neue Seite</h2>
+      </div>
+      <div class="cost-shell" style="max-width:860px">
+        <label class="pe-label" for="pe-title">Titel</label>
+        <input type="text" id="pe-title" class="wiki-search" placeholder="z. B. Onboarding-Prozess Neukunden" style="max-width:520px;margin:0 0 4px">
+        <div class="pe-slug" id="pe-slug"></div>
+        <div class="pe-toolbar">
+          <label class="pe-label" style="margin:0">Inhalt (Markdown)</label>
+          <span style="flex:1"></span>
+          <button class="btn quiet" id="pe-preview-btn" style="padding:5px 13px;font-size:12px">Vorschau</button>
+        </div>
+        <textarea id="pe-content" spellcheck="false"></textarea>
+        <div class="doc-body" id="pe-preview" hidden style="border:1px solid var(--hair);border-radius:14px;padding:18px 22px;margin-top:2px"></div>
+        <div class="err" id="pe-err"></div>
+        <div class="m-actions" style="margin-top:14px">
+          <button class="btn quiet danger-link" id="pe-delete" hidden>Seite löschen</button>
+          <span style="flex:1"></span>
+          <button class="btn quiet" id="pe-cancel">Abbrechen</button>
+          <button class="btn dark" id="pe-save">Speichern</button>
+        </div>
+      </div>
     </section>
 
     <!-- CONNECTORS -->

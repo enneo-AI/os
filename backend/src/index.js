@@ -549,6 +549,40 @@ app.post('/api/learnings/:id/demote', async (req, res) => {
   }
 })
 
+// Wiki-Seite neu für Ennis Suche indexieren — nach jedem Anlegen/Bearbeiten im Editor.
+// Ohne Re-Embed würde die semantische Suche mit altem Stand antworten.
+app.post('/api/wiki/reindex', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const slug = String(req.body?.slug || '').trim()
+  if (!slug) return res.status(400).json({ error: 'slug fehlt' })
+  const { data: page } = await db.from('wiki_pages').select('id, slug, title, content').eq('slug', slug).maybeSingle()
+  if (!page) return res.status(404).json({ error: 'Seite nicht gefunden' })
+  try {
+    const { reindexPage } = await import('./tools/wiki.js')
+    const chunks = await reindexPage(page)
+    res.json({ ok: true, chunks })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Wiki-Seite löschen — nur Admins (destruktiv; Chunks fliegen mit raus)
+app.post('/api/wiki/delete', async (req, res) => {
+  const user = await requireAdmin(req, res)
+  if (!user) return
+  const slug = String(req.body?.slug || '').trim()
+  if (!slug) return res.status(400).json({ error: 'slug fehlt' })
+  try {
+    await db.from('wiki_chunks').delete().eq('slug', slug)
+    const { error } = await db.from('wiki_pages').delete().eq('slug', slug)
+    if (error) throw new Error(error.message)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // Routine sofort ausführen (Test-Lauf) — Owner oder Admin
 app.post('/api/routines/:id/run', async (req, res) => {
   const user = await getUserFromRequest(req)

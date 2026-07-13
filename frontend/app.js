@@ -161,6 +161,7 @@ $('pf-save').addEventListener('click', async () => {
 const views = {
   chat: 'v-chat', wiki: 'v-wiki', conn: 'v-conn', admin: 'v-admin', skills: 'v-skills', routines: 'v-routines',
   connected: 'v-connected', pagelist: 'v-pagelist', 'admin-conn': 'v-admin-conn', pod: 'v-pod',
+  'space-home': 'v-space-home', 'page-edit': 'v-page-edit',
 }
 const sidebars = { chat: 'sb-chat', wiki: 'sb-spaces', admin: 'sb-admin' }
 
@@ -198,7 +199,9 @@ async function route() {
     activateArea('wiki', p === '/spaces/tools' ? 'conn' : p === '/spaces/connections' ? 'admin-conn' : p === '/spaces/skills' ? 'skills' : p === '/spaces/routinen' ? 'routines' : 'wiki')
     if (p === '/spaces/skills') loadSkills()
     if (p === '/spaces/routinen') loadRoutines()
-    return loadSpacesTree()
+    await loadSpacesTree()
+    if (p === '/spaces' && spacesList[0]) openSpaceHome(spacesList[0]) // direkt in die Übersicht
+    return
   }
   if (p.startsWith('/admin')) {
     activateArea('admin')
@@ -214,7 +217,7 @@ window.addEventListener('popstate', () => route())
 document.querySelectorAll('.rail-btn').forEach((b) =>
   b.addEventListener('click', () => {
     activateArea(b.dataset.v)
-    if (b.dataset.v === 'wiki') loadSpacesTree()
+    if (b.dataset.v === 'wiki') loadSpacesTree().then(() => { if (spacesList[0]) openSpaceHome(spacesList[0]) })
     if (b.dataset.v === 'admin') { refreshCosts(); loadMembers(); loadKnowledgeUpdates(); loadLearnings() }
   })
 )
@@ -1800,13 +1803,21 @@ const CONNECTIONS = {
   slack: { name: 'Slack', sub: 'Phase 2', logo: './icons/slack.svg', disabled: true },
   attio: { name: 'Attio', sub: 'Phase 2', logo: './icons/attio.ico', disabled: true },
 }
-const FOLDER_GROUPS = [
-  { label: 'Unternehmen', match: (s) => !s.includes('/') },
+// Inhaltsgruppen nach Slug-Prefix — jede Seite landet in GENAU einer Gruppe
+// (erste Übereinstimmung gewinnt; "Weitere" fängt unbekannte Prefixe auf).
+const PAGE_GROUPS = [
+  { label: 'Unternehmen & eigene Seiten', match: (s) => !s.includes('/') },
   { label: 'Produkt-Doku', match: (s) => s.startsWith('product-docs/') },
-  { label: 'API-Doku', match: (s) => s.startsWith('api-docs/') },
+  { label: 'API-Referenz', match: (s) => s.startsWith('api-docs/') },
   { label: 'Enneo-API-Rezepte', match: (s) => s.startsWith('enneo-api/') },
+  { label: 'Marketing-Website', match: (s) => s.startsWith('marketing-site/') },
+  { label: 'Weitere', match: () => true },
 ]
-const WEBSITE_MATCH = (s) => s.startsWith('marketing-site/')
+function groupPages(pages) {
+  const groups = PAGE_GROUPS.map((g) => ({ ...g, pages: [] }))
+  for (const p of pages) groups.find((g) => g.match(p.slug)).pages.push(p)
+  return groups.filter((g) => g.pages.length)
+}
 
 let spacesList = []
 let wikiPages = null
@@ -1843,63 +1854,120 @@ function treeItem({ chev, label, cls = '', lock = false }) {
 }
 
 function renderSpaceTree() {
-  const openTree = $('space-tree-open')
-  const restrTree = $('space-tree-restricted')
-  openTree.innerHTML = ''
-  restrTree.innerHTML = ''
+  const tree = $('space-tree')
+  tree.innerHTML = ''
 
+  // Eine Liste für alle Spaces — Restricted trägt nur das Lock, keine eigene Sektion
   for (const s of spacesList) {
-    const target = s.restricted ? restrTree : openTree
     const isOpen = expanded.has(s.id)
     const row = treeItem({ chev: true, label: s.name, lock: s.restricted })
     if (isOpen) row.classList.add('open')
     row.addEventListener('click', () => {
+      expanded.add(s.id)
+      renderSpaceTree()
+      openSpaceHome(s) // Klick auf den Space öffnet die Übersicht
+    })
+    row.querySelector('.tree-chev')?.addEventListener('click', (e) => {
+      e.stopPropagation() // Chevron klappt nur auf/zu, ohne Navigation
       isOpen ? expanded.delete(s.id) : expanded.add(s.id)
       renderSpaceTree()
     })
-    target.appendChild(row)
+    tree.appendChild(row)
     if (!isOpen) continue
 
     const kids = document.createElement('div')
     kids.className = 'tree-kids'
-
-    const cd = treeItem({ label: 'Connected Data' })
-    cd.addEventListener('click', () => openConnectedData(s))
-    kids.appendChild(cd)
-
     const spacePages = (wikiPages || []).filter((p) => p.space_id === s.id)
-    const foldersKey = s.id + ':folders'
-    const folders = treeItem({ chev: true, label: 'Folders' })
-    if (expanded.has(foldersKey)) folders.classList.add('open')
-    folders.addEventListener('click', () => {
-      expanded.has(foldersKey) ? expanded.delete(foldersKey) : expanded.add(foldersKey)
-      renderSpaceTree()
-    })
-    kids.appendChild(folders)
-    if (expanded.has(foldersKey)) {
-      const sub = document.createElement('div')
-      sub.className = 'tree-kids'
-      for (const g of FOLDER_GROUPS) {
-        const pages = spacePages.filter((p) => g.match(p.slug) && !WEBSITE_MATCH(p.slug))
-        const item = treeItem({ label: `${g.label} · ${pages.length}` })
-        item.addEventListener('click', () => openPagelist(s, g.label, pages))
-        sub.appendChild(item)
-      }
-      if (!spacePages.length) sub.insertAdjacentHTML('beforeend', '<div class="sb-item" style="cursor:default;color:var(--ink-3)"><span class="txt">Noch leer — Datei-Upload folgt</span></div>')
-      kids.appendChild(sub)
+    for (const g of groupPages(spacePages)) {
+      const item = treeItem({ label: `${g.label} · ${g.pages.length}` })
+      item.addEventListener('click', () => openPagelist(s, g.label, g.pages))
+      kids.appendChild(item)
     }
-
-    const web = treeItem({ label: 'Websites' })
-    web.addEventListener('click', () => openPagelist(s, 'Websites', spacePages.filter((p) => WEBSITE_MATCH(p.slug))))
-    kids.appendChild(web)
-
-    const tools = treeItem({ label: 'Tools' })
-    tools.addEventListener('click', () => activateArea('wiki', 'conn'))
-    kids.appendChild(tools)
-
-    target.appendChild(kids)
+    if (!spacePages.length)
+      kids.insertAdjacentHTML('beforeend', '<div class="sb-item" style="cursor:default;color:var(--ink-3)"><span class="txt">Noch keine Seiten</span></div>')
+    tree.appendChild(kids)
   }
 }
+
+// ---------- Space-Übersicht (Hauptfläche): Suche, Inhalte, Zuletzt geändert, Quellen
+function openSpaceHome(space) {
+  currentSpace = space
+  $('sh-title').innerHTML = esc(space.name) + (space.restricted ? ' ' + LOCK_SVG : '')
+  const spacePages = (wikiPages || []).filter((p) => p.space_id === space.id)
+  $('sh-sub').textContent = `${spacePages.length} Seiten · Enni nutzt genau diese Quellen für seine Antworten${space.restricted ? ' · nur für Mitglieder dieses Space' : ''}`
+  $('sh-search').value = ''
+  $('sh-results-panel').hidden = true
+  $('sh-main').hidden = false
+
+  const groupsBox = $('sh-groups')
+  groupsBox.innerHTML = ''
+  for (const g of groupPages(spacePages)) {
+    const row = document.createElement('button')
+    row.className = 'crow'
+    row.innerHTML = `<span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:var(--lila-deep);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.2 3.9A2 2 0 0 0 7.5 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></svg></span>
+      <div><div class="c-name">${esc(g.label)}</div><div class="c-sub">${g.pages.length} Seiten</div></div>`
+    row.addEventListener('click', () => openPagelist(space, g.label, g.pages))
+    groupsBox.appendChild(row)
+  }
+
+  const recentBox = $('sh-recent')
+  recentBox.innerHTML = ''
+  const recent = [...spacePages].sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at)).slice(0, 6)
+  if (!recent.length) recentBox.innerHTML = '<div class="empty-plain">Noch keine Seiten — leg oben die erste an.</div>'
+  for (const p of recent) {
+    const row = document.createElement('div')
+    row.className = 'row'
+    row.style.cursor = 'pointer'
+    row.innerHTML = `<div><div class="r-name">${esc(pageLabel(p))}</div><div class="r-sub">${esc(p.slug)}</div></div><div></div><span class="r-val">${new Date(p.updated_at).toLocaleDateString('de-DE')}</span>`
+    row.addEventListener('click', () => openWikiPage(p.slug))
+    recentBox.appendChild(row)
+  }
+
+  // Quellen (ehem. "Connected Data") kompakt in der Übersicht
+  const srcBox = $('sh-sources')
+  srcBox.innerHTML = ''
+  if (!space.connections.length) {
+    srcBox.innerHTML = '<div class="empty-plain">Noch keine Quellen verbunden.</div>'
+  }
+  for (const key of space.connections) {
+    const c = CONNECTIONS[key] || { name: key, sub: '' }
+    srcBox.insertAdjacentHTML('beforeend',
+      `<div class="crow">${c.logo ? `<span class="c-logo"><img src="${c.logo}" alt=""></span>` : ''}<div><div class="c-name">${esc(c.name)}</div><div class="c-sub">${esc(c.sub)}</div></div><span class="c-right ok"><span class="dot-s"></span>Aktiv</span></div>`)
+  }
+  srcBox.insertAdjacentHTML('beforeend',
+    '<button class="crow crow-add" id="sh-src-edit"><span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--ink-3);fill:none;stroke-width:1.8;stroke-linecap:round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span><div><div class="c-name" style="color:var(--ink-2)">Quellen verwalten</div><div class="c-sub">Verbundene Daten dieses Space</div></div></button>')
+  document.getElementById('sh-src-edit').addEventListener('click', () => openConnectedData(space))
+
+  activateArea('wiki', 'space-home')
+}
+
+// Live-Suche über ALLE Seiten des Space (Titel + Slug)
+$('sh-search').addEventListener('input', () => {
+  const q = $('sh-search').value.trim().toLowerCase()
+  const panel = $('sh-results-panel')
+  if (!q || !currentSpace) {
+    panel.hidden = true
+    $('sh-main').hidden = false
+    return
+  }
+  const hits = (wikiPages || [])
+    .filter((p) => p.space_id === currentSpace.id)
+    .filter((p) => (pageLabel(p) + ' ' + p.slug).toLowerCase().includes(q))
+    .slice(0, 25)
+  panel.hidden = false
+  $('sh-main').hidden = true
+  const box = $('sh-results')
+  box.innerHTML = hits.length ? '' : '<div class="empty-plain">Keine Treffer.</div>'
+  for (const p of hits) {
+    const row = document.createElement('div')
+    row.className = 'row'
+    row.style.cursor = 'pointer'
+    row.innerHTML = `<div><div class="r-name">${esc(pageLabel(p))}</div><div class="r-sub">${esc(p.slug)}</div></div><div></div><span class="r-val">${new Date(p.updated_at).toLocaleDateString('de-DE')}</span>`
+    row.addEventListener('click', () => openWikiPage(p.slug))
+    box.appendChild(row)
+  }
+})
+$('sh-new-page').addEventListener('click', () => openPageEditor(null))
 
 // ---------- Connected Data eines Space
 function openConnectedData(space) {
@@ -2005,8 +2073,7 @@ document.querySelectorAll('#sm-seg button').forEach((b) =>
     updateSmHint()
   })
 )
-$('new-open-space').addEventListener('click', () => openSpaceModal(false))
-$('new-restricted-space').addEventListener('click', () => openSpaceModal(true))
+$('new-space').addEventListener('click', () => openSpaceModal(false))
 $('sm-cancel').addEventListener('click', () => $('space-overlay').classList.remove('open'))
 $('sm-create').addEventListener('click', async () => {
   const name = $('sm-name').value.trim()
@@ -2028,17 +2095,123 @@ $('sm-create').addEventListener('click', async () => {
 })
 
 // ---------- Einzelseite lesen
+let currentPage = null
 async function openWikiPage(slug) {
   const { data } = await sb.from('wiki_pages').select('*').eq('slug', slug).maybeSingle()
   if (!data) return
+  currentPage = data
   $('doc-crumb').textContent = (currentSpace?.name || 'Company Data') + ' / ' + data.slug
   $('doc-title').textContent = pageLabel(data)
   $('doc-meta').innerHTML = `<span>zuletzt aktualisiert ${new Date(data.updated_at).toLocaleDateString('de-DE')}</span>`
   $('doc-body').innerHTML = md(data.content.replace(/^#\s+.+\n/, ''))
   enhanceCode($('doc-body'))
+  $('doc-edit').hidden = false
   activateArea('wiki')
   window.scrollTo({ top: 0 })
 }
+$('doc-edit').addEventListener('click', () => { if (currentPage) openPageEditor(currentPage) })
+
+// ---------- Seiten-Editor (neu anlegen + bearbeiten) — nach dem Speichern wird die
+// Seite automatisch für Ennis Suche neu indexiert (Backend re-embedded die Chunks).
+let editingPage = null // null = neue Seite
+const slugify2 = (t) => t.toLowerCase().replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/ß/g,'ss').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80)
+
+async function openPageEditor(page) {
+  editingPage = page
+  $('pe-crumb').textContent = currentSpace?.name || 'Space'
+  $('pe-heading').textContent = page ? 'Seite bearbeiten' : 'Neue Seite'
+  $('pe-title').value = page ? page.title : ''
+  $('pe-title').disabled = false
+  $('pe-slug').textContent = page ? page.slug : ''
+  $('pe-content').value = page ? page.content : ''
+  $('pe-preview').hidden = true
+  $('pe-content').hidden = false
+  $('pe-preview-btn').textContent = 'Vorschau'
+  $('pe-err').textContent = ''
+  const { is_admin } = await ownProfile()
+  $('pe-delete').hidden = !(page && is_admin)
+  activateArea('wiki', 'page-edit')
+  setTimeout(() => (page ? $('pe-content') : $('pe-title')).focus(), 50)
+}
+
+$('pe-title').addEventListener('input', () => {
+  if (!editingPage) $('pe-slug').textContent = slugify2($('pe-title').value) || ''
+})
+$('pe-preview-btn').addEventListener('click', () => {
+  const showPreview = $('pe-preview').hidden
+  $('pe-preview').hidden = !showPreview
+  $('pe-content').hidden = showPreview
+  $('pe-preview-btn').textContent = showPreview ? 'Bearbeiten' : 'Vorschau'
+  if (showPreview) $('pe-preview').innerHTML = md($('pe-content').value)
+})
+$('pe-cancel').addEventListener('click', () => {
+  if (editingPage) openWikiPage(editingPage.slug)
+  else if (currentSpace) openSpaceHome(currentSpace)
+})
+
+async function reindexWikiPage(slug) {
+  const res = await fetch(`${BACKEND_URL}/api/wiki/reindex`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+    body: JSON.stringify({ slug }),
+  })
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Re-Index fehlgeschlagen')
+}
+
+$('pe-save').addEventListener('click', async () => {
+  const err = $('pe-err')
+  err.textContent = ''
+  const title = $('pe-title').value.trim()
+  const content = $('pe-content').value
+  if (!title) { err.textContent = 'Titel fehlt.'; return }
+  if (!content.trim()) { err.textContent = 'Inhalt fehlt.'; return }
+  $('pe-save').disabled = true
+  $('pe-save').textContent = 'Speichert …'
+  try {
+    let slug
+    if (editingPage) {
+      slug = editingPage.slug
+      const { error } = await sb.from('wiki_pages').update({ title, content, updated_by: session.user.id }).eq('id', editingPage.id)
+      if (error) throw new Error(error.message)
+    } else {
+      slug = slugify2(title)
+      if (!slug) throw new Error('Aus dem Titel lässt sich kein Slug bilden.')
+      const { error } = await sb.from('wiki_pages').insert({
+        slug, title, content,
+        space_id: currentSpace?.id || null,
+        created_by: session.user.id,
+        updated_by: session.user.id,
+      })
+      if (error) throw new Error(error.code === '23505' ? `Es gibt schon eine Seite mit dem Slug "${slug}".` : error.message)
+    }
+    await reindexWikiPage(slug) // Ennis RAG sofort aktuell halten
+    wikiPages = null // Seiten-Cache invalidieren
+    await loadSpacesTree()
+    openWikiPage(slug)
+  } catch (e) {
+    err.textContent = 'Fehler: ' + e.message
+  }
+  $('pe-save').disabled = false
+  $('pe-save').textContent = 'Speichern'
+})
+
+$('pe-delete').addEventListener('click', async () => {
+  if (!editingPage) return
+  if (!window.confirm(`Seite "${editingPage.title}" endgültig löschen? Sie verschwindet auch aus Ennis Wissen.`)) return
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/wiki/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ slug: editingPage.slug }),
+    })
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`)
+    wikiPages = null
+    await loadSpacesTree()
+    if (currentSpace) openSpaceHome(spacesList.find((s) => s.id === currentSpace.id) || currentSpace)
+  } catch (e) {
+    $('pe-err').textContent = 'Fehler: ' + e.message
+  }
+})
 
 // ============================================================ Mitglieder (Admin)
 async function loadMembers() {
