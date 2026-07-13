@@ -646,6 +646,24 @@ app.post('/api/learnings/:id/demote', async (req, res) => {
   }
 })
 
+// Skill-Vorschlag freischalten/ablehnen (Admin). 'approve' = team-weit für alle,
+// 'reject' = bleibt persönlich beim Ersteller (visibility 'personal'). 'demote' =
+// team-weiten Skill wieder zurückstufen (bleibt persönlich beim Ersteller).
+app.post('/api/skills/:id/:action(approve|reject|demote)', async (req, res) => {
+  const user = await requireAdmin(req, res)
+  if (!user) return
+  const target = req.params.action === 'approve' ? 'team' : 'personal'
+  const { data, error } = await db
+    .from('skills')
+    .update({ visibility: target, updated_by: user.id })
+    .eq('id', req.params.id)
+    .select('id, slug, visibility')
+    .maybeSingle()
+  if (error) return res.status(400).json({ error: error.message })
+  if (!data) return res.status(404).json({ error: 'Skill nicht gefunden' })
+  res.json({ ok: true, visibility: data.visibility })
+})
+
 // Wiki-Seite neu für Ennis Suche indexieren — nach jedem Anlegen/Bearbeiten im Editor.
 // Ohne Re-Embed würde die semantische Suche mit altem Stand antworten.
 app.post('/api/wiki/reindex', async (req, res) => {

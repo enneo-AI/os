@@ -290,6 +290,7 @@ async function route() {
     refreshCosts()
     loadKnowledgeUpdates()
     loadLearnings()
+    loadSkillProposals()
     return loadMembers()
   }
   newConversation()
@@ -300,7 +301,7 @@ document.querySelectorAll('.rail-btn').forEach((b) =>
   b.addEventListener('click', () => {
     activateArea(b.dataset.v)
     if (b.dataset.v === 'wiki') loadSpacesTree().then(() => { if (spacesList[0]) openSpaceHome(spacesList[0]) })
-    if (b.dataset.v === 'admin') { refreshCosts(); loadMembers(); loadKnowledgeUpdates(); loadLearnings() }
+    if (b.dataset.v === 'admin') { refreshCosts(); loadMembers(); loadKnowledgeUpdates(); loadLearnings(); loadSkillProposals() }
   })
 )
 
@@ -937,6 +938,53 @@ async function loadLearnings() {
       })
       list.appendChild(row)
     }
+  }
+}
+
+async function loadSkillProposals() {
+  const { is_admin } = await ownProfile()
+  const panel = $('panel-skills')
+  const link = document.querySelector('.admin-link[data-target="panel-skills"]')
+  panel.hidden = !is_admin
+  if (link) link.hidden = !is_admin
+  if (!is_admin) return
+
+  const [{ data: rows }, profs] = await Promise.all([
+    sb.from('skills').select('*').eq('visibility', 'proposed').order('updated_at', { ascending: false }),
+    allProfiles(),
+  ])
+  const proposed = rows || []
+  $('sp-count').textContent = proposed.length ? `${proposed.length} offen` : 'nichts offen'
+  const list = $('sp-list')
+  list.innerHTML = ''
+  const act = async (id, action) => {
+    const res = await fetch(`${BACKEND_URL}/api/skills/${id}/${action}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${await token()}` },
+    })
+    if (!res.ok) { window.alert((await res.json().catch(() => ({}))).error || 'Fehler'); return }
+    skillsCache = null
+    loadSkillProposals()
+  }
+  if (!proposed.length) {
+    list.innerHTML = '<div class="empty-plain">Keine offenen Skill-Vorschläge.</div>'
+    return
+  }
+  for (const s of proposed) {
+    const row = document.createElement('div')
+    row.className = 'row'
+    row.innerHTML = `<div><div class="r-name">${esc(s.name)} <span class="c-sub" style="font-weight:400">/${esc(s.slug)}</span></div>
+      <div class="r-sub">${esc(s.category || 'Allgemein')} · von ${esc(profName(profs, s.created_by))} · ${esc((s.context || '').split('\n')[0].slice(0, 80))}</div></div>
+      <button class="btn quiet" style="padding:5px 13px;font-size:12px">Ansehen</button>
+      <button class="btn quiet" style="padding:5px 13px;font-size:12px">Ablehnen</button>
+      <button class="btn dark" style="padding:5px 13px;font-size:12px">Für alle freischalten</button>`
+    const [viewBtn, rejectBtn, approveBtn] = row.querySelectorAll('button')
+    viewBtn.addEventListener('click', () => openSkill(s, is_admin))
+    approveBtn.addEventListener('click', () => act(s.id, 'approve'))
+    rejectBtn.addEventListener('click', () => {
+      if (window.confirm(`"${s.name}" ablehnen? Bleibt persönlich beim Ersteller aktiv, wird aber nicht Team-weit.`)) act(s.id, 'reject')
+    })
+    list.appendChild(row)
   }
 }
 
@@ -3116,6 +3164,9 @@ $('cn-save').addEventListener('click', async () => {
 // Tools sagen WAS Enni kann, Skills sagen WIE man es bei enneo richtig macht.
 // Lesen: alle. Anlegen/Ändern/Löschen: nur Admins (RLS-enforced, UI read-only für Member).
 let editingSkill = null
+let skillListCache = [] // zuletzt geladene Skills (für die clientseitige Suche)
+let skillListAdmin = false
+let skillListProfs = []
 
 async function loadSkills() {
   const [{ data: skills }, { is_admin }, profs] = await Promise.all([
@@ -3124,21 +3175,39 @@ async function loadSkills() {
     allProfiles(),
   ])
   $('skill-add').hidden = false // jeder darf Skills bauen (persönlich; team-weit schaltet der Admin frei)
+  skillListCache = skills || []
+  skillListAdmin = is_admin
+  skillListProfs = profs
+  // Kategorien-Datalist für den Editor
+  const cats = [...new Set(skillListCache.map((s) => s.category || 'Allgemein'))]
+    .sort((a, b) => (a === 'Meta') - (b === 'Meta') || a.localeCompare(b, 'de'))
+  $('sk-cat-list').innerHTML = cats.map((c) => `<option value="${esc(c)}">`).join('')
+  renderSkillList($('skill-search')?.value || '')
+}
+
+function renderSkillList(filter = '') {
   const list = $('skill-list')
   list.innerHTML = ''
-  if (!(skills || []).length) {
+  if (!skillListCache.length) {
     list.innerHTML = '<div class="empty-plain">Noch keine Skills definiert.</div>'
     return
   }
-  // Nach Kategorie gruppieren (alphabetisch; "Meta" ans Ende)
+  const q = filter.trim().toLowerCase()
+  const matches = skillListCache.filter(
+    (s) => !q || s.name.toLowerCase().includes(q) || s.slug.includes(q) || (s.category || '').toLowerCase().includes(q)
+  )
+  if (!matches.length) {
+    list.innerHTML = `<div class="empty-plain">Keine Skills für „${esc(filter)}".</div>`
+    return
+  }
+  // Nach Kategorie gruppieren ("Meta" ans Ende)
   const groups = new Map()
-  for (const s of skills) {
+  for (const s of matches) {
     const c = s.category || 'Allgemein'
     if (!groups.has(c)) groups.set(c, [])
     groups.get(c).push(s)
   }
   const cats = [...groups.keys()].sort((a, b) => (a === 'Meta') - (b === 'Meta') || a.localeCompare(b, 'de'))
-  $('sk-cat-list').innerHTML = cats.map((c) => `<option value="${esc(c)}">`).join('')
   for (const cat of cats) {
     list.insertAdjacentHTML('beforeend', `<div class="skill-cat">${esc(cat)}</div>`)
     for (const s of groups.get(cat)) {
@@ -3147,16 +3216,17 @@ async function loadSkills() {
       const vis = s.visibility === 'personal'
         ? '<span class="sk-badge">Persönlich</span>'
         : s.visibility === 'proposed'
-          ? `<span class="sk-badge prop">Vorgeschlagen${is_admin ? ' von ' + esc(profName(profs, s.created_by)) : ''}</span>`
+          ? `<span class="sk-badge prop">Vorgeschlagen${skillListAdmin ? ' von ' + esc(profName(skillListProfs, s.created_by)) : ''}</span>`
           : ''
       row.innerHTML = `<span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:var(--lila-deep);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
         <div><div class="c-name">${esc(s.name)}</div><div class="c-sub">/${esc(s.slug)}${s.tools?.length ? ` · ${s.tools.length} Tools` : ''} · ${esc((s.context || '').split('\n')[0].slice(0, 80))}</div></div>
         ${vis}<span class="c-right ${s.enabled ? 'ok' : 'off'}"><span class="dot-s"></span>${s.enabled ? 'Aktiv' : 'Aus'}</span>`
-      row.addEventListener('click', () => openSkill(s, is_admin))
+      row.addEventListener('click', () => openSkill(s, skillListAdmin))
       list.appendChild(row)
     }
   }
 }
+$('skill-search').addEventListener('input', () => renderSkillList($('skill-search').value))
 
 function openSkill(s, isAdmin) {
   editingSkill = s
@@ -3505,6 +3575,119 @@ $('theme-toggle').addEventListener('click', () => {
   const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'
   document.documentElement.dataset.theme = next
   localStorage.setItem('enni-theme', next)
+})
+
+// ============================================================ Globale Suche (⌘K)
+// Durchsucht Konversationen (RLS-gescoped: eigene + sichtbare Pod-Konvs), Wiki-Seiten,
+// Skills (nur team-weit + eigene) und Pods. Tastatur: ⌘/Strg+K öffnet, Pfeile + Enter.
+const PAL_ICONS = {
+  conv: '<svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H5l-2 2V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8z"/></svg>',
+  pod: '<svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+  wiki: '<svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
+  skill: '<svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
+}
+let palItems = []
+let palSel = 0
+let palSeq = 0
+
+function openPalette() {
+  $('pal-input').value = ''
+  $('pal-results').innerHTML = '<div class="pal-empty">Tippen zum Suchen …</div>'
+  palItems = []
+  palSel = 0
+  $('pal-overlay').classList.add('open')
+  setTimeout(() => $('pal-input').focus(), 30)
+}
+function closePalette() { $('pal-overlay').classList.remove('open') }
+
+async function palSearch(q) {
+  const seq = ++palSeq
+  q = q.trim()
+  if (!q) {
+    palItems = []
+    $('pal-results').innerHTML = '<div class="pal-empty">Tippen zum Suchen …</div>'
+    return
+  }
+  const like = `%${q.replace(/[%_]/g, '')}%`
+  const { data: convs } = await sb
+    .from('conversations').select('id, title, pod_id, updated_at')
+    .ilike('title', like).order('updated_at', { ascending: false }).limit(6)
+  if (seq !== palSeq) return // veraltete Antwort verwerfen
+  if (!wikiPages) {
+    const { data } = await sb.from('wiki_pages').select('slug, title, updated_at, space_id').order('slug')
+    if (data) wikiPages = data
+  }
+  const ql = q.toLowerCase()
+  const items = []
+  for (const c of convs || []) {
+    const pod = c.pod_id ? podsList.find((p) => p.id === c.pod_id) : null
+    items.push({ type: 'conv', title: c.title || 'Ohne Titel', sub: pod ? `Pod · ${pod.name}` : 'Konversation', run: () => { convPod = pod || null; openConversation(c) } })
+  }
+  for (const p of podsList.filter((p) => p.name.toLowerCase().includes(ql)).slice(0, 4)) {
+    items.push({ type: 'pod', title: p.name, sub: 'Pod öffnen', run: () => openPod(p) })
+  }
+  for (const w of (wikiPages || []).filter((p) => (p.title || '').toLowerCase().includes(ql) || p.slug.toLowerCase().includes(ql)).slice(0, 6)) {
+    items.push({ type: 'wiki', title: pageLabel(w), sub: `Wiki · ${w.slug}`, run: () => openWikiPage(w.slug) })
+  }
+  for (const s of (await allSkills()).filter((s) => s.name.toLowerCase().includes(ql) || s.slug.includes(ql)).slice(0, 6)) {
+    items.push({ type: 'skill', title: s.name, sub: `Skill · /${s.slug}`, run: () => { history.pushState({}, '', '/spaces/skills'); route(); setTimeout(() => sb.from('skills').select('*').eq('slug', s.slug).maybeSingle().then(({ data }) => data && openSkill(data, false)), 400) } })
+  }
+  if (seq !== palSeq) return
+  // In Gruppen-Reihenfolge sortieren (= Render-Reihenfolge, damit Pfeiltasten stimmen)
+  const order = { conv: 0, pod: 1, wiki: 2, skill: 3 }
+  items.sort((a, b) => order[a.type] - order[b.type])
+  palItems = items
+  palSel = 0
+  renderPalette()
+}
+
+function renderPalette() {
+  const box = $('pal-results')
+  if (!palItems.length) { box.innerHTML = '<div class="pal-empty">Keine Treffer.</div>'; return }
+  const groups = { conv: 'Konversationen', pod: 'Pods', wiki: 'Wiki', skill: 'Skills' }
+  box.innerHTML = ''
+  palItems.forEach((it, i) => {
+    if (i === 0 || palItems[i - 1].type !== it.type) {
+      box.insertAdjacentHTML('beforeend', `<div class="pal-group">${groups[it.type]}</div>`)
+    }
+    const el = document.createElement('button')
+    el.className = 'pal-item' + (i === palSel ? ' sel' : '')
+    el.dataset.i = i
+    el.innerHTML = `<span class="pal-i">${PAL_ICONS[it.type]}</span><span class="pal-main"><span class="pal-t">${esc(it.title)}</span><span class="pal-s">${esc(it.sub)}</span></span>`
+    el.addEventListener('click', () => palRun(i))
+    el.addEventListener('mousemove', () => { if (palSel !== i) { palSel = i; markPalSel() } })
+    box.appendChild(el)
+  })
+}
+function markPalSel() {
+  document.querySelectorAll('#pal-results .pal-item').forEach((el) => el.classList.toggle('sel', Number(el.dataset.i) === palSel))
+  document.querySelector('#pal-results .pal-item.sel')?.scrollIntoView({ block: 'nearest' })
+}
+function palRun(i) {
+  const it = palItems[i]
+  if (!it) return
+  closePalette()
+  it.run()
+}
+
+let palDebounce = null
+$('pal-input').addEventListener('input', (e) => {
+  clearTimeout(palDebounce)
+  palDebounce = setTimeout(() => palSearch(e.target.value), 130)
+})
+$('pal-input').addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowDown') { e.preventDefault(); if (palItems.length) { palSel = (palSel + 1) % palItems.length; markPalSel() } }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); if (palItems.length) { palSel = (palSel - 1 + palItems.length) % palItems.length; markPalSel() } }
+  else if (e.key === 'Enter') { e.preventDefault(); palRun(palSel) }
+  else if (e.key === 'Escape') closePalette()
+})
+$('global-search-btn').addEventListener('click', openPalette)
+$('pal-overlay').addEventListener('click', (e) => { if (e.target === $('pal-overlay')) closePalette() })
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault()
+    $('pal-overlay').classList.contains('open') ? closePalette() : openPalette()
+  }
 })
 
 init()

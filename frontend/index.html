@@ -124,6 +124,31 @@
   }
   .sb-new{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;border:0;border-radius:11px;background:var(--cta-bg);color:var(--cta-text);padding:9px;font-size:13px;font-weight:600;margin-bottom:16px;transition:background .15s}
   .sb-new:hover{background:var(--cta-hover)}
+  .sb-search{display:flex;align-items:center;gap:8px;width:100%;border:1px solid var(--hair);border-radius:10px;background:var(--surface);color:var(--ink-3);padding:8px 11px;font-size:13px;margin:14px 0 4px;transition:border-color .15s,color .15s}
+  .sb-search:hover{border-color:var(--edge);color:var(--ink-2)}
+  .sb-search svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+  .sb-search .sb-kbd{margin-left:auto;font-family:var(--mono);font-size:10.5px;border:1px solid var(--hair);border-radius:5px;padding:1px 5px;color:var(--ink-3)}
+
+  /* Globale Suche — Command-Palette (⌘K) */
+  .pal-overlay{align-items:flex-start;background:rgba(29,30,44,.28)}
+  .pal{width:min(620px,calc(100vw - 32px));margin-top:11vh;background:var(--glass-strong);-webkit-backdrop-filter:blur(30px) saturate(1.6);backdrop-filter:blur(30px) saturate(1.6);border:1px solid var(--edge);border-radius:18px;box-shadow:0 40px 90px -20px rgba(29,30,44,.4);overflow:hidden}
+  .pal-input-wrap{display:flex;align-items:center;gap:11px;padding:16px 18px;border-bottom:1px solid var(--hair)}
+  .pal-ico{width:19px;height:19px;flex:none;stroke:var(--ink-3);fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+  #pal-input{flex:1;border:0;background:none;outline:0;font:inherit;font-size:16px;color:var(--ink)}
+  #pal-input::placeholder{color:var(--ink-3)}
+  .pal-esc{font-family:var(--mono);font-size:11px;border:1px solid var(--hair);border-radius:6px;padding:2px 7px;color:var(--ink-3)}
+  .pal-results{max-height:min(56vh,460px);overflow-y:auto;padding:8px}
+  .pal-group{font-size:10.5px;font-weight:680;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);padding:10px 10px 5px}
+  .pal-item{display:flex;align-items:center;gap:11px;width:100%;border:0;background:none;text-align:left;padding:9px 10px;border-radius:10px;cursor:pointer;color:var(--ink-2)}
+  .pal-item.sel,.pal-item:hover{background:var(--hover);color:var(--ink)}
+  .pal-item .pal-i{width:26px;height:26px;border-radius:7px;flex:none;display:inline-flex;align-items:center;justify-content:center;background:var(--press)}
+  .pal-item .pal-i svg{width:14px;height:14px;stroke:var(--ink-3);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .pal-item.sel .pal-i,.pal-item:hover .pal-i{background:rgba(123,90,226,.14)}
+  .pal-item.sel .pal-i svg,.pal-item:hover .pal-i svg{stroke:var(--lila-deep)}
+  .pal-item .pal-main{min-width:0;flex:1;display:flex;flex-direction:column;gap:1px}
+  .pal-item .pal-t{font-size:13.5px;font-weight:560;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pal-item .pal-s{font-size:11.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pal-empty{padding:26px 12px;text-align:center;color:var(--ink-3);font-size:13px}
   .sb-ctx{display:flex;flex-direction:column;flex:1;min-height:0}
   .sb-scroll{flex:1;overflow-y:auto;min-height:0;margin:0 -6px;padding:0 6px}
   .sb-sec{font-size:10.5px;font-weight:680;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:12px 6px 5px}
@@ -684,6 +709,12 @@
       </button>
     </nav>
 
+    <button class="sb-search" id="global-search-btn" title="Suchen (⌘K)">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <span>Suchen</span>
+      <kbd class="sb-kbd">⌘K</kbd>
+    </button>
+
     <!-- Sidebar-Inhalt: Chat -->
     <div class="sb-ctx" id="sb-chat">
       <button class="sb-new" id="new-chat">＋ Neue Konversation</button>
@@ -716,6 +747,7 @@
         <button class="sb-item admin-link" data-target="k-today"><span class="txt">Kosten</span></button>
         <button class="sb-item admin-link" data-target="panel-knowledge" hidden><span class="txt">Wissens-Updates</span></button>
         <button class="sb-item admin-link" data-target="panel-learnings" hidden><span class="txt">Learnings</span></button>
+        <button class="sb-item admin-link" data-target="panel-skills" hidden><span class="txt">Skill-Vorschläge</span></button>
         <button class="sb-item admin-link" data-target="panel-model"><span class="txt">Modell</span></button>
         <button class="sb-item admin-link" data-target="panel-members"><span class="txt">Mitglieder</span></button>
       </div>
@@ -1051,6 +1083,7 @@
       </div>
       <div class="cost-shell">
         <div class="list-panel">
+          <input type="search" class="wiki-search" id="skill-search" placeholder="Skills durchsuchen — Name, Slug oder Kategorie …" style="width:100%;margin:0 0 14px">
           <div id="skill-list"></div>
           <button class="crow crow-add" id="skill-add" hidden><span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--ink-3);fill:none;stroke-width:1.8;stroke-linecap:round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span><div><div class="c-name" style="color:var(--ink-2)">Neuer Skill</div><div class="c-sub">Kontext · Workflow · Tools · Trigger · Definition of Done · Corner Cases</div></div></button>
         </div>
@@ -1110,6 +1143,12 @@
           <div id="lr-list"></div>
         </div>
 
+        <div class="list-panel" id="panel-skills" hidden>
+          <h3>Skill-Vorschläge <span class="ku-count" id="sp-count"></span></h3>
+          <p class="panel-sub">Von Mitgliedern gebaute Skills, die sie fürs Team vorschlagen — beim Ersteller schon aktiv. Du entscheidest, was Team-weit für alle Accounts gilt. Zum Prüfen den Skill öffnen.</p>
+          <div id="sp-list"></div>
+        </div>
+
         <div class="list-panel" id="panel-model">
           <h3>Modell</h3>
           <div class="row">
@@ -1155,6 +1194,18 @@
   <div class="tp-block"><div class="tp-out" id="tp-output"></div></div>
   <div class="tp-foot">Ausgeführt mit deinen Zugangsdaten · im Audit-Log attribuiert</div>
 </aside>
+
+<!-- ================= GLOBALE SUCHE (⌘K) ================= -->
+<div class="overlay pal-overlay" id="pal-overlay">
+  <div class="pal" role="dialog" aria-modal="true" aria-label="Globale Suche">
+    <div class="pal-input-wrap">
+      <svg class="pal-ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" id="pal-input" placeholder="Konversationen, Wiki-Seiten, Skills, Pods durchsuchen …" autocomplete="off" spellcheck="false">
+      <kbd class="pal-esc">esc</kbd>
+    </div>
+    <div class="pal-results" id="pal-results"></div>
+  </div>
+</div>
 
 <!-- ================= CONNECTOR MODAL ================= -->
 <div class="overlay" id="conn-overlay">
