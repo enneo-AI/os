@@ -173,9 +173,13 @@
   .pal-item .pal-s{font-size:11.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .pal-empty{padding:26px 12px;text-align:center;color:var(--ink-3);font-size:13px}
 
-  /* Prompt-Warteschlange: wartende Nachrichten gedimmt + entfernbar */
-  .m-user.queued{opacity:.55}
-  .queued-tag{align-self:flex-end;border:0;background:none;color:var(--ink-3);font-size:11px;padding:0 6px;margin:-6px 0 4px;cursor:pointer}
+  /* Prompt-Warteschlange: eigener Block bleibt immer unter dem aktiven Turn */
+  .prompt-queue{display:flex;flex-direction:column;align-items:stretch;gap:8px;width:100%;padding-top:12px;border-top:1px solid var(--hair)}
+  .prompt-queue-head{display:flex;align-items:center;justify-content:flex-end;gap:7px;color:var(--ink-3);font-size:10.5px;font-weight:620;letter-spacing:.04em;text-transform:uppercase;padding:0 5px}
+  .prompt-queue-head::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--lila);box-shadow:0 0 0 4px rgba(123,90,226,.10)}
+  .queued-item{display:flex;flex-direction:column;align-items:flex-end;gap:3px;width:100%}
+  .m-user.queued{opacity:.58;box-shadow:none}
+  .queued-tag{border:0;background:none;color:var(--ink-3);font-size:10.5px;padding:0 6px;cursor:pointer}
   .queued-tag:hover{color:var(--high)}
 
   /* Tool-Verbindungs-Karte im Chat */

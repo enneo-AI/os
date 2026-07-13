@@ -535,31 +535,15 @@ async function openConversation(c) {
       box.appendChild(renderAgent(m.content, m.thinking, m.tool_calls || [], costByMessage[m.id], m.duration_ms))
     else if (m.role === 'compaction') box.appendChild(renderCompactionMarker(m.content))
   }
-  // Gequeute Nachrichten wieder anzeigen (Referenzen neu aufbauen) und ggf. direkt senden
-  const queued = promptQueues.get(c.id)
-  if (queued?.length) {
-    for (const item of queued) {
-      item.el = renderUser(item.text)
-      item.el.classList.add('queued')
-      item.tag = document.createElement('button')
-      item.tag.className = 'queued-tag'
-      item.tag.textContent = 'In der Warteschlange · entfernen'
-      item.tag.addEventListener('click', () => {
-        const list = promptQueues.get(c.id) || []
-        const idx = list.indexOf(item)
-        if (idx >= 0) list.splice(idx, 1)
-        item.el.remove()
-        item.tag.remove()
-      })
-      box.appendChild(item.el)
-      box.appendChild(item.tag)
-    }
-    setTimeout(() => drainPromptQueue(c.id), 400)
-  }
   ctxTokens = computeCtxTokens(msgs || [])
   renderCtx()
   subscribeConvMessages(c.id) // Live-Nachrichten (Pod-Team-Chat, fremde Geräte)
   renderLiveProgressIfWorking(c) // läuft hier gerade ein Turn? → Gedanken live zeigen
+  // Wartende Prompts bewusst NACH dem aktiven Live-Container anzeigen.
+  if (promptQueues.get(c.id)?.length) {
+    mountPromptQueue(c.id)
+    setTimeout(() => drainPromptQueue(c.id), 400)
+  }
   window.scrollTo({ top: document.body.scrollHeight })
 }
 
@@ -2255,6 +2239,62 @@ function updateMentionBacks() {
 // pro Konversation gequeued und nach Abschluss des laufenden Turns automatisch gesendet.
 const promptQueues = new Map() // convId -> [{ text, files, el }]
 
+function queueAttachmentMeta(files) {
+  return (files || []).map((f) => ({ name: f.file.name, media_type: f.type }))
+}
+
+function removeQueuedPrompt(convId, item) {
+  const list = promptQueues.get(convId) || []
+  const idx = list.indexOf(item)
+  if (idx >= 0) list.splice(idx, 1)
+  item.wrap?.remove()
+  if (!list.length) {
+    promptQueues.delete(convId)
+    $('msgs').querySelector('.prompt-queue')?.remove()
+  } else updatePromptQueue(convId)
+}
+
+function renderQueuedPrompt(convId, item, dock) {
+  item.wrap = document.createElement('div')
+  item.wrap.className = 'queued-item'
+  item.el = renderUser(item.text || item.files.map((f) => f.file.name).join(', '), queueAttachmentMeta(item.files))
+  item.el.classList.add('queued')
+  item.tag = document.createElement('button')
+  item.tag.className = 'queued-tag'
+  item.tag.addEventListener('click', () => removeQueuedPrompt(convId, item))
+  item.wrap.append(item.el, item.tag)
+  dock.appendChild(item.wrap)
+}
+
+function updatePromptQueue(convId) {
+  const list = promptQueues.get(convId) || []
+  const dock = $('msgs').querySelector('.prompt-queue')
+  if (!dock) return
+  dock.querySelector('.prompt-queue-head').textContent = `Danach · ${list.length} ${list.length === 1 ? 'Prompt' : 'Prompts'}`
+  list.forEach((item, i) => { if (item.tag) item.tag.textContent = `${i + 1}. in der Warteschlange · entfernen` })
+}
+
+function mountPromptQueue(convId) {
+  const box = $('msgs')
+  box.querySelector('.prompt-queue')?.remove()
+  const list = promptQueues.get(convId) || []
+  if (!list.length) return null
+  const dock = document.createElement('div')
+  dock.className = 'prompt-queue'
+  dock.dataset.conversation = convId
+  dock.innerHTML = '<div class="prompt-queue-head"></div>'
+  for (const item of list) renderQueuedPrompt(convId, item, dock)
+  box.appendChild(dock)
+  updatePromptQueue(convId)
+  return dock
+}
+
+function appendBeforePromptQueue(box, node) {
+  const dock = box.querySelector('.prompt-queue')
+  if (dock) box.insertBefore(node, dock)
+  else box.appendChild(node)
+}
+
 function enqueuePrompt(convId, text) {
   const input = $('composer-input')
   const files = pendingFiles
@@ -2263,24 +2303,13 @@ function enqueuePrompt(convId, text) {
   input.value = ''
   autosize()
   const q = promptQueues.get(convId) || []
-  const el = renderUser(text || files.map((f) => f.file.name).join(', '))
-  el.classList.add('queued')
-  const tag = document.createElement('button')
-  tag.className = 'queued-tag'
-  tag.innerHTML = 'In der Warteschlange · entfernen'
-  tag.addEventListener('click', () => {
-    const list = promptQueues.get(convId) || []
-    const idx = list.findIndex((it) => it.el === el)
-    if (idx >= 0) list.splice(idx, 1)
-    el.remove()
-    tag.remove()
-  })
-  const box = $('msgs')
-  box.appendChild(el)
-  box.appendChild(tag)
-  el.scrollIntoView({ block: 'end' })
-  q.push({ text, files, el, tag })
+  const item = { text, files, el: null, tag: null, wrap: null }
+  q.push(item)
   promptQueues.set(convId, q)
+  const dock = $('msgs').querySelector('.prompt-queue') || mountPromptQueue(convId)
+  if (item.wrap == null) renderQueuedPrompt(convId, item, dock)
+  updatePromptQueue(convId)
+  item.wrap.scrollIntoView({ block: 'end' })
 }
 
 function drainPromptQueue(convId) {
@@ -2289,8 +2318,11 @@ function drainPromptQueue(convId) {
   // Nur senden, wenn die Konversation gerade offen ist und nichts mehr läuft
   if (currentConv?.id !== convId || activeStreams.has(convId) || currentConv.working) return
   const item = q.shift()
-  item.el?.remove()
-  item.tag?.remove()
+  item.wrap?.remove()
+  if (!q.length) {
+    promptQueues.delete(convId)
+    $('msgs').querySelector('.prompt-queue')?.remove()
+  } else updatePromptQueue(convId)
   $('composer-input').value = item.text
   pendingFiles = item.files || []
   renderChips()
@@ -2331,7 +2363,7 @@ async function send() {
 
   const box = $('msgs')
   box.querySelector('.empty')?.remove()
-  box.appendChild(renderUser(text || 'Bitte analysiere die angehängten Dateien.', attachMeta))
+  appendBeforePromptQueue(box, renderUser(text || 'Bitte analysiere die angehängten Dateien.', attachMeta))
   if (!currentConv) $('chat-title').textContent = (text || attachMeta[0]?.name || '').slice(0, 80)
 
   // Pod-Konversationen sind Team-Chat: Enni antwortet nur bei @enni-Erwähnung.
@@ -2367,7 +2399,7 @@ async function send() {
     body = document.createElement('div')
     body.className = 'body'
     wrap.appendChild(body)
-    box.appendChild(wrap)
+    appendBeforePromptQueue(box, wrap)
     wrap.scrollIntoView({ block: 'end' })
   }
 
