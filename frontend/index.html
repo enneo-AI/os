@@ -182,8 +182,17 @@
   .sk-badge.prop{background:rgba(123,90,226,.1);color:var(--lila-deep)}
   .inv-result{display:flex;align-items:center;gap:10px;margin-top:10px;padding:10px 12px;border:1px solid var(--hair);border-radius:12px;background:var(--surface)}
   .inv-result code{flex:1;min-width:0;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
-  .pf-learn-sec{margin:2px 0 16px}
-  #pf-learnings{max-height:190px;overflow-y:auto;margin-top:4px}
+  /* Profil-Modal: breit + horizontal mit Reiter-Navigation */
+  .modal.wide{width:min(660px,calc(100vw - 40px));max-height:calc(100vh - 80px);overflow-y:auto}
+  .m-head{display:flex;align-items:center;gap:18px;margin-bottom:18px}
+  .m-tabs{display:flex;gap:2px;margin-left:auto;padding:3px;border-radius:999px;background:var(--press)}
+  .mt-btn{border:0;background:none;border-radius:999px;padding:5px 13px;font-size:12px;font-weight:620;color:var(--ink-3);transition:color .15s,background .2s}
+  .mt-btn:hover{color:var(--ink-2)}
+  .mt-btn.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(29,30,44,.08)}
+  .pf-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 22px}
+  .pf-grid .pf-col{min-width:0}
+  @media(max-width:640px){.pf-grid{grid-template-columns:1fr}}
+  #pf-learnings{max-height:300px;min-height:110px;overflow-y:auto;margin-top:4px}
   .pl-item{display:flex;align-items:center;gap:9px;padding:7px 2px;border-bottom:1px solid var(--hair);font-size:12.5px}
   .pl-item:last-child{border-bottom:0}
   .pl-item .pl-txt{flex:1;min-width:0;color:var(--ink-2)}
@@ -776,7 +785,6 @@
           <span class="enni-dot">E</span>
           <div>
             <div class="t" id="chat-title">Neue Konversation</div>
-            <div style="font-size:12px;color:var(--ink-3)">Private Konversation · Enni antwortet mit deinen Rechten</div>
           </div>
           <button class="chat-close" id="chat-close" title="Chat schließen" hidden>
             <svg viewBox="0 0 24 24"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg>
@@ -1428,32 +1436,57 @@
 
 <!-- ================= PROFIL MODAL ================= -->
 <div class="overlay" id="profile-overlay">
-  <div class="modal" role="dialog" aria-modal="true">
-    <h3>Profil</h3>
-    <p class="pf-hint" id="pf-welcome" hidden style="margin-top:-6px;color:var(--lila-deep)">Willkommen bei enneo OS! Beschreib kurz deine Rolle und woran du arbeitest — Enni personalisiert alle Antworten darauf. Dauert 30 Sekunden, lohnt sich dauerhaft.</p>
-    <div class="pf-row">
-      <span class="avatar" id="pf-avatar">·</span>
-      <input type="file" id="pf-file" hidden accept="image/png,image/jpeg,image/webp">
-      <button class="btn quiet" id="pf-avatar-btn" style="margin-left:0">Bild ändern</button>
+  <div class="modal wide" role="dialog" aria-modal="true">
+    <div class="m-head">
+      <h3 style="margin:0">Profil</h3>
+      <nav class="m-tabs" id="pf-tabs">
+        <button class="mt-btn on" data-pftab="profil">Profil</button>
+        <button class="mt-btn" data-pftab="learnings">Learnings</button>
+        <button class="mt-btn" data-pftab="pw">Passwort</button>
+      </nav>
     </div>
-    <label for="pf-name">Anzeigename</label>
-    <input type="text" id="pf-name">
-    <label for="pf-email">E-Mail</label>
-    <input type="email" id="pf-email" disabled>
-    <p class="pf-hint">enneo-Konto — die E-Mail-Adresse ist fest (immer @enneo.ai).</p>
-    <label for="pf-role">Rolle im Unternehmen</label>
-    <input type="text" id="pf-role" placeholder="z. B. Head of Sales, Implementation Manager …">
-    <label for="pf-about">Über mich — womit soll Enni am meisten helfen?</label>
-    <textarea id="pf-about" rows="3" placeholder="Verantwortlichkeiten, aktuelle Schwerpunkte, typische Aufgaben. Enni personalisiert seine Antworten darauf."></textarea>
-    <div class="pf-learn-sec">
-      <label>Meine Learnings</label>
-      <p class="pf-hint" style="margin-top:2px">Was Enni über die Zusammenarbeit mit dir gelernt hat (Feedback-Button, „Lernen &amp; Schließen"). Persönliche Learnings wirken nur in deinem Account; team-weite gelten erst nach Admin-Freigabe für alle.</p>
+    <p class="pf-hint" id="pf-welcome" hidden style="color:var(--lila-deep)">Willkommen! Beschreib kurz deine Rolle — Enni personalisiert alle Antworten darauf.</p>
+
+    <div class="pf-tab" id="pftab-profil">
+      <div class="pf-grid">
+        <div class="pf-col">
+          <div class="pf-row" style="margin-bottom:16px">
+            <span class="avatar" id="pf-avatar">·</span>
+            <input type="file" id="pf-file" hidden accept="image/png,image/jpeg,image/webp">
+            <button class="btn quiet" id="pf-avatar-btn" style="margin-left:0">Bild ändern</button>
+          </div>
+          <label for="pf-name">Anzeigename</label>
+          <input type="text" id="pf-name">
+          <label for="pf-email">E-Mail</label>
+          <input type="email" id="pf-email" disabled>
+        </div>
+        <div class="pf-col">
+          <label for="pf-role">Rolle im Unternehmen</label>
+          <input type="text" id="pf-role" placeholder="z. B. Head of Sales">
+          <label for="pf-about">Über mich</label>
+          <textarea id="pf-about" rows="5" placeholder="Verantwortlichkeiten und Schwerpunkte — Enni personalisiert darauf."></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="pf-tab" id="pftab-learnings" hidden>
+      <p class="pf-hint" style="margin-top:0">Wirken sofort in deinem Account — team-weit erst nach Admin-Freigabe.</p>
       <div id="pf-learnings"></div>
     </div>
-    <label for="pf-pw">Neues Passwort</label>
-    <input type="password" id="pf-pw" autocomplete="new-password" placeholder="leer lassen = unverändert">
-    <label for="pf-pw2">Passwort wiederholen</label>
-    <input type="password" id="pf-pw2" autocomplete="new-password">
+
+    <div class="pf-tab" id="pftab-pw" hidden>
+      <div class="pf-grid">
+        <div class="pf-col">
+          <label for="pf-pw">Neues Passwort</label>
+          <input type="password" id="pf-pw" autocomplete="new-password" placeholder="leer lassen = unverändert">
+        </div>
+        <div class="pf-col">
+          <label for="pf-pw2">Passwort wiederholen</label>
+          <input type="password" id="pf-pw2" autocomplete="new-password">
+        </div>
+      </div>
+    </div>
+
     <div class="err" id="pf-err"></div>
     <div class="m-actions">
       <button class="btn quiet" id="pf-cancel">Abbrechen</button>

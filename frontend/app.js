@@ -141,8 +141,18 @@ async function renderFooterProfile() {
 
 // ============================================================ Profil bearbeiten
 let pendingAvatar = null
+
+function switchProfileTab(tab) {
+  document.querySelectorAll('#pf-tabs .mt-btn').forEach((b) => b.classList.toggle('on', b.dataset.pftab === tab))
+  for (const t of ['profil', 'learnings', 'pw']) $('pftab-' + t).hidden = t !== tab
+}
+document.querySelectorAll('#pf-tabs .mt-btn').forEach((b) =>
+  b.addEventListener('click', () => switchProfileTab(b.dataset.pftab))
+)
+
 async function openProfile() {
   $('pf-welcome').hidden = true // nur der Onboarding-Nudge blendet den Willkommens-Hinweis ein
+  switchProfileTab('profil')
   const { data: p } = await sb
     .from('profiles').select('display_name, avatar_url, email, role_title, about').eq('id', session.user.id).maybeSingle()
   pendingAvatar = null
@@ -423,8 +433,7 @@ function newConversation() {
   $('model-select').value = 'claude-opus-4-8'
   $('composer-input').placeholder = convPod ? 'Nachricht ans Team — @enni ruft Enni …' : 'Frag Enni …'
   $('chat-title').textContent = 'Neue Konversation'
-  $('msgs').innerHTML = `<div class="empty"><div><span class="enni-dot">E</span></div>
-    Hallo! Ich bin Enni. Frag mich zu enneo-Prozessen, Kunden, Produkt oder Code — ich schaue in Wiki und GitLab nach.</div>`
+  $('msgs').innerHTML = `<div class="empty"><div><span class="enni-dot">E</span></div></div>`
   document.querySelectorAll('#conv-list .sb-item').forEach((x) => x.classList.remove('on'))
   sidebarPodId = convPod?.id || null
   paintPodHighlight()
