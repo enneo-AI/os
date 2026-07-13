@@ -639,8 +639,6 @@
   .pod-head-copy{min-width:0}
   .pod-head-copy .t{font-size:17px;font-weight:650;line-height:1.25;letter-spacing:-.012em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .pod-head-copy .sub{font-size:12px;color:var(--ink-3);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:62ch}
-  .pod-meta{display:flex;align-items:center;gap:7px;color:var(--ink-3);font-size:11.5px;white-space:nowrap;flex:none}
-  .pod-meta .dot{opacity:.45}
   .pod-tabs{display:flex;align-items:center;gap:3px;margin:0 0 15px;padding:0 2px 7px;border-bottom:1px solid var(--hair)}
   .pt-btn{display:inline-flex;align-items:center;gap:6px;border:0;background:transparent;border-radius:8px;padding:7px 10px;font-size:12.5px;font-weight:600;color:var(--ink-3);transition:color .2s ease,background .2s ease}
   .pt-btn:hover{color:var(--ink);background:var(--hover)}
@@ -664,7 +662,7 @@
   .pod-conv-date{font-family:var(--mono);font-size:11px;color:var(--ink-3);white-space:nowrap}
   .pod-conv-arrow{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;color:var(--ink-3);opacity:0;transform:translateX(-4px);transition:opacity .18s ease,transform .18s ease}
   .pod-conv-row:hover .pod-conv-arrow,.pod-conv-row:focus-visible .pod-conv-arrow{opacity:1;transform:none}
-  @media(max-width:680px){.pod-head{align-items:flex-start}.pod-meta{display:none}.pod-toolbar{grid-template-columns:1fr}.pod-new-conv{width:100%}.pod-conv-date{display:none}}
+  @media(max-width:680px){.pod-head{align-items:flex-start}.pod-toolbar{grid-template-columns:1fr}.pod-new-conv{width:100%}.pod-conv-date{display:none}}
   .task-add{display:flex;gap:10px;margin-bottom:14px}
   .task-add input{flex:1;border:1px solid var(--hair);border-radius:12px;background:var(--surface);padding:10px 14px;font-size:14px;outline:0}
   .task-add input:focus{border-color:var(--lila)}
@@ -971,9 +969,6 @@
               <div class="t" id="pod-title">Pod</div>
               <div class="sub" id="pod-sub">Gemeinsamer Kontext für alle Mitglieder</div>
             </div>
-          </div>
-          <div class="pod-meta">
-            <span id="pod-member-count">0 Mitglieder</span><span class="dot">·</span><span id="pod-access">Offener Pod</span>
           </div>
         </div>
         <div class="pod-tabs" id="pod-tabs">

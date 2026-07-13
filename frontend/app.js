@@ -1396,9 +1396,6 @@ async function openPod(pod, tab = 'convs') {
   const logo = $('pod-hero-logo')
   logo.className = 'pod-tile pod-hero-logo' + (pod.logo_url ? ' logo' : '')
   logo.innerHTML = pod.logo_url ? `<img src="${esc(pod.logo_url)}" alt="">` : esc(podInitials(pod.name))
-  const memberCount = new Set([...(pod.members || []), pod.created_by].filter(Boolean)).size
-  $('pod-member-count').textContent = `${memberCount} ${memberCount === 1 ? 'Mitglied' : 'Mitglieder'}`
-  $('pod-access').textContent = pod.open ? 'Offener Pod' : 'Privater Pod'
   sidebarPodId = pod.id
   paintPodHighlight()
   document.querySelectorAll('#conv-list .sb-item').forEach((x) => x.classList.remove('on'))
