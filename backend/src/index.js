@@ -567,6 +567,53 @@ app.post('/api/wiki/reindex', async (req, res) => {
   }
 })
 
+// Seite per URL importieren: Firecrawl-Bridge crawlt → Markdown → wiki_pages → Re-Index.
+// Bridge lebt im claude-team-Supabase (FIRECRAWL_BRIDGE_URL + FIRECRAWL_BRIDGE_TOKEN als Env).
+app.post('/api/wiki/import-url', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const url = String(req.body?.url || '').trim()
+  if (!/^https?:\/\/.+\..+/.test(url)) return res.status(400).json({ error: 'Ungültige URL' })
+  if (!process.env.FIRECRAWL_BRIDGE_URL || !process.env.FIRECRAWL_BRIDGE_TOKEN)
+    return res.status(500).json({ error: 'URL-Import ist nicht konfiguriert (FIRECRAWL_BRIDGE_URL/TOKEN fehlen)' })
+  try {
+    const fc = await fetch(process.env.FIRECRAWL_BRIDGE_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.FIRECRAWL_BRIDGE_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ tool: 'firecrawl_scrape', args: { url, formats: ['markdown'] } }),
+    })
+    const payload = await fc.json()
+    if (!fc.ok || payload.ok === false) throw new Error(payload.error || `Crawl fehlgeschlagen (${fc.status})`)
+    const r = payload.result || payload
+    const markdown = r.markdown || r.data?.markdown
+    const title = (r.metadata?.title || r.data?.metadata?.title || new URL(url).pathname.split('/').filter(Boolean).pop() || url)
+      .toString().slice(0, 140)
+    if (!markdown?.trim()) throw new Error('Die Seite lieferte keinen lesbaren Inhalt')
+
+    const slug = ('import/' + title.toLowerCase()
+      .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')).slice(0, 90)
+    const content = `> Quelle: ${url} · importiert am ${new Date().toLocaleDateString('de-DE')}\n\n${markdown}`
+    const { data: page, error } = await db
+      .from('wiki_pages')
+      .upsert(
+        { slug, title, content, space_id: req.body?.space_id || null, created_by: user.id, updated_by: user.id },
+        { onConflict: 'slug' }
+      )
+      .select('id, slug, title, content')
+      .single()
+    if (error) throw new Error(error.message)
+    const { reindexPage } = await import('./tools/wiki.js')
+    const chunks = await reindexPage(page)
+    res.json({ ok: true, slug: page.slug, title, chunks })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // Wiki-Seite löschen — nur Admins (destruktiv; Chunks fliegen mit raus)
 app.post('/api/wiki/delete', async (req, res) => {
   const user = await requireAdmin(req, res)

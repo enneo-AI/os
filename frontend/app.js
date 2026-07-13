@@ -1807,10 +1807,11 @@ const CONNECTIONS = {
 // (erste Übereinstimmung gewinnt; "Weitere" fängt unbekannte Prefixe auf).
 const PAGE_GROUPS = [
   { label: 'Unternehmen & eigene Seiten', match: (s) => !s.includes('/') },
-  { label: 'Produkt-Doku', match: (s) => s.startsWith('product-docs/') },
-  { label: 'API-Referenz', match: (s) => s.startsWith('api-docs/') },
-  { label: 'Enneo-API-Rezepte', match: (s) => s.startsWith('enneo-api/') },
-  { label: 'Marketing-Website', match: (s) => s.startsWith('marketing-site/') },
+  { label: 'Enneo Produkt-Doku', sub: 'importiert aus docs.enneo.ai', match: (s) => s.startsWith('product-docs/') },
+  { label: 'Enneo API-Referenz', sub: 'importiert aus docs.enneo.ai/api-reference', match: (s) => s.startsWith('api-docs/') },
+  { label: 'Enneo-API-Rezepte', sub: 'Rezepte für Enni aus dem Claude-Code-Plugin', match: (s) => s.startsWith('enneo-api/') },
+  { label: 'enneo.ai Website', sub: 'importiert aus enneo.ai', match: (s) => s.startsWith('marketing-site/') },
+  { label: 'Importierte Seiten', sub: 'per URL importiert', match: (s) => s.startsWith('import/') },
   { label: 'Weitere', match: () => true },
 ]
 function groupPages(pages) {
@@ -1892,7 +1893,9 @@ function renderSpaceTree() {
 // ---------- Space-Übersicht (Hauptfläche): Suche, Inhalte, Zuletzt geändert, Quellen
 function openSpaceHome(space) {
   currentSpace = space
-  $('sh-title').innerHTML = esc(space.name) + (space.restricted ? ' ' + LOCK_SVG : '')
+  // Kleines Lock inline — LOCK_SVG ist nur für Sidebar-Items gestylt (sonst riesig/schwarz)
+  const miniLock = '<svg viewBox="0 0 24 24" style="width:18px;height:18px;stroke:var(--ink-3);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;vertical-align:-2px;margin-left:6px"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'
+  $('sh-title').innerHTML = esc(space.name) + (space.restricted ? miniLock : '')
   const spacePages = (wikiPages || []).filter((p) => p.space_id === space.id)
   $('sh-sub').textContent = `${spacePages.length} Seiten · Enni nutzt genau diese Quellen für seine Antworten${space.restricted ? ' · nur für Mitglieder dieses Space' : ''}`
   $('sh-search').value = ''
@@ -1905,7 +1908,7 @@ function openSpaceHome(space) {
     const row = document.createElement('button')
     row.className = 'crow'
     row.innerHTML = `<span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:var(--lila-deep);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.2 3.9A2 2 0 0 0 7.5 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></svg></span>
-      <div><div class="c-name">${esc(g.label)}</div><div class="c-sub">${g.pages.length} Seiten</div></div>`
+      <div><div class="c-name">${esc(g.label)}</div><div class="c-sub">${g.pages.length} Seiten${g.sub ? ' · ' + esc(g.sub) : ''}</div></div>`
     row.addEventListener('click', () => openPagelist(space, g.label, g.pages))
     groupsBox.appendChild(row)
   }
@@ -1968,6 +1971,43 @@ $('sh-search').addEventListener('input', () => {
   }
 })
 $('sh-new-page').addEventListener('click', () => openPageEditor(null))
+$('pl-new-page').addEventListener('click', () => openPageEditor(null))
+
+// ---------- Seite per URL importieren (Crawl → Markdown → Auto-Reindex)
+function openImportModal() {
+  $('iu-url').value = ''
+  $('iu-err').textContent = ''
+  $('iu-overlay').classList.add('open')
+  setTimeout(() => $('iu-url').focus(), 50)
+}
+$('sh-import-url').addEventListener('click', openImportModal)
+$('pl-import-url').addEventListener('click', openImportModal)
+$('iu-cancel').addEventListener('click', () => $('iu-overlay').classList.remove('open'))
+$('iu-save').addEventListener('click', async () => {
+  const err = $('iu-err')
+  err.textContent = ''
+  const url = $('iu-url').value.trim()
+  if (!/^https?:\/\/.+\..+/.test(url)) { err.textContent = 'Bitte eine vollständige URL eingeben.'; return }
+  $('iu-save').disabled = true
+  $('iu-save').textContent = 'Importiert …'
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/wiki/import-url`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ url, space_id: currentSpace?.id || null }),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+    $('iu-overlay').classList.remove('open')
+    wikiPages = null
+    await loadSpacesTree()
+    openWikiPage(data.slug)
+  } catch (e) {
+    err.textContent = 'Fehler: ' + e.message
+  }
+  $('iu-save').disabled = false
+  $('iu-save').textContent = 'Importieren'
+})
 
 // ---------- Connected Data eines Space
 function openConnectedData(space) {

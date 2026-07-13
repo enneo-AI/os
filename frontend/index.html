@@ -787,7 +787,10 @@
       </div>
       <div class="cost-shell">
         <input type="search" class="wiki-search" id="pl-filter" placeholder="Seiten filtern …" style="max-width:420px;margin:0 0 14px">
-        <div class="list-panel"><div id="pl-list"></div></div>
+        <div class="list-panel"><div id="pl-list"></div>
+          <button class="crow crow-add" id="pl-new-page"><span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--ink-3);fill:none;stroke-width:1.8;stroke-linecap:round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span><div><div class="c-name" style="color:var(--ink-2)">Neue Seite</div><div class="c-sub">Markdown selbst schreiben</div></div></button>
+          <button class="crow crow-add" id="pl-import-url"><span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--ink-3);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg></span><div><div class="c-name" style="color:var(--ink-2)">Seite von URL importieren</div><div class="c-sub">Webseite einfügen · wird gecrawlt und indexiert</div></div></button>
+        </div>
       </div>
     </section>
 
@@ -842,7 +845,8 @@
           <div class="list-panel">
             <h3>Inhalte</h3>
             <div id="sh-groups"></div>
-            <button class="crow crow-add" id="sh-new-page"><span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--ink-3);fill:none;stroke-width:1.8;stroke-linecap:round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span><div><div class="c-name" style="color:var(--ink-2)">Neue Seite</div><div class="c-sub">Markdown · sofort in Ennis Wissen (automatisch indexiert)</div></div></button>
+            <button class="crow crow-add" id="sh-new-page"><span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--ink-3);fill:none;stroke-width:1.8;stroke-linecap:round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span><div><div class="c-name" style="color:var(--ink-2)">Neue Seite</div><div class="c-sub">Markdown selbst schreiben · sofort in Ennis Wissen</div></div></button>
+            <button class="crow crow-add" id="sh-import-url"><span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--ink-3);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg></span><div><div class="c-name" style="color:var(--ink-2)">Seite von URL importieren</div><div class="c-sub">Webseite einfügen · wird gecrawlt und indexiert</div></div></button>
           </div>
           <div class="list-panel">
             <h3>Zuletzt geändert</h3>
@@ -1106,6 +1110,21 @@
     <div class="m-actions">
       <button class="btn quiet" id="at-cancel">Abbrechen</button>
       <button class="btn dark" id="at-save">Verbinden</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= URL-IMPORT MODAL ================= -->
+<div class="overlay" id="iu-overlay">
+  <div class="modal" role="dialog" aria-modal="true">
+    <h3>Seite von URL importieren</h3>
+    <label for="iu-url">URL</label>
+    <input type="url" id="iu-url" placeholder="https://docs.enneo.ai/de/…">
+    <p class="pf-hint">Die Seite wird gecrawlt, als Markdown gespeichert und sofort für Ennis Suche indexiert. Der Import dauert ein paar Sekunden.</p>
+    <div class="err" id="iu-err"></div>
+    <div class="m-actions">
+      <button class="btn quiet" id="iu-cancel">Abbrechen</button>
+      <button class="btn dark" id="iu-save">Importieren</button>
     </div>
   </div>
 </div>
