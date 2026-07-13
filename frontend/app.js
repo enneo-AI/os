@@ -72,6 +72,7 @@ async function showApp() {
   $('login-view').hidden = true
   $('app-view').hidden = false
   renderFooterProfile()
+  subscribeRealtime()
   await Promise.all([loadConversations(), loadPods(), refreshCosts(), loadConnectorRows()])
   route()
 }
@@ -323,6 +324,7 @@ function newConversation() {
   currentConv = null
   viewSeq++
   updateComposerState()
+  subscribeConvMessages(null) // alten Message-Kanal schließen
   $('chat-close').hidden = true
   $('model-select').value = 'claude-opus-4-8'
   $('composer-input').placeholder = convPod ? 'Nachricht ans Team — @enni ruft Enni …' : 'Frag Enni …'
@@ -381,6 +383,7 @@ async function openConversation(c) {
   }
   ctxTokens = computeCtxTokens(msgs || [])
   renderCtx()
+  subscribeConvMessages(c.id) // Live-Nachrichten (Pod-Team-Chat, fremde Geräte)
   window.scrollTo({ top: document.body.scrollHeight })
 }
 
@@ -2414,33 +2417,79 @@ $('rt-delete').addEventListener('click', async () => {
   loadRoutines()
 })
 
-// ============================================================ Status-Poll (Multi-Sessions)
-// Alle 5s Konversations-Status ziehen: Sidebar-Punkte aktuell halten (auch für
-// Routinen-Läufe und Turns von anderen Geräten) und die gerade offene Konversation
-// neu laden, wenn sie extern fertig wurde.
+// ============================================================ Realtime (Multi-Sessions + Pod-Team-Chat)
+// Supabase Realtime pusht Änderungen instant; RLS scopet die Events (eigene Konvs +
+// sichtbare Pod-Konvs). Der 60s-Poll darunter ist nur Fallback für abgerissene Sockets.
 const statusSnapshot = new Map()
+let debounceTimer = null
+const loadConversationsDebounced = () => {
+  clearTimeout(debounceTimer)
+  debounceTimer = setTimeout(loadConversations, 200)
+}
+
+function onConvChange(c) {
+  if (!c?.id) return
+  const prev = statusSnapshot.get(c.id)
+  statusSnapshot.set(c.id, { working: c.working, unread: c.unread })
+  // Offene Konversation wurde außerhalb dieses Tabs fertig (Routine, anderes Gerät) → neu laden
+  if (prev?.working && !c.working && currentConv?.id === c.id && !activeStreams.has(c.id) && !sendingViews.size) {
+    openConversation(currentConv)
+    return
+  }
+  if (!c.pod_id && c.user_id === session.user.id) loadConversationsDebounced()
+  // Pod-Konversationsliste live halten, wenn die Pod-Seite gerade offen ist
+  if (c.pod_id && activePod?.id === c.pod_id && !$('ptab-convs').hidden) loadPodConvs()
+}
+
+function subscribeRealtime() {
+  sb.channel('conv-status')
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversations' }, (p) => onConvChange(p.new))
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'conversations' }, (p) => onConvChange(p.new))
+    .subscribe()
+}
+
+// Live-Nachrichten der gerade offenen Konversation (Pod-Team-Chat ohne Reload).
+// Eigene Nachrichten + eigene Streams rendern lokal — nur Fremdes wird angehängt.
+let msgChannel = null
+function subscribeConvMessages(convId) {
+  if (msgChannel) { sb.removeChannel(msgChannel); msgChannel = null }
+  if (!convId) return
+  msgChannel = sb
+    .channel('msgs-' + convId)
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${convId}` },
+      async (p) => {
+        const m = p.new
+        if (currentConv?.id !== convId) return
+        if (activeStreams.has(convId)) return // eigener Stream rendert live
+        if (m.role === 'compaction') return
+        if (m.role === 'user' && m.author_id === session.user.id) return // schon im DOM
+        const profs = await allProfiles()
+        const box = $('msgs')
+        box.querySelector('.empty')?.remove()
+        if (m.role === 'user')
+          box.appendChild(renderPeer(profName(profs, m.author_id), m.content, m.attachments))
+        else if (m.role === 'assistant')
+          box.appendChild(renderAgent(m.content, m.thinking, m.tool_calls || [], undefined))
+        window.scrollTo({ top: document.body.scrollHeight })
+      }
+    )
+    .subscribe()
+}
+
+// Fallback-Poll (60s): fängt verpasste Events nach Netz-Abrissen/Schlaf-Modus ab
 setInterval(async () => {
   if (document.hidden || !session) return
   const { data } = await sb
     .from('conversations')
-    .select('id, working, unread')
+    .select('id, user_id, pod_id, working, unread')
     .eq('user_id', session.user.id)
     .is('pod_id', null)
     .order('updated_at', { ascending: false })
     .limit(50)
-  if (!data) return
-  let changed = false
-  for (const c of data) {
-    const prev = statusSnapshot.get(c.id)
-    if (!prev || prev.working !== c.working || prev.unread !== c.unread) changed = true
-    // Offene Konversation wurde außerhalb dieses Tabs fertig (Routine, anderes Gerät) → neu laden
-    if (prev?.working && !c.working && currentConv?.id === c.id && !activeStreams.has(c.id) && !sendingViews.size) {
-      openConversation(currentConv)
-    }
-    statusSnapshot.set(c.id, { working: c.working, unread: c.unread })
-  }
-  if (changed) loadConversations()
-}, 5000)
+  for (const c of data || []) onConvChange(c)
+}, 60000)
 
 // Hell/Dunkel-Umschalter (Init passiert inline im <head>, gegen Theme-Flash)
 $('theme-toggle').addEventListener('click', () => {
