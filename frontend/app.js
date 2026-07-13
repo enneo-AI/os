@@ -251,8 +251,8 @@ $('pf-save').addEventListener('click', async () => {
 
 // Rail-Navigation — Sidebar-Inhalt wechselt mit dem Bereich
 const views = {
-  chat: 'v-chat', wiki: 'v-wiki', conn: 'v-conn', admin: 'v-admin', skills: 'v-skills', routines: 'v-routines',
-  connected: 'v-connected', pagelist: 'v-pagelist', 'admin-conn': 'v-admin-conn', pod: 'v-pod',
+  chat: 'v-chat', wiki: 'v-wiki',  admin: 'v-admin', skills: 'v-skills', routines: 'v-routines',
+  connected: 'v-connected', pagelist: 'v-pagelist', marketplace: 'v-marketplace', pod: 'v-pod',
   'space-home': 'v-space-home', 'page-edit': 'v-page-edit',
 }
 const sidebars = { chat: 'sb-chat', wiki: 'sb-spaces', admin: 'sb-admin' }
@@ -271,7 +271,7 @@ function syncUrl(area, view) {
   let path = '/chat'
   if (view === 'pod' && activePod) path = `/pod/${activePod.id}`
   else if (area === 'chat') path = currentConv?.id ? `/chat/${currentConv.id}` : '/chat'
-  else if (area === 'wiki') path = view === 'conn' ? '/spaces/tools' : view === 'admin-conn' ? '/spaces/connections' : view === 'skills' ? '/spaces/skills' : view === 'routines' ? '/spaces/routinen' : '/spaces'
+  else if (area === 'wiki') path = view === 'marketplace' ? '/spaces/marketplace' : view === 'skills' ? '/spaces/skills' : view === 'routines' ? '/spaces/routinen' : '/spaces'
   else if (area === 'admin') path = '/admin'
   if (location.pathname !== path) history.pushState({}, '', path)
 }
@@ -288,11 +288,12 @@ async function route() {
     if (c) return openConversation(c)
   }
   if (p.startsWith('/spaces')) {
-    activateArea('wiki', p === '/spaces/tools' ? 'conn' : p === '/spaces/connections' ? 'admin-conn' : p === '/spaces/skills' ? 'skills' : p === '/spaces/routinen' ? 'routines' : 'wiki')
+    const spview = p === '/spaces/skills' ? 'skills' : p === '/spaces/routinen' ? 'routines' : 'marketplace'
+    activateArea('wiki', spview)
+    if (spview === 'marketplace') loadConnectorRows()
     if (p === '/spaces/skills') loadSkills()
     if (p === '/spaces/routinen') loadRoutines()
     await loadSpacesTree()
-    if (p === '/spaces' && spacesList[0]) openSpaceHome(spacesList[0]) // direkt in die Übersicht
     return
   }
   if (p.startsWith('/admin')) {
@@ -311,7 +312,11 @@ window.addEventListener('popstate', () => route())
 document.querySelectorAll('.rail-btn').forEach((b) =>
   b.addEventListener('click', () => {
     activateArea(b.dataset.v)
-    if (b.dataset.v === 'wiki') loadSpacesTree().then(() => { if (spacesList[0]) openSpaceHome(spacesList[0]) })
+    if (b.dataset.v === 'wiki') {
+      activateArea('wiki', 'marketplace') // Einstieg = Marketplace, keine gemischte Startseite
+      loadConnectorRows()
+      loadSpacesTree()
+    }
     if (b.dataset.v === 'admin') { refreshCosts(); loadMembers(); loadKnowledgeUpdates(); loadLearnings(); loadSkillProposals(); loadToolProposals() }
   })
 )
@@ -326,7 +331,7 @@ document.querySelectorAll('.admin-area').forEach((b) =>
     activateArea('wiki', b.dataset.view)
     if (b.dataset.view === 'skills') loadSkills()
     if (b.dataset.view === 'routines') loadRoutines()
-    if (b.dataset.view === 'conn' || b.dataset.view === 'admin-conn') loadConnectorRows()
+    if (b.dataset.view === 'marketplace') loadConnectorRows()
   })
 )
 
@@ -493,6 +498,27 @@ async function openConversation(c) {
     } else if (m.role === 'assistant')
       box.appendChild(renderAgent(m.content, m.thinking, m.tool_calls || [], costByMessage[m.id], m.duration_ms))
     else if (m.role === 'compaction') box.appendChild(renderCompactionMarker(m.content))
+  }
+  // Gequeute Nachrichten wieder anzeigen (Referenzen neu aufbauen) und ggf. direkt senden
+  const queued = promptQueues.get(c.id)
+  if (queued?.length) {
+    for (const item of queued) {
+      item.el = renderUser(item.text)
+      item.el.classList.add('queued')
+      item.tag = document.createElement('button')
+      item.tag.className = 'queued-tag'
+      item.tag.textContent = 'In der Warteschlange · entfernen'
+      item.tag.addEventListener('click', () => {
+        const list = promptQueues.get(c.id) || []
+        const idx = list.indexOf(item)
+        if (idx >= 0) list.splice(idx, 1)
+        item.el.remove()
+        item.tag.remove()
+      })
+      box.appendChild(item.el)
+      box.appendChild(item.tag)
+    }
+    setTimeout(() => drainPromptQueue(c.id), 400)
   }
   ctxTokens = computeCtxTokens(msgs || [])
   renderCtx()
@@ -2113,12 +2139,62 @@ function updateMentionBacks() {
 }
 
 // ============================================================ Senden + Streaming
+// ============================================================ Prompt-Warteschlange
+// Während Enni arbeitet, kann der Nutzer weitere Nachrichten senden — sie werden
+// pro Konversation gequeued und nach Abschluss des laufenden Turns automatisch gesendet.
+const promptQueues = new Map() // convId -> [{ text, files, el }]
+
+function enqueuePrompt(convId, text) {
+  const input = $('composer-input')
+  const files = pendingFiles
+  pendingFiles = []
+  renderChips()
+  input.value = ''
+  autosize()
+  const q = promptQueues.get(convId) || []
+  const el = renderUser(text || files.map((f) => f.file.name).join(', '))
+  el.classList.add('queued')
+  const tag = document.createElement('button')
+  tag.className = 'queued-tag'
+  tag.innerHTML = 'In der Warteschlange · entfernen'
+  tag.addEventListener('click', () => {
+    const list = promptQueues.get(convId) || []
+    const idx = list.findIndex((it) => it.el === el)
+    if (idx >= 0) list.splice(idx, 1)
+    el.remove()
+    tag.remove()
+  })
+  const box = $('msgs')
+  box.appendChild(el)
+  box.appendChild(tag)
+  el.scrollIntoView({ block: 'end' })
+  q.push({ text, files, el, tag })
+  promptQueues.set(convId, q)
+}
+
+function drainPromptQueue(convId) {
+  const q = promptQueues.get(convId)
+  if (!q?.length) return
+  // Nur senden, wenn die Konversation gerade offen ist und nichts mehr läuft
+  if (currentConv?.id !== convId || activeStreams.has(convId) || currentConv.working) return
+  const item = q.shift()
+  item.el?.remove()
+  item.tag?.remove()
+  $('composer-input').value = item.text
+  pendingFiles = item.files || []
+  renderChips()
+  send()
+}
+
 async function send() {
   const input = $('composer-input')
   const text = input.value.trim()
   if (!text && !pendingFiles.length) return
-  if (compacting || sendingViews.has(viewSeq)) return
-  if (currentConv && activeStreams.has(currentConv.id)) return // Enni arbeitet hier schon
+  if (compacting) return
+  // Enni arbeitet hier gerade -> Nachricht queuen statt blocken (Prompt-Warteschlange)
+  const busyHere = sendingViews.has(viewSeq) || (currentConv && (activeStreams.has(currentConv.id) || currentConv.working))
+  if (busyHere && currentConv) { enqueuePrompt(currentConv.id, text); return }
+  if (busyHere) return
   if (ctxPct() >= 80) { renderCtx(); return } // Pflicht-Kompaktierung (Dust: 80%)
   if (dictating) recognition?.stop()
   input.value = ''
@@ -2345,6 +2421,7 @@ async function send() {
   }
   loadConversations()
   refreshCosts()
+  if (streamConvId) drainPromptQueue(streamConvId)
 }
 
 async function hydrateToolOutputs(messageId, thinkBody, wrap) {
@@ -3151,11 +3228,11 @@ async function loadConnectorRows() {
     const conn = rows.find((x) => x.owner === me && x.visibility !== 'team') || rows.find((x) => x.visibility === 'team') || null
     renderNativeRow(kind, conn, is_admin, me)
   }
-  for (const target of ['tool', 'connection']) {
-    const box = $(target === 'tool' ? 'dyn-tools' : 'dyn-connections')
-    if (!box) continue
+  {
+    const box = $('dyn-tools')
+    if (!box) return
     box.innerHTML = ''
-    for (const c of visible.filter((x) => x.category === target && x.kind === 'mcp')) {
+    for (const c of visible.filter((x) => x.kind === 'mcp')) {
       const mine = c.owner === me
       const row = document.createElement('div')
       row.className = 'crow'
@@ -3778,6 +3855,13 @@ $('theme-toggle').addEventListener('click', () => {
   const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'
   document.documentElement.dataset.theme = next
   localStorage.setItem('enni-theme', next)
+})
+
+// Klick auf den abgedunkelten Hintergrund schließt jedes Modal (Abbrechen)
+document.addEventListener('mousedown', (e) => {
+  if (e.target.classList?.contains('overlay') && e.target.classList.contains('open')) {
+    e.target.classList.remove('open')
+  }
 })
 
 // ============================================================ Globale Suche (⌘K)

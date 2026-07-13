@@ -151,6 +151,11 @@
   .pal-item .pal-s{font-size:11.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .pal-empty{padding:26px 12px;text-align:center;color:var(--ink-3);font-size:13px}
 
+  /* Prompt-Warteschlange: wartende Nachrichten gedimmt + entfernbar */
+  .m-user.queued{opacity:.55}
+  .queued-tag{align-self:flex-end;border:0;background:none;color:var(--ink-3);font-size:11px;padding:0 6px;margin:-6px 0 4px;cursor:pointer}
+  .queued-tag:hover{color:var(--high)}
+
   /* Tool-Verbindungs-Karte im Chat */
   .tc-form{display:flex;flex-direction:column;gap:8px;margin:10px 0}
   .tc-form input{border:1px solid var(--hair);border-radius:10px;background:var(--surface);padding:9px 12px;font-size:13px;outline:0;color:var(--ink)}
@@ -680,7 +685,16 @@
   .seg button{flex:1;border:0;background:none;border-radius:9px;padding:8px;font-size:13px;font-weight:560;color:var(--ink-2)}
   .seg button.on{background:var(--seg-on);color:var(--ink);font-weight:620;box-shadow:0 1px 4px rgba(83,63,165,.14)}
   .seg-hint{font-size:12px;color:var(--ink-3);margin:0 0 18px}
-  .modal .m-actions{display:flex;gap:10px;justify-content:flex-end}
+  .modal{max-height:calc(100vh - 72px);overflow-y:auto}
+  .modal .m-actions{
+    display:flex;gap:10px;justify-content:flex-end;
+    position:sticky;bottom:0;z-index:2;
+    margin:14px -28px -26px;padding:14px 28px 22px;
+    background:var(--glass-strong);
+    -webkit-backdrop-filter:blur(18px) saturate(1.4);backdrop-filter:blur(18px) saturate(1.4);
+    box-shadow:0 -12px 24px -18px rgba(29,30,44,.45);
+    border-top:1px solid var(--hair);
+  }
   .modal .btn{padding:8px 18px;font-size:13px}
   .btn.dark{background:var(--cta-bg);color:var(--cta-text);border-radius:999px}
   .btn.dark:hover{background:var(--cta-hover)}
@@ -760,8 +774,7 @@
     <div class="sb-ctx" id="sb-spaces" hidden>
       <div class="sb-scroll">
         <div class="sb-sec">Administration</div>
-        <button class="sb-item admin-area" data-view="admin-conn"><span class="txt">Connections</span></button>
-        <button class="sb-item admin-area" data-view="conn"><span class="txt">Tools</span></button>
+        <button class="sb-item admin-area" data-view="marketplace"><span class="txt">Marketplace</span></button>
         <button class="sb-item admin-area" data-view="skills"><span class="txt">Skills</span></button>
         <button class="sb-item admin-area" data-view="routines"><span class="txt">Routinen</span></button>
         <div class="sb-sec">Spaces <button class="sec-add" id="new-space" title="Neuer Space">＋</button></div>
@@ -982,29 +995,6 @@
     </section>
 
     <!-- ADMINISTRATION: Connections -->
-    <section class="view" id="v-admin-conn">
-      <div class="page-head">
-        <div class="eyebrow">Administration</div>
-        <h2>Connections — Ennis Wissensquellen.</h2>
-        <p>Verbundene Quellen werden indexiert und über Spaces dem Team zugänglich. Aktionen laufen separat über Tools.</p>
-      </div>
-      <div class="cost-shell">
-        <div class="list-panel">
-          <div class="crow"><span class="c-logo"><img src="./icons/enni.png" alt=""></span><div><div class="c-name">Wiki</div><div class="c-sub">Internes Firmenwissen · eingebaut</div></div><span class="c-right ok"><span class="dot-s"></span>Verbunden</span></div>
-          <div class="crow"><span class="c-logo"><img src="./icons/gitlab.svg" alt=""></span><div><div class="c-name">GitLab</div><div class="c-sub">Code, Projekte, Merge Requests · read-only</div></div><span class="c-right ok"><span class="dot-s"></span>Verbunden</span></div>
-          <div class="crow"><span class="c-logo"><img src="./icons/enneo-icon.svg" alt=""></span><div><div class="c-name">Enneo-Plattform</div><div class="c-sub">Tickets, Kunden, AI-Agenten, Settings · alle Instanzen</div></div><span class="c-right ok"><span class="dot-s"></span>Verbunden</span></div>
-          <div class="crow"><span class="c-logo"><img src="./icons/google-drive.svg" alt=""></span><div><div class="c-name">Google Drive</div><div class="c-sub">Dokumente & Ordner</div></div><span class="c-right off"><span class="dot-s"></span>Phase 2</span></div>
-          <div class="crow"><span class="c-logo"><img src="./icons/notion.svg" alt=""></span><div><div class="c-name">Notion</div><div class="c-sub">Seiten & Datenbanken</div></div><span class="c-right off"><span class="dot-s"></span>Phase 2</span></div>
-          <button class="crow" id="slack-row"><span class="c-logo"><img src="./icons/slack.svg" alt=""></span><div><div class="c-name">Slack</div><div class="c-sub" id="slack-sub">Channels · read-only</div></div><span class="c-right off" id="slack-status"><span class="dot-s"></span>Nicht verbunden</span></button>
-          <button class="crow" id="attio-row"><span class="c-logo"><img src="./icons/attio.ico" alt=""></span><div><div class="c-name">Attio</div><div class="c-sub" id="attio-sub">CRM-Daten · read-only</div></div><span class="c-right off" id="attio-status"><span class="dot-s"></span>Nicht verbunden</span></button>
-          <div class="crow"><span class="c-logo"><img src="./icons/whatsapp.svg" alt=""></span><div><div class="c-name">WhatsApp</div><div class="c-sub">Enni mobil steuern — chatten & Routinen-Ergebnisse aufs Handy</div></div><span class="c-right off"><span class="dot-s"></span>Coming soon</span></div>
-          <div class="crow"><span class="c-logo"><img src="./icons/telegram.svg" alt=""></span><div><div class="c-name">Telegram</div><div class="c-sub">Enni mobil steuern — Bot-Chat von unterwegs</div></div><span class="c-right off"><span class="dot-s"></span>Coming soon</span></div>
-          <div id="dyn-connections"></div>
-          <button class="crow crow-add" data-category="connection"><span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--ink-3);fill:none;stroke-width:1.8;stroke-linecap:round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span><div><div class="c-name" style="color:var(--ink-2)">Connection verknüpfen</div><div class="c-sub">jeder MCP-Server per URL · Token optional</div></div></button>
-        </div>
-      </div>
-    </section>
-
     <!-- SPACES / WIKI -->
     <section class="view" id="v-wiki">
       <article class="doc" style="margin:0 auto">
@@ -1086,19 +1076,31 @@
     </section>
 
     <!-- CONNECTORS -->
-    <section class="view" id="v-conn">
+    <section class="view" id="v-marketplace">
       <div class="page-head">
-        <div class="eyebrow">Tools</div>
-        <h2>Aktionen, die Enni ausführen darf.</h2>
-        <p>Schreiben und Senden brauchen immer deine Freigabe — Aktionen laufen als du.</p>
+        <div class="eyebrow">Marketplace</div>
+        <h2>Ennis Tools & Quellen.</h2>
+        <p>Read-only liest nur. Read &amp; Write führt Aktionen aus — Schreiben läuft immer über eine Freigabe-Karte.</p>
       </div>
       <div class="cost-shell">
         <div class="list-panel">
-          <div class="crow"><span class="c-logo"><img src="./icons/enneo-icon.svg" alt=""></span><div><div class="c-name">Enneo-Plattform</div><div class="c-sub">Änderungen an Instanzen · jede Ausführung mit Freigabe-Karte</div></div><span class="c-right ok"><span class="dot-s"></span>Aktiv</span></div>
-          <div class="crow"><span class="c-logo"><img src="./icons/outlook.svg" alt=""></span><div><div class="c-name">Outlook</div><div class="c-sub">E-Mails senden & Termine anlegen</div></div><span class="c-right off"><span class="dot-s"></span>Phase 2</span></div>
-          <div class="crow"><span class="c-logo"><img src="./icons/attio.ico" alt=""></span><div><div class="c-name">Attio</div><div class="c-sub">Notizen & Tasks im CRM anlegen</div></div><span class="c-right off"><span class="dot-s"></span>Phase 2</span></div>
+          <h3>Read &amp; Write</h3>
+          <div class="crow"><span class="c-logo"><img src="./icons/enneo-icon.svg" alt=""></span><div><div class="c-name">Enneo-Plattform</div><div class="c-sub">Tickets, Kunden, AI-Agenten, Settings · alle Instanzen · Schreiben mit Freigabe-Karte</div></div><span class="c-right ok"><span class="dot-s"></span>Aktiv</span></div>
+          <div class="crow"><span class="c-logo"><img src="./icons/enni.png" alt=""></span><div><div class="c-name">Wiki</div><div class="c-sub">Firmenwissen · eingebaut · Änderungen als Vorschlag mit Admin-Freigabe</div></div><span class="c-right ok"><span class="dot-s"></span>Aktiv</span></div>
+          <div class="crow"><span class="c-logo"><img src="./icons/outlook.svg" alt=""></span><div><div class="c-name">Outlook</div><div class="c-sub">E-Mails senden &amp; Termine anlegen</div></div><span class="c-right off"><span class="dot-s"></span>Phase 2</span></div>
+          <div class="crow"><span class="c-logo"><img src="./icons/whatsapp.svg" alt=""></span><div><div class="c-name">WhatsApp</div><div class="c-sub">Enni mobil steuern — chatten &amp; Routinen-Ergebnisse aufs Handy</div></div><span class="c-right off"><span class="dot-s"></span>Coming soon</span></div>
+          <div class="crow"><span class="c-logo"><img src="./icons/telegram.svg" alt=""></span><div><div class="c-name">Telegram</div><div class="c-sub">Enni mobil steuern — Bot-Chat von unterwegs</div></div><span class="c-right off"><span class="dot-s"></span>Coming soon</span></div>
+
+          <h3 style="margin-top:22px">Read-only</h3>
+          <div class="crow"><span class="c-logo"><img src="./icons/gitlab.svg" alt=""></span><div><div class="c-name">GitLab</div><div class="c-sub">Code, Projekte, Merge Requests</div></div><span class="c-right ok"><span class="dot-s"></span>Aktiv</span></div>
+          <button class="crow" id="attio-row"><span class="c-logo"><img src="./icons/attio.ico" alt=""></span><div><div class="c-name">Attio</div><div class="c-sub" id="attio-sub">CRM-Daten · read-only</div></div><span class="c-right off" id="attio-status"><span class="dot-s"></span>Verbinden</span></button>
+          <button class="crow" id="slack-row"><span class="c-logo"><img src="./icons/slack.svg" alt=""></span><div><div class="c-name">Slack</div><div class="c-sub" id="slack-sub">Channels · read-only</div></div><span class="c-right off" id="slack-status"><span class="dot-s"></span>Verbinden</span></button>
+          <div class="crow"><span class="c-logo"><img src="./icons/google-drive.svg" alt=""></span><div><div class="c-name">Google Drive</div><div class="c-sub">Dokumente &amp; Ordner</div></div><span class="c-right off"><span class="dot-s"></span>Phase 2</span></div>
+          <div class="crow"><span class="c-logo"><img src="./icons/notion.svg" alt=""></span><div><div class="c-name">Notion</div><div class="c-sub">Seiten &amp; Datenbanken</div></div><span class="c-right off"><span class="dot-s"></span>Phase 2</span></div>
+
+          <h3 style="margin-top:22px">Eigene Tools <span class="lbl-hint" style="text-transform:none;letter-spacing:0">— MCP-Server, Rechte je nach Server</span></h3>
           <div id="dyn-tools"></div>
-          <button class="crow crow-add" data-category="tool"><span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--ink-3);fill:none;stroke-width:1.8;stroke-linecap:round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span><div><div class="c-name" style="color:var(--ink-2)">Eigenes Tool verknüpfen</div><div class="c-sub">jeder MCP-Server per URL · Token optional</div></div></button>
+          <button class="crow crow-add" data-category="tool"><span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--ink-3);fill:none;stroke-width:1.8;stroke-linecap:round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span><div><div class="c-name" style="color:var(--ink-2)">Tool verknüpfen</div><div class="c-sub">jeder MCP-Server per URL · Token optional · erst persönlich, teilbar fürs Team</div></div></button>
         </div>
       </div>
     </section>
