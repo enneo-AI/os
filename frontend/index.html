@@ -145,6 +145,20 @@
   .pod-tile.logo{background:var(--press)}
   .pod-tile img{width:100%;height:100%;object-fit:cover;border-radius:inherit}
   .pset-logo{width:52px;height:52px;border-radius:13px;font-size:16px}
+
+  /* Meine Learnings (Profil) + Lern-Ergebnis (Chat schließen) */
+  .pf-learn-sec{margin:2px 0 16px}
+  #pf-learnings{max-height:190px;overflow-y:auto;margin-top:4px}
+  .pl-item{display:flex;align-items:center;gap:9px;padding:7px 2px;border-bottom:1px solid var(--hair);font-size:12.5px}
+  .pl-item:last-child{border-bottom:0}
+  .pl-item .pl-txt{flex:1;min-width:0;color:var(--ink-2)}
+  .pl-badge{flex:none;font-size:10px;font-weight:650;padding:2px 8px;border-radius:999px;background:var(--press);color:var(--ink-3);white-space:nowrap}
+  .pl-badge.team{background:rgba(46,158,107,.12);color:var(--good)}
+  .pl-badge.prop{background:rgba(123,90,226,.1);color:var(--lila-deep)}
+  .pl-empty{font-size:12.5px;color:var(--ink-3);padding:6px 2px}
+  #cl-learned .cl-li{display:flex;gap:9px;padding:7px 0;font-size:13.5px;border-bottom:1px solid var(--hair);color:var(--ink-2)}
+  #cl-learned .cl-li:last-child{border-bottom:0}
+  #cl-learned .cl-li svg{width:14px;height:14px;flex:none;margin-top:3px;stroke:var(--good);fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
   .sb-sec .sec-add{margin-left:auto;border:0;background:none;color:var(--ink-3);font-size:13px;padding:0 4px;border-radius:5px;cursor:pointer}
   .sb-sec .sec-add:hover{color:var(--lila)}
   .sb-sec{display:flex;align-items:center}
@@ -322,6 +336,15 @@
     max-height:180px;color:var(--ink);
   }
   .ctrack textarea::placeholder{color:var(--ink-3)}
+  /* Mention-Tags im Composer: Backdrop rendert denselben Text unsichtbar und legt
+     Pills hinter @Namen — die Textarea (transparenter Hintergrund) liegt darüber. */
+  .hl-wrap{position:relative}
+  .hl-back{
+    position:absolute;inset:0;pointer-events:none;overflow:hidden;
+    white-space:pre-wrap;word-wrap:break-word;color:transparent;
+    font:inherit;font-size:14.5px;line-height:1.5;padding:2px 6px 10px;
+  }
+  .hl-back .mtag{background:rgba(123,90,226,.16);border-radius:6px;box-shadow:0 0 0 1.5px rgba(123,90,226,.10);padding:1px 0}
   .cbar{display:flex;align-items:center;gap:6px;border-top:1px solid var(--hair);padding-top:9px}
   .cbar-spacer{flex:1}
   .ckey{
@@ -533,7 +556,14 @@
   .task-title.done{text-decoration:line-through;color:var(--ink-3)}
 
   /* Aufgaben-Abschnitte (awork-Muster: einklappbar, Zähler, Inline-Hinzufügen) */
-  .tasks-head{display:flex;margin:2px 0 6px}
+  .tasks-head{display:flex;align-items:center;margin:2px 0 6px}
+  .show-done{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-3);cursor:pointer;user-select:none}
+  .show-done .toggle{transform:scale(.82)}
+  .assign-menu{position:fixed;z-index:90;min-width:200px;background:var(--surface);border:1px solid var(--hair);border-radius:12px;box-shadow:0 8px 28px -8px rgba(29,30,44,.3);padding:5px;max-height:280px;overflow-y:auto}
+  .assign-menu button{display:flex;align-items:center;gap:9px;width:100%;border:0;background:none;text-align:left;padding:7px 9px;border-radius:8px;font-size:13px;color:var(--ink-2)}
+  .assign-menu button:hover{background:var(--hover);color:var(--ink)}
+  .assign-menu .t-av{flex:none}
+  .assign-menu .none-av{width:22px;height:22px;border-radius:50%;border:1.5px dashed var(--ink-3);opacity:.5;flex:none}
   .tsec{margin-bottom:4px}
   .tsec-head{display:flex;align-items:center;gap:7px;width:100%;border:0;background:none;padding:10px 4px 7px;cursor:pointer;user-select:none;text-align:left}
   .tsec-head .tree-chev{transition:transform .18s}
@@ -715,7 +745,10 @@
         <div class="composer">
           <div class="ctrack">
             <div class="chips" id="attach-chips" hidden></div>
-            <textarea id="composer-input" rows="1" placeholder="Frag Enni …" aria-label="Nachricht"></textarea>
+            <div class="hl-wrap">
+              <div class="hl-back" id="hl-back" aria-hidden="true"></div>
+              <textarea id="composer-input" rows="1" placeholder="Frag Enni …" aria-label="Nachricht"></textarea>
+            </div>
             <div class="cbar">
               <input type="file" id="file-input" multiple hidden
                 accept=".csv,.xls,.xlsx,.pdf,.png,.jpg,.jpeg,image/png,image/jpeg,application/pdf,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
@@ -767,16 +800,39 @@
         </div>
 
         <div class="pod-tab" id="ptab-convs">
-          <div class="task-add" style="margin-bottom:10px">
-            <input type="text" id="pod-quick-input" placeholder="Schreib dem Team oder starte eine Aufgabe — @enni ruft Enni dazu …">
-            <button class="btn dark" id="pod-quick-send">Start</button>
-          </div>
           <input type="search" class="wiki-search" id="pod-conv-search" placeholder="Konversationen durchsuchen …" style="width:100%;margin:0 0 10px">
           <div class="list-panel"><div id="pod-conv-list"></div></div>
+          <!-- Vollwertiger Composer wie im Chat: neue Team-Konversation starten (@enni ruft Enni) -->
+          <div class="composer">
+            <div class="ctrack">
+              <div class="chips" id="pod-attach-chips" hidden></div>
+              <div class="hl-wrap">
+                <div class="hl-back" id="pod-hl-back" aria-hidden="true"></div>
+                <textarea id="pod-quick-input" rows="1" placeholder="Schreib dem Team — @enni ruft Enni dazu …" aria-label="Team-Nachricht"></textarea>
+              </div>
+              <div class="cbar">
+                <input type="file" id="pod-file-attach" multiple hidden
+                  accept=".csv,.xls,.xlsx,.pdf,.png,.jpg,.jpeg,image/png,image/jpeg,application/pdf,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+                <button class="ckey" id="pod-attach-btn" title="Datei anhängen — Excel, CSV, JPEG, PNG, PDF">
+                  <svg viewBox="0 0 24 24"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                </button>
+                <button class="ckey" id="pod-mic-btn" title="Diktieren (Deutsch/Englisch)">
+                  <svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+                </button>
+                <span class="cbar-spacer"></span>
+                <button class="send" id="pod-send-btn" aria-label="Senden">
+                  <svg viewBox="0 0 24 24"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="pod-tab" id="ptab-tasks" hidden>
-          <div class="tasks-head"><button class="btn quiet" id="section-add-btn">＋ Neuer Abschnitt</button></div>
+          <div class="tasks-head">
+            <label class="show-done"><label class="toggle"><input type="checkbox" id="tasks-show-done"><span></span></label><span>Erledigte anzeigen</span></label>
+            <button class="btn quiet" id="section-add-btn">＋ Neuer Abschnitt</button>
+          </div>
           <div class="list-panel"><div id="pod-task-list"></div></div>
         </div>
 
@@ -1160,13 +1216,20 @@
 <!-- ================= CHAT-SCHLIESSEN MODAL ================= -->
 <div class="overlay" id="close-overlay">
   <div class="modal" role="dialog" aria-modal="true">
-    <h3>Chat schließen</h3>
-    <p class="pf-hint" style="margin-top:0">Bei „Lernen &amp; Schließen" zieht Enni dauerhafte Learnings aus dieser Konversation — sie wirken sofort für dich, der Admin entscheidet über die Team-weite Übernahme.</p>
-    <div class="err" id="cl-err"></div>
-    <div class="close-actions">
-      <button class="btn dark" id="cl-learn">Lernen &amp; Schließen</button>
-      <button class="btn quiet" id="cl-close">Chat schließen</button>
-      <button class="btn quiet" id="cl-cancel">Abbrechen</button>
+    <h3 id="cl-title">Chat schließen</h3>
+    <div id="cl-choose">
+      <p class="pf-hint" style="margin-top:0">Bei „Lernen &amp; Schließen" zieht Enni dauerhafte Learnings aus dieser Konversation — sie wirken sofort für dich, der Admin entscheidet über die Team-weite Übernahme.</p>
+      <div class="err" id="cl-err"></div>
+      <div class="close-actions">
+        <button class="btn dark" id="cl-learn">Lernen &amp; Schließen</button>
+        <button class="btn quiet" id="cl-close">Chat schließen</button>
+        <button class="btn quiet" id="cl-cancel">Abbrechen</button>
+      </div>
+    </div>
+    <div id="cl-result" hidden>
+      <div id="cl-learned"></div>
+      <p class="pf-hint" id="cl-result-hint"></p>
+      <div class="m-actions"><button class="btn dark" id="cl-done">Fertig</button></div>
     </div>
   </div>
 </div>
@@ -1288,6 +1351,15 @@
     <label for="pf-email">E-Mail</label>
     <input type="email" id="pf-email" disabled>
     <p class="pf-hint">enneo-Konto — die E-Mail-Adresse ist fest (immer @enneo.ai).</p>
+    <label for="pf-role">Rolle im Unternehmen</label>
+    <input type="text" id="pf-role" placeholder="z. B. Head of Sales, Implementation Manager …">
+    <label for="pf-about">Über mich — womit soll Enni am meisten helfen?</label>
+    <textarea id="pf-about" rows="3" placeholder="Verantwortlichkeiten, aktuelle Schwerpunkte, typische Aufgaben. Enni personalisiert seine Antworten darauf."></textarea>
+    <div class="pf-learn-sec">
+      <label>Meine Learnings</label>
+      <p class="pf-hint" style="margin-top:2px">Was Enni über die Zusammenarbeit mit dir gelernt hat (Feedback-Button, „Lernen &amp; Schließen"). Persönliche Learnings wirken nur in deinem Account; team-weite gelten erst nach Admin-Freigabe für alle.</p>
+      <div id="pf-learnings"></div>
+    </div>
     <label for="pf-pw">Neues Passwort</label>
     <input type="password" id="pf-pw" autocomplete="new-password" placeholder="leer lassen = unverändert">
     <label for="pf-pw2">Passwort wiederholen</label>

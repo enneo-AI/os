@@ -128,10 +128,12 @@ async function renderFooterProfile() {
 let pendingAvatar = null
 async function openProfile() {
   const { data: p } = await sb
-    .from('profiles').select('display_name, avatar_url, email').eq('id', session.user.id).maybeSingle()
+    .from('profiles').select('display_name, avatar_url, email, role_title, about').eq('id', session.user.id).maybeSingle()
   pendingAvatar = null
   $('pf-name').value = p?.display_name || ''
   $('pf-email').value = p?.email || session.user.email
+  $('pf-role').value = p?.role_title || ''
+  $('pf-about').value = p?.about || ''
   $('pf-pw').value = ''
   $('pf-pw2').value = ''
   $('pf-err').textContent = ''
@@ -139,6 +141,36 @@ async function openProfile() {
   if (p?.avatar_url) prev.innerHTML = `<img src="${esc(p.avatar_url)}" alt="">`
   else prev.textContent = (p?.display_name || p?.email || '?').split(' ').map((x) => x[0]).slice(0, 2).join('').toUpperCase()
   $('profile-overlay').classList.add('open')
+  loadMyLearnings()
+}
+
+// Meine Learnings: eigene Einträge mit Status (persönlich / team-weit vorgeschlagen / team-weit aktiv)
+async function loadMyLearnings() {
+  const box = $('pf-learnings')
+  box.innerHTML = ''
+  const { data } = await sb
+    .from('learnings').select('id, content, share_status, enabled, created_at')
+    .eq('user_id', session.user.id).order('created_at', { ascending: false })
+  if (!data?.length) {
+    box.innerHTML = '<div class="pl-empty">Noch keine Learnings — nutze den Feedback-Button unter Enni-Antworten oder „Lernen &amp; Schließen".</div>'
+    return
+  }
+  const badge = (l) =>
+    l.share_status === 'approved' ? '<span class="pl-badge team">Team-weit aktiv</span>'
+    : l.share_status === 'proposed' ? '<span class="pl-badge prop">Team-weit vorgeschlagen</span>'
+    : '<span class="pl-badge">Persönlich</span>'
+  for (const l of data) {
+    const row = document.createElement('div')
+    row.className = 'pl-item'
+    row.innerHTML = `<span class="pl-txt">${esc(l.content)}</span>${badge(l)}
+      <span class="sb-act pl-del" title="Learning löschen">${X_SVG}</span>`
+    row.querySelector('.pl-del').addEventListener('click', async () => {
+      if (!window.confirm('Dieses Learning löschen? Es wirkt danach nicht mehr in deinen Konversationen.')) return
+      await sb.from('learnings').delete().eq('id', l.id)
+      loadMyLearnings()
+    })
+    box.appendChild(row)
+  }
 }
 document.querySelector('.sb-foot > div').addEventListener('click', openProfile)
 $('f-avatar').addEventListener('click', openProfile)
@@ -161,7 +193,11 @@ $('pf-save').addEventListener('click', async () => {
   if (pw && pw !== $('pf-pw2').value) { err.textContent = 'Passwörter stimmen nicht überein.'; return }
   $('pf-save').disabled = true
   try {
-    const patch = { display_name: $('pf-name').value.trim() || null }
+    const patch = {
+      display_name: $('pf-name').value.trim() || null,
+      role_title: $('pf-role').value.trim(),
+      about: $('pf-about').value.trim(),
+    }
     if (pendingAvatar) {
       // Alte eigenen Avatare aufräumen, dann neuen hochladen (public URL, Cache-Buster im Namen)
       const { data: old } = await sb.storage.from('avatars').list('', { search: session.user.id })
@@ -583,7 +619,14 @@ $('chat-close').addEventListener('click', () => {
   $('cl-err').textContent = ''
   $('cl-learn').disabled = false
   $('cl-learn').textContent = 'Lernen & Schließen'
+  $('cl-title').textContent = 'Chat schließen'
+  $('cl-choose').hidden = false
+  $('cl-result').hidden = true
   $('close-overlay').classList.add('open')
+})
+$('cl-done').addEventListener('click', () => {
+  $('close-overlay').classList.remove('open')
+  newConversation()
 })
 $('cl-cancel').addEventListener('click', () => $('close-overlay').classList.remove('open'))
 $('cl-close').addEventListener('click', () => {
@@ -601,13 +644,21 @@ $('cl-learn').addEventListener('click', async () => {
     })
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
-    $('close-overlay').classList.remove('open')
+    // Ergebnis im Modal zeigen (keine Browser-Alerts)
+    $('cl-choose').hidden = true
+    $('cl-result').hidden = false
     if (data.learnings?.length) {
-      window.alert('Enni hat gelernt:\n\n' + data.learnings.map((l) => '• ' + l).join('\n') + '\n\nWirkt sofort für dich — der Admin prüft die Team-weite Übernahme.')
+      $('cl-title').textContent = 'Enni hat gelernt'
+      $('cl-learned').innerHTML = data.learnings
+        .map((l) => `<div class="cl-li">${CHECK_SVG}<span>${esc(l)}</span></div>`)
+        .join('')
+      $('cl-result-hint').textContent =
+        'Gespeichert unter Profil → Meine Learnings. Wirkt ab sofort in deinen Konversationen — der Admin entscheidet, ob es team-weit (für alle Accounts) übernommen wird.'
     } else {
-      window.alert(data.hinweis || 'Nichts dauerhaft Lernbares in dieser Konversation.')
+      $('cl-title').textContent = 'Nichts zu lernen'
+      $('cl-learned').innerHTML = ''
+      $('cl-result-hint').textContent = data.hinweis || 'Nichts dauerhaft Lernbares in dieser Konversation — der Chat wird geschlossen.'
     }
-    newConversation()
   } catch (err) {
     $('cl-err').textContent = 'Fehler: ' + err.message
     $('cl-learn').disabled = false
@@ -1148,14 +1199,49 @@ function renderPodConvs(filter) {
     list.appendChild(row)
   }
   if (!items.length)
-    list.innerHTML = `<div class="empty-plain">${filter ? 'Keine Treffer.' : 'Noch keine Konversationen — schreib oben die erste Nachricht, alle im Pod können mitlesen und mitschreiben.'}</div>`
+    list.innerHTML = `<div class="empty-plain">${filter ? 'Keine Treffer.' : 'Noch keine Konversationen — schreib unten die erste Nachricht, alle im Pod können mitlesen und mitschreiben.'}</div>`
 }
 $('pod-conv-search').addEventListener('input', () => renderPodConvs($('pod-conv-search').value.trim().toLowerCase()))
 
+// Pod-Composer: vollwertig wie im Chat (Anhänge, Diktat, Mention-Tags) — startet eine
+// neue Team-Konversation und übergibt Text + Dateien an den normalen Send-Pfad.
+let podPendingFiles = []
+function renderPodChips() {
+  const box = $('pod-attach-chips')
+  box.hidden = !podPendingFiles.length
+  box.innerHTML = ''
+  podPendingFiles.forEach((p, i) => {
+    const chip = document.createElement('span')
+    chip.className = 'chip'
+    chip.innerHTML = `<span class="ftype">${ALLOWED_FILES[p.type]}</span>${esc(p.file.name)}<button class="x" title="Entfernen">✕</button>`
+    chip.querySelector('.x').addEventListener('click', () => { podPendingFiles.splice(i, 1); renderPodChips() })
+    box.appendChild(chip)
+  })
+}
+$('pod-attach-btn').addEventListener('click', () => $('pod-file-attach').click())
+$('pod-file-attach').addEventListener('change', () => {
+  for (const f of $('pod-file-attach').files) {
+    const type = ALLOWED_FILES[f.type] ? f.type : extType(f.name)
+    if (!type || !ALLOWED_FILES[type]) { window.alert(`Dateityp nicht erlaubt: ${f.name}`); continue }
+    if (f.size > 10 * 1024 * 1024) { window.alert(`${f.name} ist größer als 10 MB`); continue }
+    if (podPendingFiles.length >= 4) break
+    podPendingFiles.push({ file: f, type })
+  }
+  $('pod-file-attach').value = ''
+  renderPodChips()
+})
+
 function podQuickStart() {
   const text = $('pod-quick-input').value.trim()
-  if (!text) return
+  if (!text && !podPendingFiles.length) return
   $('pod-quick-input').value = ''
+  autosizeEl($('pod-quick-input'))
+  updateMentionBacks()
+  // Anhänge in den normalen Send-Pfad übergeben
+  pendingFiles = podPendingFiles
+  podPendingFiles = []
+  renderPodChips()
+  renderChips()
   convPod = activePod
   newConversation()
   $('chat-title').textContent = `Neue Konversation · ${activePod.name}`
@@ -1163,12 +1249,18 @@ function podQuickStart() {
   autosize()
   send()
 }
-$('pod-quick-send').addEventListener('click', podQuickStart)
-$('pod-quick-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') podQuickStart() })
+$('pod-send-btn').addEventListener('click', podQuickStart)
+$('pod-quick-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); podQuickStart() }
+})
+$('pod-quick-input').addEventListener('input', () => { autosizeEl($('pod-quick-input')); updateMentionBacks() })
+$('pod-quick-input').addEventListener('scroll', () => updateMentionBacks())
+$('pod-mic-btn').addEventListener('click', () => startDictation($('pod-mic-btn'), $('pod-quick-input')))
 
 // --- Tab: Aufgaben (awork-Muster: einklappbare Abschnitte, Zähler, Inline-Hinzufügen)
 // Abschnitte entstehen durch Benutzung (wie Wiki-Ordner): section-Feld auf pod_tasks, '' = "Allgemein".
 const collapsedTaskSections = new Set(JSON.parse(localStorage.getItem('tsecCollapsed') || '[]'))
+let tasksShowDone = localStorage.getItem('tasksShowDone') !== '0'
 const taskSectionDrafts = {} // podId -> [namen] — noch leere Abschnitte (existieren erst mit der ersten Aufgabe)
 let taskAdding = null // Abschnitt, dessen Inline-Eingabe gerade offen ist
 
@@ -1176,6 +1268,7 @@ const CHECK_SVG = '<svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>'
 const CAL_SVG = '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>'
 const X_SVG = '<svg viewBox="0 0 24 24"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg>'
 const PEN_SVG = '<svg viewBox="0 0 24 24"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>'
+const PERSON_SVG = '<svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>'
 
 function fmtDue(d) {
   return new Date(d + 'T00:00').toLocaleDateString('de-DE', { day: 'numeric', month: 'long' })
@@ -1239,8 +1332,11 @@ function renderTaskSection(section, items, profs) {
   })
   wrap.appendChild(head)
   if (!open) return wrap
-  // Offene zuerst, Erledigte ans Ende (stabil in Anlage-Reihenfolge)
-  const sorted = [...items].sort((a, b) => (a.status === 'done') - (b.status === 'done'))
+  // Offene zuerst, Erledigte ans Ende (stabil in Anlage-Reihenfolge);
+  // Erledigte optional ausblenden (Toggle im Kopf) — der Zähler zeigt sie weiterhin
+  const sorted = [...items]
+    .sort((a, b) => (a.status === 'done') - (b.status === 'done'))
+    .filter((t) => tasksShowDone || t.status !== 'done')
   for (const t of sorted) wrap.appendChild(renderTaskRow(t, profs))
   wrap.appendChild(taskAdding === section ? taskInputRow(section, profs) : taskGhostRow(section))
   return wrap
@@ -1285,11 +1381,12 @@ function renderTaskRow(t, profs) {
       <div class="r-sub">von ${esc(profName(profs, t.created_by))}${t.conversation_id ? ' · <a href="#" class="task-conv" style="color:var(--lila-deep)">zur Konversation</a>' : ''}</div></div>
     <span class="t-meta">
       <span class="t-acts">
+        <span class="sb-act t-assign" title="Person zuweisen …">${PERSON_SVG}</span>
         <span class="sb-act t-date" title="Fällig am …">${CAL_SVG}</span>
         <span class="sb-act t-del" title="Löschen">${X_SVG}</span>
       </span>
       ${t.due_date ? `<span class="t-due${isOverdue(t) ? ' over' : ''}" title="Fällig">${fmtDue(t.due_date)}</span>` : ''}
-      ${assignee ? `<span class="avatar t-av" title="${esc(assignee)}">${esc(podInitials(assignee))}</span>` : ''}
+      ${assignee ? `<span class="avatar t-av t-av-btn" title="Zugewiesen an ${esc(assignee)} — Klick ändert" style="cursor:pointer">${esc(podInitials(assignee))}</span>` : ''}
       <button class="task-run" title="Enni an dieser Aufgabe arbeiten lassen">▶</button>
     </span>
     <input type="date" class="t-date-input" style="position:absolute;width:0;height:0;opacity:0;border:0;padding:0">`
@@ -1317,6 +1414,8 @@ function renderTaskRow(t, profs) {
     await sb.from('pod_tasks').delete().eq('id', t.id)
     loadPodTasks()
   })
+  row.querySelector('.t-assign').addEventListener('click', (e) => openAssignMenu(e.currentTarget, t, profs))
+  row.querySelector('.t-av-btn')?.addEventListener('click', (e) => openAssignMenu(e.currentTarget, t, profs))
   return row
 }
 
@@ -1370,6 +1469,46 @@ function taskInputRow(section, profs) {
   return row
 }
 
+$('tasks-show-done').checked = tasksShowDone
+$('tasks-show-done').addEventListener('change', () => {
+  tasksShowDone = $('tasks-show-done').checked
+  localStorage.setItem('tasksShowDone', tasksShowDone ? '1' : '0')
+  loadPodTasks()
+})
+
+// Aufgabe einem Pod-Mitglied zuweisen (kleines Popover am Personen-Icon/Avatar)
+function openAssignMenu(anchor, t, profs) {
+  document.querySelector('.assign-menu')?.remove()
+  const candidates = activePod.open
+    ? profs
+    : profs.filter((p) => activePod.members.includes(p.id) || p.id === activePod.created_by)
+  const menu = document.createElement('div')
+  menu.className = 'assign-menu'
+  const entry = (html, val) => {
+    const b = document.createElement('button')
+    b.innerHTML = html
+    b.addEventListener('click', async () => {
+      menu.remove()
+      await sb.from('pod_tasks').update({ assignee: val }).eq('id', t.id)
+      loadPodTasks()
+    })
+    return b
+  }
+  menu.appendChild(entry('<span class="none-av"></span>Niemand zugewiesen', null))
+  for (const p of candidates) {
+    const name = p.display_name || p.email
+    menu.appendChild(entry(`<span class="avatar t-av">${esc(podInitials(name))}</span>${esc(name)}`, p.id))
+  }
+  document.body.appendChild(menu)
+  const r = anchor.getBoundingClientRect()
+  menu.style.top = Math.min(r.bottom + 6, window.innerHeight - menu.offsetHeight - 12) + 'px'
+  menu.style.left = Math.max(12, r.right - menu.offsetWidth) + 'px'
+  setTimeout(() => {
+    const close = (e) => { if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', close) } }
+    document.addEventListener('click', close)
+  }, 0)
+}
+
 $('section-add-btn').addEventListener('click', () => {
   const list = $('pod-task-list')
   if (list.querySelector('.tsec-new')) { list.querySelector('.tsec-new input').focus(); return }
@@ -1405,7 +1544,8 @@ $('tm-cancel').addEventListener('click', () => $('task-overlay').classList.remov
 $('tm-start').addEventListener('click', async () => {
   const custom = $('tm-message').value.trim()
   $('task-overlay').classList.remove('open')
-  await sb.from('pod_tasks').update({ status: 'in_progress', assignee: session.user.id }).eq('id', taskForModal.id)
+  // Explizit zugewiesene Person nicht überschreiben — nur setzen, wenn noch niemand zugewiesen ist
+  await sb.from('pod_tasks').update({ status: 'in_progress', assignee: taskForModal.assignee || session.user.id }).eq('id', taskForModal.id)
   convPod = activePod
   pendingTaskId = taskForModal.id
   newConversation()
@@ -1665,29 +1805,31 @@ let dictBase = ''
 
 function sttLang() { return localStorage.getItem('enni-stt-lang') || 'de-DE' }
 
-$('mic-btn').addEventListener('click', () => {
+function startDictation(btn, textarea, withLangHint = false) {
   if (!SpeechRec) { showHint('Diktat wird von diesem Browser nicht unterstützt (Chrome/Edge/Safari nutzen).'); return }
   if (dictating) { recognition?.stop(); return }
   recognition = new SpeechRec()
   recognition.lang = sttLang()
   recognition.continuous = true
   recognition.interimResults = true
-  dictBase = $('composer-input').value ? $('composer-input').value.trim() + ' ' : ''
+  dictBase = textarea.value ? textarea.value.trim() + ' ' : ''
   recognition.onresult = (e) => {
     let text = ''
     for (const res of e.results) text += res[0].transcript
-    $('composer-input').value = dictBase + text
-    autosize()
+    textarea.value = dictBase + text
+    autosizeEl(textarea)
+    updateMentionBacks()
   }
   recognition.onend = () => {
     dictating = false
-    $('mic-btn').classList.remove('recording')
-    renderCtx()
+    btn.classList.remove('recording')
+    if (withLangHint) renderCtx()
   }
   recognition.onerror = (e) => { if (e.error !== 'aborted') showHint('Diktat-Fehler: ' + e.error) }
   recognition.start()
   dictating = true
-  $('mic-btn').classList.add('recording')
+  btn.classList.add('recording')
+  if (!withLangHint) return
   const other = sttLang() === 'de-DE' ? 'en-US' : 'de-DE'
   const hint = $('ctx-hint')
   hint.hidden = false
@@ -1697,17 +1839,41 @@ $('mic-btn').addEventListener('click', () => {
     ev.preventDefault()
     localStorage.setItem('enni-stt-lang', other)
     recognition.stop()
-    setTimeout(() => $('mic-btn').click(), 300)
+    setTimeout(() => btn.click(), 300)
   })
-})
+}
+$('mic-btn').addEventListener('click', () => startDictation($('mic-btn'), $('composer-input'), true))
 
 // ============================================================ Composer-Autosize
-function autosize() {
-  const t = $('composer-input')
+function autosizeEl(t) {
   t.style.height = 'auto'
   t.style.height = Math.min(t.scrollHeight, 180) + 'px'
 }
+function autosize() {
+  autosizeEl($('composer-input'))
+  updateMentionBacks()
+}
 $('composer-input').addEventListener('input', autosize)
+$('composer-input').addEventListener('scroll', () => updateMentionBacks())
+
+// ============================================================ Mention-Tags im Composer
+// Backdrop hinter der Textarea rendert denselben Text transparent und legt Pills
+// hinter erkannte @Mentions (Enni + alle Team-Namen) — sieht aus wie ein Tag.
+const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+function renderMentionBack(textarea, back) {
+  if (!back) return
+  const val = textarea.value
+  if (!val) { back.innerHTML = ''; return }
+  const names = ['enni', ...(profilesCache || []).map((p) => p.display_name || p.email).filter(Boolean)]
+  const re = new RegExp(`@(${names.sort((a, b) => b.length - a.length).map(escRe).join('|')})`, 'gi')
+  back.innerHTML = esc(val).replace(re, '<span class="mtag">$&</span>')
+  back.scrollTop = textarea.scrollTop
+}
+function updateMentionBacks() {
+  renderMentionBack($('composer-input'), $('hl-back'))
+  const pod = $('pod-quick-input')
+  if (pod) renderMentionBack(pod, $('pod-hl-back'))
+}
 
 // ============================================================ Senden + Streaming
 async function send() {
@@ -2078,6 +2244,8 @@ function mentionPick(i) {
   input.focus()
   input.setSelectionRange(caret, caret)
   if (input.id === 'composer-input') autosize()
+  else autosizeEl(input)
+  updateMentionBacks()
 }
 
 function attachMentions(input, getPod) {

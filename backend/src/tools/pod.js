@@ -56,7 +56,7 @@ export async function runPodTool(name, input, ctx) {
 
   if (name === 'pod_list_tasks') {
     const [{ data }, byId] = await Promise.all([
-      db.from('pod_tasks').select('title, status, section, due_date, created_by, created_at').eq('pod_id', podId).order('section').order('created_at'),
+      db.from('pod_tasks').select('title, status, section, due_date, assignee, created_by, created_at').eq('pod_id', podId).order('section').order('created_at'),
       names(),
     ])
     if (!data?.length) return 'Keine Aufgaben in diesem Pod.'
@@ -69,7 +69,7 @@ export async function runPodTool(name, input, ctx) {
     return [...bySection.entries()]
       .map(([section, ts]) =>
         `## ${section}\n` +
-        ts.map((t) => `- [${t.status}] ${t.title}${t.due_date ? ` — fällig ${t.due_date}` : ''} (von ${byId[t.created_by] || '?'})`).join('\n'))
+        ts.map((t) => `- [${t.status}] ${t.title}${t.due_date ? ` — fällig ${t.due_date}` : ''}${t.assignee ? ` — zugewiesen an ${byId[t.assignee] || '?'}` : ''} (von ${byId[t.created_by] || '?'})`).join('\n'))
       .join('\n\n')
   }
 

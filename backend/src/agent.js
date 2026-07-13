@@ -9,6 +9,7 @@ import { fileToolDefinitions, runFileTool } from './tools/files.js'
 import { attioToolDefinitions, runAttioTool } from './tools/attio.js'
 import { slackToolDefinitions, runSlackTool } from './tools/slack.js'
 import { learningsPromptBlock } from './learnings.js'
+import { db } from './db.js'
 
 const anthropic = new Anthropic()
 const DEFAULT_MODEL = process.env.ENNI_MODEL || 'claude-opus-4-8'
@@ -104,6 +105,23 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
   } catch (err) {
     console.error('Learnings-Load fehlgeschlagen:', err.message)
   }
+  // Account-Personalisierung: Rolle + Fokus aus dem Profil (Profil-Einstellungen)
+  let personalBlock = null
+  try {
+    if (ctx.userId) {
+      const { data: prof } = await db
+        .from('profiles').select('display_name, email, role_title, about').eq('id', ctx.userId).maybeSingle()
+      if (prof && (prof.display_name || prof.role_title || prof.about)) {
+        personalBlock =
+          `# Dein Gegenüber\nDu sprichst mit ${prof.display_name || prof.email}.` +
+          (prof.role_title ? ` Rolle bei enneo: ${prof.role_title}.` : '') +
+          (prof.about ? `\nSelbstbeschreibung (womit Enni am meisten helfen soll): ${prof.about}` : '') +
+          `\nPersonalisiere Tiefe, Fokus und Beispiele auf diese Rolle — ohne die Person in jeder Antwort explizit zu erwähnen.`
+      }
+    }
+  } catch (err) {
+    console.error('Profil-Load fehlgeschlagen:', err.message)
+  }
   // Aktuelles Datum als eigener (uncached) Block — sonst kann Enni "diese Woche",
   // "gestern", "letzter Monat" nicht einordnen (z.B. bei Attio-/Slack-/Report-Fragen).
   // Wochen-Grenzen explizit mitgeben: Modelle verrechnen sich sonst gern beim Mo-So-Mapping.
@@ -121,6 +139,7 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
     { type: 'text', text: `Aktuelles Datum und Uhrzeit: ${now} (Europe/Berlin). Die aktuelle Woche läuft von Montag, ${d(monday)}, bis Sonntag, ${d(sunday)}. Rechne relative Zeitangaben ("diese Woche", "gestern", "letzter Monat") immer davon ausgehend.` },
     ...(skillsBlock ? [{ type: 'text', text: skillsBlock }] : []),
     ...(learningsBlock ? [{ type: 'text', text: learningsBlock }] : []),
+    ...(personalBlock ? [{ type: 'text', text: personalBlock }] : []),
     ...(extraSystem ? [{ type: 'text', text: extraSystem }] : []),
   ]
   // Statische Tools + Pod-Kontext-Tools (nur in Pod-Konversationen)
