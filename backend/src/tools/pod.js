@@ -9,7 +9,7 @@ import { db } from '../db.js'
 export const podToolDefinitions = [
   {
     name: 'pod_list_tasks',
-    description: 'Listet die Aufgaben (To-dos) dieses Pods mit Status und Ersteller.',
+    description: 'Listet die Aufgaben (To-dos) dieses Pods, gruppiert nach Abschnitt, mit Status, Fälligkeit und Ersteller.',
     input_schema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
@@ -56,13 +56,21 @@ export async function runPodTool(name, input, ctx) {
 
   if (name === 'pod_list_tasks') {
     const [{ data }, byId] = await Promise.all([
-      db.from('pod_tasks').select('title, status, created_by, created_at').eq('pod_id', podId).order('created_at'),
+      db.from('pod_tasks').select('title, status, section, due_date, created_by, created_at').eq('pod_id', podId).order('section').order('created_at'),
       names(),
     ])
     if (!data?.length) return 'Keine Aufgaben in diesem Pod.'
-    return data
-      .map((t) => `- [${t.status}] ${t.title} (von ${byId[t.created_by] || '?'})`)
-      .join('\n')
+    const bySection = new Map()
+    for (const t of data) {
+      const s = t.section || 'Allgemein'
+      if (!bySection.has(s)) bySection.set(s, [])
+      bySection.get(s).push(t)
+    }
+    return [...bySection.entries()]
+      .map(([section, ts]) =>
+        `## ${section}\n` +
+        ts.map((t) => `- [${t.status}] ${t.title}${t.due_date ? ` — fällig ${t.due_date}` : ''} (von ${byId[t.created_by] || '?'})`).join('\n'))
+      .join('\n\n')
   }
 
   if (name === 'pod_list_files') {

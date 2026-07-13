@@ -360,7 +360,10 @@ async function openConversation(c) {
   // Grüner "fertig"-Punkt erlischt beim Öffnen
   if (c.unread) {
     c.unread = false
-    sb.from('conversations').update({ unread: false }).eq('id', c.id).then(() => loadConversations())
+    sb.from('conversations').update({ unread: false }).eq('id', c.id).then(() => {
+      loadConversations()
+      if (c.pod_id) loadPods() // grüner Punkt am Pod erlischt mit
+    })
   }
   $('chat-close').hidden = false
   convPod = c.pod_id ? podsList.find((p) => p.id === c.pod_id) || convPod : null
@@ -982,21 +985,39 @@ const profName = (list, id) => {
   return p ? p.display_name || p.email : '—'
 }
 
+function podInitials(name) {
+  const w = (name || '').trim().split(/\s+/)
+  return ((w[0]?.[0] || '') + (w[1]?.[0] || '')).toUpperCase() || '·'
+}
+
 async function loadPods() {
-  const [{ data: pods }, { data: members }] = await Promise.all([
+  const [{ data: pods }, { data: members }, { data: podConvs }] = await Promise.all([
     sb.from('pods').select('*').order('created_at'),
     sb.from('pod_members').select('pod_id, user_id'),
+    // Aggregierter Status pro Pod: arbeitet dort etwas / liegt Ungelesenes?
+    sb.from('conversations').select('id, pod_id, working, unread').not('pod_id', 'is', null),
   ])
   podsList = (pods || []).map((p) => ({
     ...p,
     members: (members || []).filter((m) => m.pod_id === p.id).map((m) => m.user_id),
   }))
+  const status = {}
+  for (const c of podConvs || []) {
+    const s = (status[c.pod_id] ||= { work: false, done: false })
+    if (c.working || activeStreams.has(c.id)) s.work = true
+    if (c.unread) s.done = true
+  }
   const list = $('pod-list')
   list.innerHTML = ''
   for (const p of podsList) {
     const btn = document.createElement('button')
-    btn.className = 'sb-item' + (activePod?.id === p.id ? ' on' : '')
-    btn.innerHTML = `<span class="txt">${esc(p.name)}</span>${p.open ? '' : LOCK_SVG}`
+    btn.className = 'sb-item pod' + (activePod?.id === p.id ? ' on' : '')
+    btn.dataset.pod = p.id
+    const st = status[p.id]
+    const ind = st?.work
+      ? '<span class="c-ind work" title="Enni arbeitet in diesem Pod …"></span>'
+      : st?.done ? '<span class="c-ind done" title="Fertig — noch nicht angesehen"></span>' : ''
+    btn.innerHTML = `<span class="pod-tile">${esc(podInitials(p.name))}</span><span class="txt">${esc(p.name)}</span><span class="sb-right">${ind}${p.open ? '' : LOCK_SVG}</span>`
     btn.addEventListener('click', () => openPod(p))
     list.appendChild(btn)
   }
@@ -1009,7 +1030,7 @@ async function openPod(pod, tab = 'convs') {
   convPod = null
   $('pod-title').textContent = pod.name
   $('pod-sub').textContent = pod.description || 'Pod · gemeinsamer Kontext für alle Mitglieder'
-  document.querySelectorAll('#pod-list .sb-item').forEach((x) => x.classList.toggle('on', x.querySelector('.txt')?.textContent === pod.name))
+  document.querySelectorAll('#pod-list .sb-item').forEach((x) => x.classList.toggle('on', x.dataset.pod === pod.id))
   document.querySelectorAll('#conv-list .sb-item').forEach((x) => x.classList.remove('on'))
   switchPodTab(tab)
   activateArea('chat', 'pod')
@@ -1074,50 +1095,233 @@ function podQuickStart() {
 $('pod-quick-send').addEventListener('click', podQuickStart)
 $('pod-quick-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') podQuickStart() })
 
-// --- Tab: Aufgaben
+// --- Tab: Aufgaben (awork-Muster: einklappbare Abschnitte, Zähler, Inline-Hinzufügen)
+// Abschnitte entstehen durch Benutzung (wie Wiki-Ordner): section-Feld auf pod_tasks, '' = "Allgemein".
+const collapsedTaskSections = new Set(JSON.parse(localStorage.getItem('tsecCollapsed') || '[]'))
+const taskSectionDrafts = {} // podId -> [namen] — noch leere Abschnitte (existieren erst mit der ersten Aufgabe)
+let taskAdding = null // Abschnitt, dessen Inline-Eingabe gerade offen ist
+
+const CHECK_SVG = '<svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>'
+const CAL_SVG = '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>'
+const X_SVG = '<svg viewBox="0 0 24 24"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg>'
+const PEN_SVG = '<svg viewBox="0 0 24 24"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>'
+
+function fmtDue(d) {
+  return new Date(d + 'T00:00').toLocaleDateString('de-DE', { day: 'numeric', month: 'long' })
+}
+function isOverdue(t) {
+  return t.due_date && t.status !== 'done' && t.due_date < new Date().toISOString().slice(0, 10)
+}
+
 async function loadPodTasks() {
+  const podId = activePod.id
   const [{ data }, profs] = await Promise.all([
-    sb.from('pod_tasks').select('*').eq('pod_id', activePod.id).order('created_at', { ascending: false }),
+    sb.from('pod_tasks').select('*').eq('pod_id', podId).order('created_at'),
     allProfiles(),
   ])
+  const tasks = data || []
+  // Gruppen: "Allgemein" ('') zuerst, dann Abschnitte in Reihenfolge der ersten Verwendung, dann leere Entwürfe
+  const groups = new Map([['', []]])
+  for (const t of tasks) {
+    if (!groups.has(t.section)) groups.set(t.section, [])
+    groups.get(t.section).push(t)
+  }
+  for (const d of taskSectionDrafts[podId] || []) if (!groups.has(d)) groups.set(d, [])
   const list = $('pod-task-list')
   list.innerHTML = ''
-  for (const t of data || []) {
-    const row = document.createElement('div')
-    row.className = 'row'
-    const statusPill = t.status === 'in_progress' ? '<span class="role admin">Enni arbeitet</span>' : t.status === 'done' ? '<span class="role" style="background:rgba(46,158,107,.12);color:var(--good)">Erledigt</span>' : '<span class="role">Offen</span>'
-    row.innerHTML = `
-      <div style="display:flex;align-items:center;gap:11px">
-        <input type="checkbox" class="task-check" ${t.status === 'done' ? 'checked' : ''}>
-        <div><div class="r-name task-title${t.status === 'done' ? ' done' : ''}">${esc(t.title)}</div>
-        <div class="r-sub">von ${esc(profName(profs, t.created_by))}${t.conversation_id ? ' · <a href="#" class="task-conv" style="color:var(--lila-deep)">zur Konversation</a>' : ''}</div></div>
-      </div>
-      <div>${statusPill}</div>
-      <button class="task-run" title="Enni an dieser Aufgabe arbeiten lassen">▶</button>`
-    row.querySelector('.task-check').addEventListener('change', async (e) => {
-      await sb.from('pod_tasks').update({ status: e.target.checked ? 'done' : 'open' }).eq('id', t.id)
-      loadPodTasks()
-    })
-    row.querySelector('.task-run').addEventListener('click', () => openTaskModal(t))
-    row.querySelector('.task-conv')?.addEventListener('click', async (e) => {
-      e.preventDefault()
-      const { data: c } = await sb.from('conversations').select('*').eq('id', t.conversation_id).maybeSingle()
-      if (c) { convPod = activePod; openConversation(c) }
-    })
-    list.appendChild(row)
+  for (const [section, items] of groups) {
+    if (section === '' && !items.length && groups.size > 1 && taskAdding !== '') continue
+    list.appendChild(renderTaskSection(section, items, profs))
   }
-  if (!(data || []).length)
-    list.innerHTML = '<div class="empty-plain">Keine Aufgaben — jeder kann welche anlegen und Enni per ▶ daran arbeiten lassen.</div>'
+  // Offene Inline-Eingabe fokussieren (nach Re-Render, z.B. direkt nach dem Speichern)
+  list.querySelector('.t-inline')?.focus()
 }
-$('task-add-btn').addEventListener('click', addTask)
-$('task-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') addTask() })
-async function addTask() {
-  const title = $('task-input').value.trim()
-  if (!title) return
-  await sb.from('pod_tasks').insert({ pod_id: activePod.id, title, created_by: session.user.id })
-  $('task-input').value = ''
-  loadPodTasks()
+
+function renderTaskSection(section, items, profs) {
+  const podId = activePod.id
+  const key = podId + ':' + section
+  const open = !collapsedTaskSections.has(key)
+  const doneN = items.filter((t) => t.status === 'done').length
+  const wrap = document.createElement('div')
+  wrap.className = 'tsec'
+  const head = document.createElement('button')
+  head.className = 'tsec-head' + (open ? ' open' : '')
+  head.innerHTML = `<span class="tree-chev">▶</span><span class="tsec-title">${esc(section || 'Allgemein')}</span>
+    <span class="tsec-count${items.length && doneN === items.length ? ' full' : ''}">${CHECK_SVG}${doneN}/${items.length}</span>
+    ${section ? `<span class="sb-acts">
+      <span class="sb-act ts-rename" title="Abschnitt umbenennen">${PEN_SVG}</span>
+      <span class="sb-act ts-del" title="Abschnitt auflösen — Aufgaben wandern nach Allgemein">${X_SVG}</span>
+    </span>` : ''}`
+  head.addEventListener('click', (e) => {
+    if (e.target.closest('.sb-act')) return
+    if (collapsedTaskSections.has(key)) collapsedTaskSections.delete(key)
+    else collapsedTaskSections.add(key)
+    localStorage.setItem('tsecCollapsed', JSON.stringify([...collapsedTaskSections]))
+    loadPodTasks()
+  })
+  head.querySelector('.ts-rename')?.addEventListener('click', () => renameTaskSection(head, section))
+  head.querySelector('.ts-del')?.addEventListener('click', async () => {
+    if (!window.confirm(`Abschnitt "${section}" auflösen? Die Aufgaben wandern nach Allgemein.`)) return
+    await sb.from('pod_tasks').update({ section: '' }).eq('pod_id', podId).eq('section', section)
+    taskSectionDrafts[podId] = (taskSectionDrafts[podId] || []).filter((d) => d !== section)
+    loadPodTasks()
+  })
+  wrap.appendChild(head)
+  if (!open) return wrap
+  // Offene zuerst, Erledigte ans Ende (stabil in Anlage-Reihenfolge)
+  const sorted = [...items].sort((a, b) => (a.status === 'done') - (b.status === 'done'))
+  for (const t of sorted) wrap.appendChild(renderTaskRow(t, profs))
+  wrap.appendChild(taskAdding === section ? taskInputRow(section, profs) : taskGhostRow(section))
+  return wrap
 }
+
+function renameTaskSection(head, section) {
+  const title = head.querySelector('.tsec-title')
+  const input = document.createElement('input')
+  input.className = 'tsec-rename'
+  input.value = section
+  title.replaceWith(input)
+  input.focus()
+  input.select()
+  let done = false
+  const save = async (commit) => {
+    if (done) return
+    done = true
+    const name = input.value.trim()
+    if (commit && name && name !== section) {
+      await sb.from('pod_tasks').update({ section: name }).eq('pod_id', activePod.id).eq('section', section)
+      const drafts = taskSectionDrafts[activePod.id] || []
+      taskSectionDrafts[activePod.id] = drafts.map((d) => (d === section ? name : d))
+    }
+    loadPodTasks()
+  }
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') save(true)
+    if (e.key === 'Escape') save(false)
+  })
+  input.addEventListener('blur', () => save(true))
+}
+
+function renderTaskRow(t, profs) {
+  const row = document.createElement('div')
+  row.className = 'trow'
+  const done = t.status === 'done'
+  const ind = t.status === 'in_progress' ? '<span class="c-ind work" title="Enni arbeitet …"></span>' : ''
+  const assignee = t.assignee ? profName(profs, t.assignee) : null
+  row.innerHTML = `
+    <input type="checkbox" class="task-check" ${done ? 'checked' : ''}>
+    <div class="t-main"><div class="r-name task-title${done ? ' done' : ''}">${ind}${esc(t.title)}</div>
+      <div class="r-sub">von ${esc(profName(profs, t.created_by))}${t.conversation_id ? ' · <a href="#" class="task-conv" style="color:var(--lila-deep)">zur Konversation</a>' : ''}</div></div>
+    <span class="t-meta">
+      <span class="t-acts">
+        <span class="sb-act t-date" title="Fällig am …">${CAL_SVG}</span>
+        <span class="sb-act t-del" title="Löschen">${X_SVG}</span>
+      </span>
+      ${t.due_date ? `<span class="t-due${isOverdue(t) ? ' over' : ''}" title="Fällig">${fmtDue(t.due_date)}</span>` : ''}
+      ${assignee ? `<span class="avatar t-av" title="${esc(assignee)}">${esc(podInitials(assignee))}</span>` : ''}
+      <button class="task-run" title="Enni an dieser Aufgabe arbeiten lassen">▶</button>
+    </span>
+    <input type="date" class="t-date-input" style="position:absolute;width:0;height:0;opacity:0;border:0;padding:0">`
+  row.querySelector('.task-check').addEventListener('change', async (e) => {
+    await sb.from('pod_tasks').update({ status: e.target.checked ? 'done' : 'open' }).eq('id', t.id)
+    loadPodTasks()
+  })
+  row.querySelector('.task-run').addEventListener('click', () => openTaskModal(t))
+  row.querySelector('.task-conv')?.addEventListener('click', async (e) => {
+    e.preventDefault()
+    const { data: c } = await sb.from('conversations').select('*').eq('id', t.conversation_id).maybeSingle()
+    if (c) { convPod = activePod; openConversation(c) }
+  })
+  const dateInput = row.querySelector('.t-date-input')
+  row.querySelector('.t-date').addEventListener('click', () => {
+    dateInput.value = t.due_date || ''
+    try { dateInput.showPicker() } catch { dateInput.click() }
+  })
+  dateInput.addEventListener('change', async () => {
+    await sb.from('pod_tasks').update({ due_date: dateInput.value || null }).eq('id', t.id)
+    loadPodTasks()
+  })
+  row.querySelector('.t-del').addEventListener('click', async () => {
+    if (!window.confirm(`Aufgabe "${t.title}" löschen?`)) return
+    await sb.from('pod_tasks').delete().eq('id', t.id)
+    loadPodTasks()
+  })
+  return row
+}
+
+function taskGhostRow(section) {
+  const btn = document.createElement('button')
+  btn.className = 't-ghost'
+  btn.innerHTML = '<span class="gc"></span>Aufgabe hinzufügen'
+  btn.addEventListener('click', () => {
+    taskAdding = section
+    loadPodTasks()
+  })
+  return btn
+}
+
+function taskInputRow(section, profs) {
+  const row = document.createElement('div')
+  row.className = 'trow tin'
+  row.innerHTML = '<span class="gc"></span><input class="t-inline" placeholder="Aufgabe — Enter speichert, Esc bricht ab">'
+  const inp = row.querySelector('input')
+  inp.addEventListener('keydown', async (e) => {
+    if (e.key === 'Escape') { taskAdding = null; loadPodTasks(); return }
+    if (e.key === 'Enter') {
+      const title = inp.value.trim()
+      if (!title) return
+      inp.value = ''
+      // Optimistisch: Zeile lokal einhängen, Fokus bleibt in der Eingabe — kein Re-Render,
+      // sonst gehen Tastenanschläge beim schnellen Nacheinander-Anlegen verloren.
+      const { data: t, error } = await sb
+        .from('pod_tasks')
+        .insert({ pod_id: activePod.id, title, section, created_by: session.user.id })
+        .select().single()
+      if (error || !t) { inp.value = title; return }
+      row.before(renderTaskRow(t, profs))
+      const count = row.closest('.tsec')?.querySelector('.tsec-count')
+      if (count) {
+        const [d, n] = count.textContent.split('/').map((x) => parseInt(x, 10))
+        count.lastChild.textContent = `${d}/${n + 1}`
+      }
+      const drafts = taskSectionDrafts[activePod.id] || []
+      taskSectionDrafts[activePod.id] = drafts.filter((d) => d !== section)
+    }
+  })
+  inp.addEventListener('blur', () => {
+    setTimeout(() => {
+      if (taskAdding === section && !inp.value.trim() && document.activeElement !== inp) {
+        taskAdding = null
+        loadPodTasks()
+      }
+    }, 150)
+  })
+  return row
+}
+
+$('section-add-btn').addEventListener('click', () => {
+  const list = $('pod-task-list')
+  if (list.querySelector('.tsec-new')) { list.querySelector('.tsec-new input').focus(); return }
+  const wrap = document.createElement('div')
+  wrap.className = 'tsec tsec-new'
+  wrap.innerHTML = '<div class="tsec-head open"><span class="tree-chev">▶</span><input class="tsec-rename" placeholder="Name des Abschnitts …"></div>'
+  const inp = wrap.querySelector('input')
+  const commit = () => {
+    const name = inp.value.trim()
+    if (!name) { wrap.remove(); return }
+    const drafts = (taskSectionDrafts[activePod.id] ||= [])
+    if (!drafts.includes(name)) drafts.push(name)
+    taskAdding = name
+    loadPodTasks()
+  }
+  inp.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') commit()
+    if (e.key === 'Escape') wrap.remove()
+  })
+  inp.addEventListener('blur', () => setTimeout(() => { if (wrap.isConnected) commit() }, 150))
+  list.appendChild(wrap)
+  inp.focus()
+})
 
 let taskForModal = null
 function openTaskModal(task) {
@@ -2715,6 +2919,11 @@ const loadConversationsDebounced = () => {
   clearTimeout(debounceTimer)
   debounceTimer = setTimeout(loadConversations, 200)
 }
+let podsDebounceTimer = null
+const loadPodsDebounced = () => {
+  clearTimeout(podsDebounceTimer)
+  podsDebounceTimer = setTimeout(loadPods, 300)
+}
 
 function onConvChange(c) {
   if (!c?.id) return
@@ -2726,8 +2935,11 @@ function onConvChange(c) {
     return
   }
   if (!c.pod_id && c.user_id === session.user.id) loadConversationsDebounced()
-  // Pod-Konversationsliste live halten, wenn die Pod-Seite gerade offen ist
-  if (c.pod_id && activePod?.id === c.pod_id && !$('ptab-convs').hidden) loadPodConvs()
+  // Pod-Status-Punkte in der Sidebar + Konversationsliste live halten
+  if (c.pod_id) {
+    loadPodsDebounced()
+    if (activePod?.id === c.pod_id && !$('ptab-convs').hidden) loadPodConvs()
+  }
 }
 
 function subscribeRealtime() {
