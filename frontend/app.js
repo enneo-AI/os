@@ -373,6 +373,8 @@ function newConversation() {
   $('msgs').innerHTML = `<div class="empty"><div><span class="enni-dot">E</span></div>
     Hallo! Ich bin Enni. Frag mich zu enneo-Prozessen, Kunden, Produkt oder Code — ich schaue in Wiki und GitLab nach.</div>`
   document.querySelectorAll('#conv-list .sb-item').forEach((x) => x.classList.remove('on'))
+  sidebarPodId = convPod?.id || null
+  paintPodHighlight()
   ctxTokens = 0
   renderCtx()
   activateChatView()
@@ -408,6 +410,9 @@ async function openConversation(c) {
   document.querySelectorAll('#conv-list .sb-item').forEach((x) =>
     x.classList.toggle('on', x.dataset.conv === c.id)
   )
+  // Pod-Markierung folgt der Konversation: Pod-Konv → ihr Pod, private Konv → keiner
+  sidebarPodId = c.pod_id || null
+  paintPodHighlight()
   const [{ data: msgs }, { data: usage }, profs] = await Promise.all([
     sb.from('messages').select('*').eq('conversation_id', c.id).order('created_at'),
     sb.from('llm_usage').select('message_id, cost_eur').eq('conversation_id', c.id),
@@ -1040,6 +1045,13 @@ const profName = (list, id) => {
   return p ? p.display_name || p.email : '—'
 }
 
+// Welcher Pod ist in der Sidebar markiert? Folgt der offenen Ansicht (Pod-Seite ODER
+// Pod-Konversation) — nicht activePod, das als Seiten-Zustand auch in 1:1-Chats überlebt.
+let sidebarPodId = null
+function paintPodHighlight() {
+  document.querySelectorAll('#pod-list .sb-item').forEach((x) => x.classList.toggle('on', x.dataset.pod === sidebarPodId))
+}
+
 function podInitials(name) {
   const w = (name || '').trim().split(/\s+/)
   return ((w[0]?.[0] || '') + (w[1]?.[0] || '')).toUpperCase() || '·'
@@ -1066,13 +1078,16 @@ async function loadPods() {
   list.innerHTML = ''
   for (const p of podsList) {
     const btn = document.createElement('button')
-    btn.className = 'sb-item pod' + (activePod?.id === p.id ? ' on' : '')
+    btn.className = 'sb-item pod' + (sidebarPodId === p.id ? ' on' : '')
     btn.dataset.pod = p.id
     const st = status[p.id]
     const ind = st?.work
       ? '<span class="c-ind work" title="Enni arbeitet in diesem Pod …"></span>'
       : st?.done ? '<span class="c-ind done" title="Fertig — noch nicht angesehen"></span>' : ''
-    btn.innerHTML = `<span class="pod-tile">${esc(podInitials(p.name))}</span><span class="txt">${esc(p.name)}</span><span class="sb-right">${ind}${p.open ? '' : LOCK_SVG}</span>`
+    const tile = p.logo_url
+      ? `<span class="pod-tile logo"><img src="${esc(p.logo_url)}" alt=""></span>`
+      : `<span class="pod-tile">${esc(podInitials(p.name))}</span>`
+    btn.innerHTML = `${tile}<span class="txt">${esc(p.name)}</span><span class="sb-right">${ind}${p.open ? '' : LOCK_SVG}</span>`
     btn.addEventListener('click', () => openPod(p))
     list.appendChild(btn)
   }
@@ -1085,7 +1100,8 @@ async function openPod(pod, tab = 'convs') {
   convPod = null
   $('pod-title').textContent = pod.name
   $('pod-sub').textContent = pod.description || 'Pod · gemeinsamer Kontext für alle Mitglieder'
-  document.querySelectorAll('#pod-list .sb-item').forEach((x) => x.classList.toggle('on', x.dataset.pod === pod.id))
+  sidebarPodId = pod.id
+  paintPodHighlight()
   document.querySelectorAll('#conv-list .sb-item').forEach((x) => x.classList.remove('on'))
   switchPodTab(tab)
   activateArea('chat', 'pod')
@@ -1455,11 +1471,24 @@ async function ownProfile() {
   return myProfile
 }
 
+let pendingPodLogo = null // File = neues Logo, 'remove' = Logo entfernen, null = unverändert
+function paintPodLogoTile() {
+  const tile = $('pset-logo-tile')
+  const url = pendingPodLogo instanceof File
+    ? URL.createObjectURL(pendingPodLogo)
+    : pendingPodLogo === 'remove' ? null : activePod.logo_url
+  tile.classList.toggle('logo', !!url)
+  tile.innerHTML = url ? `<img src="${esc(url)}" alt="">` : esc(podInitials(activePod.name))
+  $('pset-logo-remove').hidden = !url
+}
+
 async function fillPodSettings() {
   $('pset-name').value = activePod.name
   $('pset-desc').value = activePod.description || ''
   $('pset-instructions').value = activePod.instructions || ''
   $('pset-open').checked = activePod.open
+  pendingPodLogo = null
+  paintPodLogoTile()
   // Löschen: nur Ersteller (oder Admin). Verlassen: Mitglieder, die nicht Ersteller sind.
   const isCreator = activePod.created_by === session.user.id
   const { is_admin } = await ownProfile()
@@ -1487,6 +1516,20 @@ $('pod-delete').addEventListener('click', async () => {
   await loadPods()
   newConversation()
 })
+$('pset-logo-btn').addEventListener('click', () => $('pset-logo-file').click())
+$('pset-logo-file').addEventListener('change', () => {
+  const f = $('pset-logo-file').files[0]
+  $('pset-logo-file').value = ''
+  if (!f) return
+  if (f.size > 2 * 1024 * 1024) { window.alert('Logo: max. 2 MB.'); return }
+  pendingPodLogo = f
+  paintPodLogoTile()
+})
+$('pset-logo-remove').addEventListener('click', () => {
+  pendingPodLogo = 'remove'
+  paintPodLogoTile()
+})
+
 $('pset-save').addEventListener('click', async () => {
   const patch = {
     name: $('pset-name').value.trim() || activePod.name,
@@ -1494,9 +1537,29 @@ $('pset-save').addEventListener('click', async () => {
     instructions: $('pset-instructions').value.trim(),
     open: $('pset-open').checked,
   }
+  try {
+    if (pendingPodLogo) {
+      // Alte Logos dieses Pods aufräumen (public Bucket avatars, Prefix pod-{id})
+      const { data: old } = await sb.storage.from('avatars').list('', { search: `pod-${activePod.id}` })
+      if (old?.length) await sb.storage.from('avatars').remove(old.map((o) => o.name))
+    }
+    if (pendingPodLogo instanceof File) {
+      const ext = (pendingPodLogo.type.split('/')[1] || 'png').replace('jpeg', 'jpg').replace('svg+xml', 'svg')
+      const path = `pod-${activePod.id}-${Date.now()}.${ext}`
+      const { error: upErr } = await sb.storage.from('avatars').upload(path, pendingPodLogo)
+      if (upErr) throw upErr
+      patch.logo_url = sb.storage.from('avatars').getPublicUrl(path).data.publicUrl
+    } else if (pendingPodLogo === 'remove') {
+      patch.logo_url = null
+    }
+  } catch (err) {
+    window.alert('Logo-Upload fehlgeschlagen: ' + err.message)
+    return
+  }
   const { error } = await sb.from('pods').update(patch).eq('id', activePod.id)
   if (error) { alert('Fehler: ' + error.message); return }
   Object.assign(activePod, patch)
+  pendingPodLogo = null
   await loadPods()
   openPod(activePod, 'settings')
 })

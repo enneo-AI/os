@@ -142,6 +142,9 @@
   .sb-item.on .pod-tile{background:linear-gradient(135deg,var(--lila-deep,#5B3FC4),var(--lila,#7B5AE2))}
   .sb-item .sb-right{margin-left:auto;display:inline-flex;align-items:center;gap:6px;flex:none}
   .sb-item .sb-right .lock{margin-left:0}
+  .pod-tile.logo{background:var(--press)}
+  .pod-tile img{width:100%;height:100%;object-fit:cover;border-radius:inherit}
+  .pset-logo{width:52px;height:52px;border-radius:13px;font-size:16px}
   .sb-sec .sec-add{margin-left:auto;border:0;background:none;color:var(--ink-3);font-size:13px;padding:0 4px;border-radius:5px;cursor:pointer}
   .sb-sec .sec-add:hover{color:var(--lila)}
   .sb-sec{display:flex;align-items:center}
@@ -785,6 +788,14 @@
 
         <div class="pod-tab" id="ptab-settings" hidden>
           <div class="list-panel">
+            <h3>Logo</h3>
+            <div style="display:flex;align-items:center;gap:14px;margin-bottom:6px">
+              <span class="pod-tile pset-logo" id="pset-logo-tile">·</span>
+              <button class="btn quiet" id="pset-logo-btn" style="margin-left:0">Logo wählen</button>
+              <button class="btn quiet" id="pset-logo-remove" style="margin-left:0" hidden>Entfernen</button>
+              <input type="file" id="pset-logo-file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>
+            </div>
+            <div style="font-size:12px;color:var(--ink-3);margin-bottom:12px">Erscheint in der Sidebar statt der Initialen. PNG/JPG/SVG, max. 2 MB.</div>
             <h3>Name</h3>
             <input type="text" id="pset-name" class="pset-input">
             <h3>Beschreibung</h3>
