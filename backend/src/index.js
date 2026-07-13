@@ -262,7 +262,8 @@ app.post('/api/chat', async (req, res) => {
         .eq('slug', slashMatch[1].toLowerCase())
         .eq('enabled', true)
         .maybeSingle()
-      if (skill) {
+      // Persönliche Skills gelten nur für ihren Ersteller (team-weite für alle)
+      if (skill && (skill.visibility === 'team' || skill.created_by === user.id)) {
         const { skillText } = await import('./tools/skills.js')
         extraSystem =
           (extraSystem ? extraSystem + '\n\n' : '') +
@@ -350,6 +351,38 @@ app.post('/api/chat', async (req, res) => {
 })
 
 // Kontext komprimieren (Dust-Muster): Zusammenfassung als compaction-Message einfügen
+// Diktat: Speech-to-Text via ElevenLabs Scribe (scribe_v1) — versteht Deutsch und
+// Englisch GEMISCHT in derselben Aufnahme (Code-Switching), was die Web Speech API
+// nicht kann. Braucht ELEVENLABS_API_KEY als Railway-Env; ohne Key antwortet der
+// Endpoint 503 und das Frontend fällt auf die Browser-Erkennung zurück.
+app.post('/api/transcribe', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const key = process.env.ELEVENLABS_API_KEY
+  if (!key) return res.status(503).json({ error: 'stt_unconfigured' })
+  try {
+    const { audio_base64, mime } = req.body || {}
+    if (!audio_base64) return res.status(400).json({ error: 'audio_base64 fehlt' })
+    const bytes = Buffer.from(audio_base64, 'base64')
+    if (bytes.length > 15 * 1024 * 1024) return res.status(400).json({ error: 'Audio größer als 15 MB' })
+    const form = new FormData()
+    form.append('file', new Blob([bytes], { type: mime || 'audio/webm' }), 'audio.webm')
+    form.append('model_id', 'scribe_v1')
+    form.append('tag_audio_events', 'false')
+    form.append('diarize', 'false')
+    const r = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
+      method: 'POST',
+      headers: { 'xi-api-key': key },
+      body: form,
+    })
+    const data = await r.json()
+    if (!r.ok) throw new Error(data?.detail?.message || data?.detail || `ElevenLabs HTTP ${r.status}`)
+    res.json({ text: data.text || '', language_code: data.language_code || null })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 app.post('/api/compact', async (req, res) => {
   const user = await getUserFromRequest(req)
   if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })

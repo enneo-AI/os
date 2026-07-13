@@ -58,7 +58,7 @@ async function executeTool(name, input, ctx) {
     if (name.startsWith('wiki_')) return { content: await runWikiTool(name, input, ctx), isError: false }
     if (name.startsWith('gitlab_')) return { content: await runGitlabTool(name, input), isError: false }
     if (name.startsWith('enneo_')) return { content: await runEnneoTool(name, input, ctx), isError: false }
-    if (name.startsWith('skill_')) return { content: await runSkillTool(name, input), isError: false }
+    if (name.startsWith('skill_')) return { content: await runSkillTool(name, input, ctx), isError: false }
     if (name.startsWith('attio_')) return { content: await runAttioTool(name, input), isError: false }
     if (name.startsWith('slack_')) return { content: await runSlackTool(name, input), isError: false }
     if (name === 'create_file') return { content: await runFileTool(name, input, ctx), isError: false }
@@ -94,7 +94,7 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
   // Skill-Trigger-Übersicht pro Turn frisch laden (ändert sich selten, DB-Read ist billig)
   let skillsBlock = null
   try {
-    skillsBlock = skillsPromptBlock(await loadEnabledSkills())
+    skillsBlock = skillsPromptBlock(await loadEnabledSkills(ctx.userId))
   } catch (err) {
     console.error('Skills-Load fehlgeschlagen:', err.message)
   }

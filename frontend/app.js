@@ -1805,7 +1805,65 @@ let dictBase = ''
 
 function sttLang() { return localStorage.getItem('enni-stt-lang') || 'de-DE' }
 
-function startDictation(btn, textarea, withLangHint = false) {
+// Diktat v2: Aufnahme via MediaRecorder → serverseitige Transkription (ElevenLabs Scribe,
+// versteht Deutsch + Englisch GEMISCHT in derselben Aufnahme). Fällt automatisch auf die
+// Browser-Spracherkennung zurück, wenn der Server-Endpoint nicht konfiguriert ist (503).
+let mediaRec = null
+let sttFallback = localStorage.getItem('sttFallback') === '1'
+async function startDictation(btn, textarea, withLangHint = false) {
+  if (sttFallback || !navigator.mediaDevices?.getUserMedia || !window.MediaRecorder)
+    return startDictationWebSpeech(btn, textarea, withLangHint)
+  if (mediaRec) { mediaRec.stop(); return } // läuft → Klick stoppt
+  let stream
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+  } catch (err) {
+    showHint('Mikrofon nicht verfügbar: ' + err.message)
+    return
+  }
+  const chunks = []
+  const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : ''
+  mediaRec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
+  mediaRec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data) }
+  mediaRec.onstop = async () => {
+    stream.getTracks().forEach((t) => t.stop())
+    btn.classList.remove('recording')
+    const blob = new Blob(chunks, { type: mediaRec?.mimeType || 'audio/webm' })
+    mediaRec = null
+    if (blob.size < 1500) return // zu kurz, nichts gesagt
+    btn.disabled = true
+    btn.style.opacity = '.45'
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/transcribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+        body: JSON.stringify({ audio_base64: await fileToBase64(blob), mime: blob.type }),
+      })
+      if (res.status === 503) {
+        sttFallback = true
+        localStorage.setItem('sttFallback', '1')
+        showHint('Server-Diktat noch nicht konfiguriert — Browser-Erkennung übernimmt, bitte nochmal aufs Mikro klicken.')
+        return
+      }
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      const base = textarea.value ? textarea.value.trim() + ' ' : ''
+      textarea.value = base + (data.text || '').trim()
+      autosizeEl(textarea)
+      updateMentionBacks()
+      textarea.focus()
+    } catch (err) {
+      showHint('Diktat-Fehler: ' + err.message)
+    } finally {
+      btn.disabled = false
+      btn.style.opacity = ''
+    }
+  }
+  mediaRec.start()
+  btn.classList.add('recording')
+}
+
+function startDictationWebSpeech(btn, textarea, withLangHint = false) {
   if (!SpeechRec) { showHint('Diktat wird von diesem Browser nicht unterstützt (Chrome/Edge/Safari nutzen).'); return }
   if (dictating) { recognition?.stop(); return }
   recognition = new SpeechRec()
@@ -2181,8 +2239,10 @@ async function mentionCheck(input, pod) {
 let skillsCache = null
 async function allSkills() {
   if (!skillsCache) {
-    const { data } = await sb.from('skills').select('slug, name').eq('enabled', true).order('slug')
-    skillsCache = data || []
+    // Nur Skills, die für MICH per /slash aufrufbar sind: team-weite + meine eigenen
+    const { data } = await sb
+      .from('skills').select('slug, name, visibility, created_by').eq('enabled', true).order('slug')
+    skillsCache = (data || []).filter((s) => s.visibility === 'team' || s.created_by === session.user.id)
   }
   return skillsCache
 }
@@ -3004,32 +3064,57 @@ $('cn-save').addEventListener('click', async () => {
 let editingSkill = null
 
 async function loadSkills() {
-  const [{ data: skills }, { is_admin }] = await Promise.all([
+  const [{ data: skills }, { is_admin }, profs] = await Promise.all([
     sb.from('skills').select('*').order('name'),
     ownProfile(),
+    allProfiles(),
   ])
-  $('skill-add').hidden = !is_admin
+  $('skill-add').hidden = false // jeder darf Skills bauen (persönlich; team-weit schaltet der Admin frei)
   const list = $('skill-list')
   list.innerHTML = ''
   if (!(skills || []).length) {
     list.innerHTML = '<div class="empty-plain">Noch keine Skills definiert.</div>'
+    return
   }
-  for (const s of skills || []) {
-    const row = document.createElement('button')
-    row.className = 'crow'
-    row.innerHTML = `<span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:var(--lila-deep);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
-      <div><div class="c-name">${esc(s.name)}</div><div class="c-sub">/${esc(s.slug)}${s.tools?.length ? ` · ${s.tools.length} Tools` : ''} · ${esc((s.context || '').split('\n')[0].slice(0, 90))}</div></div>
-      <span class="c-right ${s.enabled ? 'ok' : 'off'}"><span class="dot-s"></span>${s.enabled ? 'Aktiv' : 'Aus'}</span>`
-    row.addEventListener('click', () => openSkill(s, is_admin))
-    list.appendChild(row)
+  // Nach Kategorie gruppieren (alphabetisch; "Meta" ans Ende)
+  const groups = new Map()
+  for (const s of skills) {
+    const c = s.category || 'Allgemein'
+    if (!groups.has(c)) groups.set(c, [])
+    groups.get(c).push(s)
+  }
+  const cats = [...groups.keys()].sort((a, b) => (a === 'Meta') - (b === 'Meta') || a.localeCompare(b, 'de'))
+  $('sk-cat-list').innerHTML = cats.map((c) => `<option value="${esc(c)}">`).join('')
+  for (const cat of cats) {
+    list.insertAdjacentHTML('beforeend', `<div class="skill-cat">${esc(cat)}</div>`)
+    for (const s of groups.get(cat)) {
+      const row = document.createElement('button')
+      row.className = 'crow'
+      const vis = s.visibility === 'personal'
+        ? '<span class="sk-badge">Persönlich</span>'
+        : s.visibility === 'proposed'
+          ? `<span class="sk-badge prop">Vorgeschlagen${is_admin ? ' von ' + esc(profName(profs, s.created_by)) : ''}</span>`
+          : ''
+      row.innerHTML = `<span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:var(--lila-deep);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
+        <div><div class="c-name">${esc(s.name)}</div><div class="c-sub">/${esc(s.slug)}${s.tools?.length ? ` · ${s.tools.length} Tools` : ''} · ${esc((s.context || '').split('\n')[0].slice(0, 80))}</div></div>
+        ${vis}<span class="c-right ${s.enabled ? 'ok' : 'off'}"><span class="dot-s"></span>${s.enabled ? 'Aktiv' : 'Aus'}</span>`
+      row.addEventListener('click', () => openSkill(s, is_admin))
+      list.appendChild(row)
+    }
   }
 }
 
 function openSkill(s, isAdmin) {
   editingSkill = s
+  // Bearbeiten dürfen: Admins alles; Mitglieder ihre eigenen persönlichen/vorgeschlagenen Skills
+  const isOwner = s && s.created_by === session.user.id && s.visibility !== 'team'
+  const canEdit = isAdmin || !s || isOwner
   $('sk-title').textContent = s ? s.name : 'Neuer Skill'
   $('sk-name').value = s?.name || ''
   $('sk-slug').value = s?.slug || ''
+  $('sk-category').value = s?.category || ''
+  $('sk-visibility').value = s?.visibility || (isAdmin ? 'team' : 'personal')
+  $('sk-enabled').checked = s ? s.enabled : true
   $('sk-context').value = s?.context || ''
   $('sk-workflow').value = s?.workflow || ''
   $('sk-tools').value = (s?.tools || []).join('\n')
@@ -3037,15 +3122,16 @@ function openSkill(s, isAdmin) {
   $('sk-dod').value = s?.definition_of_done || ''
   $('sk-corner').value = s?.corner_cases || ''
   $('sk-err').textContent = ''
-  // Non-Admins sehen den Skill read-only — das ist die Skill-Übersicht für alle
-  document.querySelectorAll('#skill-overlay input, #skill-overlay textarea').forEach((el) => (el.disabled = !isAdmin))
-  $('sk-save').hidden = !isAdmin
-  $('sk-delete').hidden = !isAdmin || !s
+  document.querySelectorAll('#skill-overlay input, #skill-overlay textarea, #skill-overlay select').forEach((el) => (el.disabled = !canEdit))
+  // "Team-weit" kann nur der Admin setzen — Mitglieder schlagen vor
+  $('sk-visibility').querySelector('option[value="team"]').disabled = !isAdmin
+  $('sk-save').hidden = !canEdit
+  $('sk-delete').hidden = !canEdit || !s
   $('skill-overlay').classList.add('open')
-  if (isAdmin) setTimeout(() => $('sk-name').focus(), 50)
+  if (canEdit) setTimeout(() => $('sk-name').focus(), 50)
 }
 
-$('skill-add').addEventListener('click', () => openSkill(null, true))
+$('skill-add').addEventListener('click', async () => openSkill(null, (await ownProfile()).is_admin))
 $('sk-cancel').addEventListener('click', () => $('skill-overlay').classList.remove('open'))
 
 $('sk-save').addEventListener('click', async () => {
@@ -3058,6 +3144,9 @@ $('sk-save').addEventListener('click', async () => {
   const row = {
     name,
     slug,
+    category: $('sk-category').value.trim() || 'Allgemein',
+    visibility: $('sk-visibility').value,
+    enabled: $('sk-enabled').checked,
     context: $('sk-context').value.trim(),
     workflow: $('sk-workflow').value.trim(),
     tools: $('sk-tools').value.split('\n').map((t) => t.trim()).filter(Boolean),

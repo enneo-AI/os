@@ -147,6 +147,13 @@
   .pset-logo{width:52px;height:52px;border-radius:13px;font-size:16px}
 
   /* Meine Learnings (Profil) + Lern-Ergebnis (Chat schließen) */
+  .sk-select{width:100%;border:1px solid var(--hair);border-radius:12px;background:var(--surface);padding:10px 12px;font:inherit;font-size:13.5px;color:var(--ink);outline:0;margin-bottom:18px}
+  .sk-select:focus{border-color:var(--lila)}
+  .sk-select:disabled{opacity:.55;cursor:not-allowed}
+  .skill-cat{font-size:11px;font-weight:680;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);margin:20px 4px 4px}
+  .skill-cat:first-child{margin-top:4px}
+  .sk-badge{flex:none;font-size:10px;font-weight:650;padding:2px 8px;border-radius:999px;background:var(--press);color:var(--ink-3);white-space:nowrap;margin-right:8px}
+  .sk-badge.prop{background:rgba(123,90,226,.1);color:var(--lila-deep)}
   .pf-learn-sec{margin:2px 0 16px}
   #pf-learnings{max-height:190px;overflow-y:auto;margin-top:4px}
   .pl-item{display:flex;align-items:center;gap:9px;padding:7px 2px;border-bottom:1px solid var(--hair);font-size:12.5px}
@@ -1170,6 +1177,26 @@
         <label for="sk-slug">Slug (= Slash-Command)</label>
         <input type="text" id="sk-slug" placeholder="voice-agent">
       </div>
+    </div>
+    <div class="sk-grid">
+      <div>
+        <label for="sk-category">Kategorie</label>
+        <input type="text" id="sk-category" list="sk-cat-list" placeholder="z. B. Vertrieb, Marketing, Implementation">
+        <datalist id="sk-cat-list"></datalist>
+      </div>
+      <div>
+        <label for="sk-visibility">Sichtbarkeit</label>
+        <select id="sk-visibility" class="sk-select">
+          <option value="personal">Persönlich — nur mein Account</option>
+          <option value="proposed">Dem Admin für alle vorschlagen</option>
+          <option value="team">Team-weit — gilt für alle</option>
+        </select>
+      </div>
+    </div>
+    <div class="row" style="padding:8px 2px;margin-bottom:12px">
+      <div><div class="r-name">Aktiv</div><div class="r-sub">Deaktivierte Skills sind für Enni unsichtbar und lassen sich nicht per /slash aufrufen.</div></div>
+      <div></div>
+      <label class="toggle"><input type="checkbox" id="sk-enabled"><span></span></label>
     </div>
     <label for="sk-context">Kontext <span class="lbl-hint">— warum gibt es diesen Skill, wofür ist er da, typische Use Cases</span></label>
     <textarea id="sk-context" rows="4"></textarea>
