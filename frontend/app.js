@@ -2852,6 +2852,8 @@ function renderSpaceTree() {
   for (const s of spacesList) {
     const isOpen = expanded.has(s.id)
     const row = treeItem({ chev: true, label: s.name, lock: s.restricted })
+    row.dataset.space = s.id
+    row.classList.toggle('on', currentSpace?.id === s.id)
     if (isOpen) row.classList.add('open')
     row.addEventListener('click', () => {
       expanded.add(s.id)
@@ -2881,60 +2883,77 @@ function renderSpaceTree() {
 }
 
 // ---------- Space-Übersicht (Hauptfläche): Suche, Inhalte, Zuletzt geändert, Quellen
+function setSpaceHomeTab(tab) {
+  const sources = tab === 'sources'
+  $('sh-tab-content').classList.toggle('on', !sources)
+  $('sh-tab-sources').classList.toggle('on', sources)
+  $('sh-content-pane').hidden = sources
+  $('sh-sources-pane').hidden = !sources
+}
+
+function spacePageRow(page) {
+  const row = document.createElement('button')
+  row.className = 'space-page-row'
+  row.innerHTML = `<div class="space-page-main"><div class="space-page-name">${esc(pageLabel(page))}</div><div class="space-page-sub">${esc(page.slug)}</div></div>
+    <span class="space-page-date">${compactPodDate(page.updated_at)}</span>
+    <svg class="space-page-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>`
+  row.addEventListener('click', () => openWikiPage(page.slug))
+  return row
+}
+
 function openSpaceHome(space) {
   currentSpace = space
   // Kleines Lock inline — LOCK_SVG ist nur für Sidebar-Items gestylt (sonst riesig/schwarz)
   const miniLock = '<svg viewBox="0 0 24 24" style="width:18px;height:18px;stroke:var(--ink-3);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;vertical-align:-2px;margin-left:6px"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'
   $('sh-title').innerHTML = esc(space.name) + (space.restricted ? miniLock : '')
   const spacePages = (wikiPages || []).filter((p) => p.space_id === space.id)
-  $('sh-sub').textContent = `${spacePages.length} Seiten · Enni nutzt genau diese Quellen für seine Antworten${space.restricted ? ' · nur für Mitglieder dieses Space' : ''}`
+  $('sh-sub').textContent = space.restricted ? 'Privater Wissensraum für ausgewählte Mitglieder' : 'Gemeinsamer Wissensraum für Enni'
+  $('sh-page-count').textContent = spacePages.length
+  $('sh-source-count').textContent = space.connections.length
   $('sh-search').value = ''
   $('sh-results-panel').hidden = true
   $('sh-main').hidden = false
+  setSpaceHomeTab('content')
+  renderSpaceTree()
 
   const groupsBox = $('sh-groups')
   groupsBox.innerHTML = ''
-  for (const g of groupPages(spacePages)) {
+  const groups = groupPages(spacePages)
+  $('sh-folder-count').textContent = `${groups.length} ${groups.length === 1 ? 'Bereich' : 'Bereiche'}`
+  for (const g of groups) {
     const row = document.createElement('button')
-    row.className = 'crow'
-    row.innerHTML = `<span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:var(--lila-deep);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.2 3.9A2 2 0 0 0 7.5 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></svg></span>
-      <div><div class="c-name">${esc(g.label)}</div><div class="c-sub">${g.pages.length} Seiten${g.sub ? ' · ' + esc(g.sub) : ''}</div></div>`
+    row.className = 'space-folder'
+    row.innerHTML = `<span class="space-folder-icon"><svg viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.2 3.9A2 2 0 0 0 7.5 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></svg></span>
+      <span class="space-folder-copy"><span class="space-folder-name">${esc(g.label)}</span><span class="space-folder-sub">${g.pages.length} Seiten${g.sub ? ' · ' + esc(g.sub) : ''}</span></span>
+      <svg class="space-folder-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>`
     row.addEventListener('click', () => openPagelist(space, g.label, g.pages, g.prefix))
     groupsBox.appendChild(row)
   }
   if (!groupsBox.children.length)
-    groupsBox.innerHTML = '<div class="empty-plain">Noch keine Inhalte — leg oben eine Seite an oder importiere eine URL. Ordner entstehen automatisch beim Anlegen.</div>'
+    groupsBox.innerHTML = '<div class="space-empty">Noch keine Inhalte — erstelle eine Seite oder importiere eine URL.</div>'
 
   const recentBox = $('sh-recent')
   recentBox.innerHTML = ''
   const recent = [...spacePages].sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at)).slice(0, 6)
-  if (!recent.length) recentBox.innerHTML = '<div class="empty-plain">Noch keine Seiten — leg oben die erste an.</div>'
-  for (const p of recent) {
-    const row = document.createElement('div')
-    row.className = 'row'
-    row.style.cursor = 'pointer'
-    row.innerHTML = `<div><div class="r-name">${esc(pageLabel(p))}</div><div class="r-sub">${esc(p.slug)}</div></div><div></div><span class="r-val">${new Date(p.updated_at).toLocaleDateString('de-DE')}</span>`
-    row.addEventListener('click', () => openWikiPage(p.slug))
-    recentBox.appendChild(row)
-  }
+  if (!recent.length) recentBox.innerHTML = '<div class="space-empty">Noch keine Seiten.</div>'
+  for (const p of recent) recentBox.appendChild(spacePageRow(p))
 
   // Quellen (ehem. "Connected Data") kompakt in der Übersicht
   const srcBox = $('sh-sources')
   srcBox.innerHTML = ''
   if (!space.connections.length) {
-    srcBox.innerHTML = '<div class="empty-plain">Noch keine Quellen verbunden.</div>'
+    srcBox.innerHTML = '<div class="space-empty">Noch keine Quellen verbunden.</div>'
   }
   for (const key of space.connections) {
     const c = CONNECTIONS[key] || { name: key, sub: '' }
     srcBox.insertAdjacentHTML('beforeend',
       `<div class="crow">${c.logo ? `<span class="c-logo"><img src="${c.logo}" alt=""></span>` : ''}<div><div class="c-name">${esc(c.name)}</div><div class="c-sub">${esc(c.sub)}</div></div><span class="c-right ok"><span class="dot-s"></span>Aktiv</span></div>`)
   }
-  srcBox.insertAdjacentHTML('beforeend',
-    '<button class="crow crow-add" id="sh-src-edit"><span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--ink-3);fill:none;stroke-width:1.8;stroke-linecap:round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span><div><div class="c-name" style="color:var(--ink-2)">Quellen verwalten</div><div class="c-sub">Verbundene Daten dieses Space</div></div></button>')
-  document.getElementById('sh-src-edit').addEventListener('click', () => openConnectedData(space))
-
   activateArea('wiki', 'space-home')
 }
+$('sh-tab-content').addEventListener('click', () => setSpaceHomeTab('content'))
+$('sh-tab-sources').addEventListener('click', () => setSpaceHomeTab('sources'))
+$('sh-src-edit').addEventListener('click', () => { if (currentSpace) openConnectedData(currentSpace) })
 
 // Live-Suche über ALLE Seiten des Space (Titel + Slug)
 $('sh-search').addEventListener('input', () => {
@@ -2952,15 +2971,8 @@ $('sh-search').addEventListener('input', () => {
   panel.hidden = false
   $('sh-main').hidden = true
   const box = $('sh-results')
-  box.innerHTML = hits.length ? '' : '<div class="empty-plain">Keine Treffer.</div>'
-  for (const p of hits) {
-    const row = document.createElement('div')
-    row.className = 'row'
-    row.style.cursor = 'pointer'
-    row.innerHTML = `<div><div class="r-name">${esc(pageLabel(p))}</div><div class="r-sub">${esc(p.slug)}</div></div><div></div><span class="r-val">${new Date(p.updated_at).toLocaleDateString('de-DE')}</span>`
-    row.addEventListener('click', () => openWikiPage(p.slug))
-    box.appendChild(row)
-  }
+  box.innerHTML = hits.length ? '' : '<div class="space-empty">Keine Treffer.</div>'
+  for (const p of hits) box.appendChild(spacePageRow(p))
 })
 $('sh-new-page').addEventListener('click', () => openPageEditor(null, ''))
 $('pl-new-page').addEventListener('click', () => openPageEditor(null, currentFolderPrefix))
@@ -3012,7 +3024,7 @@ function openConnectedData(space) {
   const list = $('cd-list')
   list.innerHTML = ''
   if (!space.connections.length) {
-    list.innerHTML = '<div class="empty-plain">Noch keine Daten verbunden — füge Quellen aus den Administration-Connections hinzu.</div>'
+    list.innerHTML = '<div class="space-empty">Noch keine Quellen verbunden.</div>'
   }
   for (const key of space.connections) {
     const c = CONNECTIONS[key] || { name: key, sub: '' }
@@ -3021,6 +3033,7 @@ function openConnectedData(space) {
   }
   activateArea('wiki', 'connected')
 }
+$('cd-back').addEventListener('click', () => { if (currentSpace) openSpaceHome(currentSpace) })
 
 $('cd-add').addEventListener('click', () => {
   if (!currentSpace) return
@@ -3066,19 +3079,18 @@ function openPagelist(space, label, pages, prefix = '') {
   renderPagelist('')
   activateArea('wiki', 'pagelist')
 }
+$('pl-back').addEventListener('click', () => { if (currentSpace) openSpaceHome(currentSpace) })
 
 function renderPagelist(filter) {
   const list = $('pl-list')
   list.innerHTML = ''
+  let shown = 0
   for (const p of plPages) {
     if (filter && !(pageLabel(p) + ' ' + p.slug).toLowerCase().includes(filter)) continue
-    const row = document.createElement('div')
-    row.className = 'row'
-    row.style.cursor = 'pointer'
-    row.innerHTML = `<div><div class="r-name">${esc(pageLabel(p))}</div><div class="r-sub">${esc(p.slug)}</div></div><div></div><span class="r-val">${new Date(p.updated_at).toLocaleDateString('de-DE')}</span>`
-    row.addEventListener('click', () => openWikiPage(p.slug))
-    list.appendChild(row)
+    list.appendChild(spacePageRow(p))
+    shown++
   }
+  if (!shown) list.innerHTML = `<div class="space-empty">${filter ? 'Keine Treffer.' : 'Noch keine Seiten.'}</div>`
 }
 $('pl-filter').addEventListener('input', () => renderPagelist($('pl-filter').value.trim().toLowerCase()))
 
@@ -3138,6 +3150,7 @@ async function openWikiPage(slug) {
   const { data } = await sb.from('wiki_pages').select('*').eq('slug', slug).maybeSingle()
   if (!data) return
   currentPage = data
+  currentSpace = spacesList.find((s) => s.id === data.space_id) || currentSpace
   $('doc-crumb').textContent = (currentSpace?.name || 'Company Data') + ' / ' + data.slug
   $('doc-title').textContent = pageLabel(data)
   $('doc-meta').innerHTML = `<span>zuletzt aktualisiert ${new Date(data.updated_at).toLocaleDateString('de-DE')}</span>`
@@ -3148,6 +3161,7 @@ async function openWikiPage(slug) {
   window.scrollTo({ top: 0 })
 }
 $('doc-edit').addEventListener('click', () => { if (currentPage) openPageEditor(currentPage) })
+$('doc-back').addEventListener('click', () => { if (currentSpace) openSpaceHome(currentSpace) })
 
 // ---------- Seiten-Editor (neu anlegen + bearbeiten) — nach dem Speichern wird die
 // Seite automatisch für Ennis Suche neu indexiert (Backend re-embedded die Chunks).
@@ -3198,6 +3212,7 @@ $('pe-cancel').addEventListener('click', () => {
   if (editingPage) openWikiPage(editingPage.slug)
   else if (currentSpace) openSpaceHome(currentSpace)
 })
+$('pe-back').addEventListener('click', () => $('pe-cancel').click())
 
 async function reindexWikiPage(slug) {
   const res = await fetch(`${BACKEND_URL}/api/wiki/reindex`, {
