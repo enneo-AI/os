@@ -1,7 +1,7 @@
 import express from 'express'
 import cors from 'cors'
 import { db, getUserFromRequest } from './db.js'
-import { runEnniTurn, ALLOWED_MODELS, generateTitle } from './agent.js'
+import { runEnniTurn, ALLOWED_MODELS, generateTitle, availableToolDefinitions } from './agent.js'
 import { attachmentsToBlocks, attachmentMeta } from './attachments.js'
 import { logUsage } from './usage.js'
 import { startRoutineTicker, runRoutine } from './routines.js'
@@ -23,6 +23,19 @@ app.get('/health', async (_req, res) => {
     pdf = err.message
   }
   res.json({ ok: true, pdf })
+})
+
+// Visueller Tool-Picker im Skill-Editor. Liefert nur Namen/Beschreibungen, keine
+// Schemas oder Credentials; Sichtbarkeit dynamischer Connectoren ist user-scoped.
+app.get('/api/tools/catalog', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const definitions = await availableToolDefinitions(user.id)
+  const seen = new Set()
+  const tools = definitions
+    .filter((tool) => tool?.name && !seen.has(tool.name) && seen.add(tool.name))
+    .map((tool) => ({ name: tool.name, description: tool.description || '' }))
+  res.json({ tools })
 })
 
 // Von Enni erstellte Dateien inline ausliefern (Supabase Storage serviert HTML

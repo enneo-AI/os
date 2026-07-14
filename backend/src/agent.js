@@ -54,6 +54,21 @@ const TOOLS = [
   ...fileToolDefinitions,
 ]
 
+// Derselbe Katalog, den Enni in einem Turn wirklich verwenden kann. Die UI nutzt
+// ihn im Skill-Editor, damit Nutzer Tools visuell auswählen statt interne IDs
+// eintippen zu müssen. Dynamische Connectoren werden pro Nutzer aufgelöst.
+export async function availableToolDefinitions(userId) {
+  let definitions = [...TOOLS, ...podToolDefinitions]
+  for (const loader of [mcpToolDefinitions, attioToolDefinitions, slackToolDefinitions]) {
+    try {
+      definitions = [...definitions, ...(await loader(userId))]
+    } catch (err) {
+      console.error('Tool-Katalog: Connector nicht erreichbar:', err.message)
+    }
+  }
+  return definitions
+}
+
 async function executeTool(name, input, ctx) {
   try {
     if (name === 'request_tool_connection') return { content: await runRegistrationTool(name, input), isError: false }

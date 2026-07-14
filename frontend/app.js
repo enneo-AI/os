@@ -3409,6 +3409,7 @@ async function loadConnectorRows() {
           headers: { Authorization: `Bearer ${await token()}` },
         })
         if (!res.ok) { window.alert((await res.json().catch(() => ({}))).error || 'Fehler'); return }
+        toolCatalogCache = null
         loadConnectorRows()
       })
       box.appendChild(row)
@@ -3464,6 +3465,7 @@ function renderNativeRow(kind, conn, isAdmin, me) {
         headers: { Authorization: `Bearer ${await token()}` },
       })
       if (!res.ok) { window.alert((await res.json().catch(() => ({}))).error || 'Fehler'); return }
+      toolCatalogCache = null
       loadConnectorRows()
     })
   } else {
@@ -3497,6 +3499,7 @@ for (const [kind, cfg] of Object.entries(NATIVE_CONNECTORS)) {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
       $(cfg.overlay).classList.remove('open')
+      toolCatalogCache = null
       loadConnectorRows()
     } catch (e) {
       err.textContent = e.message
@@ -3506,7 +3509,7 @@ for (const [kind, cfg] of Object.entries(NATIVE_CONNECTORS)) {
   })
 }
 
-document.querySelectorAll('.crow-add[data-category]').forEach((b) =>
+document.querySelectorAll('[data-category]').forEach((b) =>
   b.addEventListener('click', () => {
     cnCategory = b.dataset.category
     $('cm-title').textContent = cnCategory === 'tool' ? 'Eigenes Tool verknüpfen' : 'Connection verknüpfen'
@@ -3538,6 +3541,7 @@ $('cn-save').addEventListener('click', async () => {
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
     $('conn-overlay').classList.remove('open')
+    toolCatalogCache = null
     loadConnectorRows()
   } catch (e) {
     err.textContent = e.message
@@ -3649,12 +3653,20 @@ const SKILL_TOOL_SERVICES = [
   { prefix: 'dashboard_', label: 'Dashboard' },
 ]
 
+let skillToolsEditable = false
+let toolCatalogCache = null
+
 const TOOL_ACTION_LABELS = {
-  semantic_search: 'Wissen durchsuchen', read_page: 'Seite lesen', write_page: 'Seite bearbeiten',
-  create_page: 'Seite erstellen', search_code: 'Code durchsuchen', api_get: 'Daten abrufen',
-  api_post: 'Aktion ausführen', list_tickets: 'Tickets auflisten', get_ticket: 'Ticket öffnen',
-  search_tickets: 'Tickets durchsuchen', send_message: 'Nachricht senden', create_file: 'Datei erstellen',
-  request_tool_connection: 'Verbindung anfragen',
+  semantic_search: 'Wissen durchsuchen', search: 'Seiten durchsuchen', list_pages: 'Seiten auflisten',
+  read_page: 'Seite lesen', write_page: 'Seite bearbeiten', create_page: 'Seite erstellen', propose_update: 'Änderung vorschlagen',
+  search_projects: 'Projekte durchsuchen', search_code: 'Code durchsuchen', read_file: 'Datei lesen', list_merge_requests: 'Merge Requests auflisten',
+  ticket_search: 'Tickets durchsuchen', ticket_get: 'Ticket öffnen', settings_search: 'Einstellungen durchsuchen', api_get: 'Daten abrufen', api_post: 'Aktion ausführen', propose_write: 'Änderung vorschlagen',
+  list_objects: 'Objekte auflisten', query_records: 'Datensätze durchsuchen', get_record: 'Datensatz öffnen', list_notes: 'Notizen auflisten', list_meetings: 'Meetings auflisten', get_transcript: 'Transkript lesen', raw_get: 'Daten abrufen',
+  list_channels: 'Channels auflisten', read_channel: 'Channel lesen', read_thread: 'Thread lesen',
+  list_tasks: 'Aufgaben auflisten', list_files: 'Dateien auflisten', list_conversations: 'Konversationen auflisten', read_conversation: 'Konversation lesen',
+  read: 'Skill lesen', create_draft: 'Skill-Entwurf erstellen',
+  list_tickets: 'Tickets auflisten', get_ticket: 'Ticket öffnen', search_tickets: 'Tickets durchsuchen', send_message: 'Nachricht senden',
+  create_file: 'Datei erstellen', request_tool_connection: 'Verbindung anfragen',
 }
 
 function humanToolAction(action) {
@@ -3685,19 +3697,78 @@ function skillToolInfo(tool) {
   return { ...service, action: humanToolAction(tool.slice(service.prefix.length)) }
 }
 
-function skillToolMarkup(tool, compact = false) {
-  const info = skillToolInfo(tool)
+function skillToolLogoMarkup(info) {
+  const wikiClass = info.label === 'Wiki' ? ' wiki' : ''
   const logo = info.icon
-    ? `<img src="${info.icon}" alt="">`
+    ? `<img src="${info.icon}" alt="${esc(info.label)}">`
     : '<svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>'
-  return `<span class="skill-tool-card${compact ? ' compact' : ''}" title="Technisches Tool: ${esc(tool)}"><span class="skill-tool-logo">${logo}</span><span class="skill-tool-copy"><span class="skill-tool-service">${esc(info.label)}</span><span class="skill-tool-action">${esc(info.action)}</span></span></span>`
+  return `<span class="skill-tool-logo${wikiClass}">${logo}</span>`
+}
+
+function skillToolMarkup(tool, compact = false, removable = false) {
+  const info = skillToolInfo(tool)
+  return `<span class="skill-tool-card${compact ? ' compact' : ''}" title="${esc(info.label)} · ${esc(info.action)}">${skillToolLogoMarkup(info)}<span class="skill-tool-copy"><span class="skill-tool-service">${esc(info.label)}</span><span class="skill-tool-action">${esc(info.action)}</span></span>${removable ? `<button type="button" class="skill-tool-remove" data-remove-tool="${esc(tool)}" aria-label="${esc(info.action)} entfernen">×</button>` : ''}</span>`
+}
+
+function selectedSkillTools() {
+  return $('sk-tools').value.split('\n').map((x) => x.trim()).filter(Boolean)
+}
+
+function setSelectedSkillTools(tools) {
+  $('sk-tools').value = [...new Set(tools)].join('\n')
+  renderSkillTools()
+  if (!$('sk-tool-picker').hidden) renderToolPicker($('sk-tool-search').value)
+  if (!$('sk-workflow-flow').hidden) renderWorkflowFlow($('sk-workflow-flow'), $('sk-workflow').value, selectedSkillTools())
 }
 
 function renderSkillTools() {
-  const tools = $('sk-tools').value.split('\n').map((x) => x.trim()).filter(Boolean)
+  const tools = selectedSkillTools()
   $('sk-tools-visual').innerHTML = tools.length
-    ? tools.map((tool) => skillToolMarkup(tool)).join('')
+    ? tools.map((tool) => skillToolMarkup(tool, false, skillToolsEditable)).join('')
     : '<div class="skill-tools-empty">Noch keine Tools mit diesem Skill verbunden.</div>'
+  $('sk-tools-visual').querySelectorAll('[data-remove-tool]').forEach((button) => {
+    button.addEventListener('click', () => setSelectedSkillTools(tools.filter((tool) => tool !== button.dataset.removeTool)))
+  })
+}
+
+async function loadToolCatalog() {
+  if (toolCatalogCache) return toolCatalogCache
+  const res = await fetch(`${BACKEND_URL}/api/tools/catalog`, { headers: { Authorization: `Bearer ${await token()}` } })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Tool-Katalog konnte nicht geladen werden.')
+  toolCatalogCache = data.tools || []
+  return toolCatalogCache
+}
+
+function renderToolPicker(filter = '') {
+  const box = $('sk-tool-list')
+  const selected = new Set(selectedSkillTools())
+  const q = filter.trim().toLowerCase()
+  const matches = (toolCatalogCache || []).filter((tool) => {
+    const info = skillToolInfo(tool.name)
+    return !q || `${info.label} ${info.action} ${tool.description || ''}`.toLowerCase().includes(q)
+  })
+  if (!matches.length) {
+    box.innerHTML = `<div class="skill-tools-empty">${q ? 'Kein passendes verbundenes Tool gefunden.' : 'Keine Tools verfügbar.'}</div>`
+    return
+  }
+  const groups = new Map()
+  for (const tool of matches) {
+    const info = skillToolInfo(tool.name)
+    if (!groups.has(info.label)) groups.set(info.label, [])
+    groups.get(info.label).push({ ...tool, info })
+  }
+  box.innerHTML = [...groups.entries()].map(([label, tools]) => `<section><div class="tool-picker-group">${esc(label)}</div><div class="tool-picker-items">${tools.map((tool) => {
+    const on = selected.has(tool.name)
+    const description = (tool.description || '').replace(/\s+/g, ' ').slice(0, 90)
+    return `<button type="button" class="tool-pick-item${on ? ' on' : ''}" data-tool="${esc(tool.name)}">${skillToolLogoMarkup(tool.info)}<span class="tool-pick-copy"><span class="tool-pick-name">${esc(tool.info.action)}</span><span class="tool-pick-description">${esc(description || tool.info.label)}</span></span><span class="tool-pick-check">${on ? '✓' : ''}</span></button>`
+  }).join('')}</div></section>`).join('')
+  box.querySelectorAll('[data-tool]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const tools = selectedSkillTools()
+      setSelectedSkillTools(tools.includes(button.dataset.tool) ? tools.filter((tool) => tool !== button.dataset.tool) : [...tools, button.dataset.tool])
+    })
+  })
 }
 
 function renderWorkflowFlow(container, text, toolsList = []) {
@@ -3746,6 +3817,7 @@ function openSkill(s, isAdmin) {
   $('sk-context').value = s?.context || ''
   $('sk-workflow').value = s?.workflow || ''
   $('sk-tools').value = (s?.tools || []).join('\n')
+  skillToolsEditable = canEdit
   renderSkillTools()
   $('sk-triggers').value = s?.triggers || ''
   $('sk-dod').value = s?.definition_of_done || ''
@@ -3756,16 +3828,28 @@ function openSkill(s, isAdmin) {
   $('sk-visibility').querySelector('option[value="team"]').disabled = !isAdmin
   $('sk-save').hidden = !canEdit
   $('sk-delete').hidden = !canEdit || !s
-  $('sk-tools-advanced').hidden = !canEdit
-  $('sk-tools-advanced').open = false
+  $('sk-tool-add').hidden = !canEdit
+  $('sk-tool-picker').hidden = true
+  $('sk-tool-search').value = ''
   $('skill-overlay').classList.add('open')
   if (canEdit) setTimeout(() => $('sk-name').focus(), 50)
 }
 
-$('sk-tools').addEventListener('input', () => {
-  renderSkillTools()
-  if (!$('sk-workflow-flow').hidden) renderWorkflowFlow($('sk-workflow-flow'), $('sk-workflow').value, $('sk-tools').value.split('\n').map((x) => x.trim()).filter(Boolean))
+$('sk-tool-add').addEventListener('click', async () => {
+  const picker = $('sk-tool-picker')
+  picker.hidden = !picker.hidden
+  if (picker.hidden) return
+  $('sk-tool-list').innerHTML = '<div class="skill-tools-empty">Tools werden geladen …</div>'
+  try {
+    await loadToolCatalog()
+    renderToolPicker('')
+    $('sk-tool-search').focus()
+  } catch (err) {
+    $('sk-tool-list').innerHTML = `<div class="skill-tools-empty">${esc(err.message)}</div>`
+  }
 })
+$('sk-tool-close').addEventListener('click', () => { $('sk-tool-picker').hidden = true })
+$('sk-tool-search').addEventListener('input', () => renderToolPicker($('sk-tool-search').value))
 
 $('skill-add').addEventListener('click', async () => openSkill(null, (await ownProfile()).is_admin))
 $('sk-cancel').addEventListener('click', () => $('skill-overlay').classList.remove('open'))
