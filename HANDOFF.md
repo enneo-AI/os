@@ -1,6 +1,15 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-13 (Admin-Redesign; MVP live auf https://enneo-os.netlify.app)
+**Zuletzt aktualisiert:** 2026-07-14 (UI/UX-System + visueller Skill-Tool-Picker; MVP live auf https://enneo-os.netlify.app)
+
+### Session 2026-07-14 — UI/UX-System, Spaces und visueller Skill-Tool-Picker
+
+- **Premium-Glass-System konsolidiert:** Ambient-Hintergründe für Light/Dark, stärkerer Blur für Sidebar/Composer und vollständiger sticky Modal-Footer bis zum unteren Rand. Neue Chats begrüßen personalisiert nach Tageszeit und Profilname.
+- **Admin, Pods und Prompt-Queue entschlackt:** Admin ist in Freigaben/Nutzung/Mitglieder geteilt; Pods haben einen kompakten Header ohne redundante Mitglied-/Status-Texte, moderne Datei-Aktionen (Preview/Download), passende Upload-/Neue-Konversation-Aktionen, echte Profilbilder bei Aufgaben und verfeinerte Task-Controls. Gequeuete Prompts bleiben immer unter dem aktiven Turn statt darüber zu springen.
+- **Spaces/Wiki als kompakter Workspace:** einheitlicher Header, Inhalte/Quellen-Tabs mit Zählern, zweispaltige Ordner, kompakte Seitenzeilen, klare Back-Navigation und konsistente Unterseiten/Editoren. Light und Dark visuell geprüft.
+- **Skill-Tools ohne technische IDs:** neuer authentifizierter Endpoint `GET /api/tools/catalog` liefert pro Nutzer die statischen plus tatsächlich verbundenen MCP-/Attio-/Slack-Tools (nur Name/Beschreibung, keine Credentials/Schemas). Der Skill-Editor zeigt Connection-Icons und verständliche Aktionen, bietet Suche/Mehrfachauswahl und Entfernen per ×; die Roh-IDs bleiben ausschließlich im versteckten Datenfeld. Das Wiki nutzt dasselbe vergrößerte Enni-Bot-Asset wie der Marketplace. Bestehende `skills.tools[]` bleiben unverändert kompatibel.
+- **Primäraktionen immer oben:** „Neuer Skill", „Tool verknüpfen" und „Neue Routine" stehen jetzt im Seitenkopf; die alten CTA-Zeilen am Listenende sind entfernt. Audit der übrigen Hinzufügen-Aktionen ergab keine weiteren Bottom-only-CTAs.
+- **Live-Stand:** Frontend via Netlify-GitHub-Auto-Deploy; Backend wegen fehlender Railway-GitHub-Verknüpfung explizit aus `backend/` mit `railway up --detach` deployed. Railway-Deployment `be7198f0-2339-492d-9ee5-5c8d037ccd68` SUCCESS, `/health` 200, Tool-Katalog unauthentifiziert korrekt 401. Code-Stand: `519850f`.
 
 ### Session 2026-07-13 — Admin-Bereich neu strukturiert
 
