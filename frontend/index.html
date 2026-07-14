@@ -199,8 +199,15 @@
   .wf-body{min-width:0;padding-top:3px}
   .wf-text{font-size:13px;color:var(--ink-2);line-height:1.45}
   .wf-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
-  .wf-chip{font-family:var(--mono);font-size:10.5px;padding:2px 8px;border-radius:6px;background:var(--press);color:var(--ink-2);border:1px solid var(--hair)}
   .wf-empty{font-size:12.5px;color:var(--ink-3);padding:10px 2px}
+  .skill-tool-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:7px;margin:0 0 14px}
+  .skill-tool-card{display:flex;align-items:center;gap:10px;min-width:0;padding:8px 10px;border:1px solid var(--glass-outline);border-radius:12px;background:linear-gradient(145deg,var(--key-hi),var(--surface-2));box-shadow:inset 0 1px 0 var(--glass-highlight)}
+  .skill-tool-logo{width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;flex:none;border:1px solid var(--hair);border-radius:9px;background:var(--surface);color:var(--lila-deep);overflow:hidden}
+  .skill-tool-logo img{width:17px;height:17px;object-fit:contain}.skill-tool-logo svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .skill-tool-copy{display:flex;flex-direction:column;min-width:0}.skill-tool-service{font-size:10.5px;font-weight:650;color:var(--ink-3)}.skill-tool-action{font-size:12.5px;font-weight:590;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .skill-tool-card.compact{width:auto;padding:3px 7px 3px 4px;gap:5px;border-radius:8px;background:var(--surface-2);box-shadow:none}.skill-tool-card.compact .skill-tool-logo{width:21px;height:21px;border-radius:6px}.skill-tool-card.compact .skill-tool-logo img{width:13px;height:13px}.skill-tool-card.compact .skill-tool-logo svg{width:12px;height:12px}.skill-tool-card.compact .skill-tool-copy{flex-direction:row;align-items:center;gap:4px}.skill-tool-card.compact .skill-tool-service,.skill-tool-card.compact .skill-tool-action{font-size:10.5px}.skill-tool-card.compact .skill-tool-service::after{content:"·";margin-left:4px;color:var(--ink-3)}
+  .skill-tools-empty{grid-column:1/-1;padding:12px;border:1px dashed var(--hair);border-radius:11px;color:var(--ink-3);font-size:12px}
+  .skill-tools-advanced{margin:-2px 0 17px}.skill-tools-advanced summary{width:max-content;cursor:pointer;color:var(--ink-3);font-size:11.5px;list-style:none}.skill-tools-advanced summary::-webkit-details-marker{display:none}.skill-tools-advanced summary::before{content:"›";display:inline-block;margin-right:6px;transition:transform .18s ease}.skill-tools-advanced[open] summary::before{transform:rotate(90deg)}.skill-tools-advanced textarea{margin-top:8px!important;font-family:var(--mono);font-size:11.5px}
   .sb-ctx{display:flex;flex-direction:column;flex:1;min-height:0}
   .sb-scroll{flex:1;overflow-y:auto;min-height:0;margin:0 -6px;padding:0 6px}
   .sb-sec{font-size:10.5px;font-weight:680;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:12px 6px 5px}
@@ -1416,8 +1423,12 @@
     </div>
     <textarea id="sk-workflow" rows="6"></textarea>
     <div class="wf-flow" id="sk-workflow-flow" hidden></div>
-    <label for="sk-tools">Tools <span class="lbl-hint">— ein Tool pro Zeile · Basis für die Ausführung, nicht exklusiv</span></label>
-    <textarea id="sk-tools" rows="3" placeholder="wiki_semantic_search&#10;enneo_api_get&#10;gitlab_search_code"></textarea>
+    <label>Verbundene Tools <span class="lbl-hint">— diese Verbindungen nutzt der Skill</span></label>
+    <div class="skill-tool-grid" id="sk-tools-visual"></div>
+    <details class="skill-tools-advanced" id="sk-tools-advanced">
+      <summary>Technische Tool-IDs bearbeiten</summary>
+      <textarea id="sk-tools" rows="3" aria-label="Technische Tool-IDs" placeholder="wiki_semantic_search&#10;enneo_api_get&#10;gitlab_search_code"></textarea>
+    </details>
     <label for="sk-triggers">Trigger <span class="lbl-hint">— wann greift der Skill: außer /slash auch kontextbasiert, z. B. „User will einen Voicebot bauen"</span></label>
     <textarea id="sk-triggers" rows="3"></textarea>
     <label for="sk-dod">Definition of Done <span class="lbl-hint">— wann ist die Ausführung fertig und gut</span></label>

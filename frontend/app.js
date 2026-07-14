@@ -3633,7 +3633,72 @@ function parseWorkflowSteps(text) {
   return steps
 }
 
-const TOOL_NAME_RE = /\b((?:wiki|attio|slack|enneo|gitlab|pod|skill|dashboard)_[a-z0-9_]+|mcp__[a-zA-Z0-9_]+|create_file|request_tool_connection)\b/g
+const TOOL_NAME_RE = /\b((?:wiki|attio|slack|enneo|gitlab|google_drive|notion|outlook|pod|skill|dashboard)_[a-z0-9_]+|mcp__[a-zA-Z0-9_]+|create_file|request_tool_connection)\b/g
+
+const SKILL_TOOL_SERVICES = [
+  { prefix: 'google_drive_', label: 'Google Drive', icon: './icons/google-drive.svg' },
+  { prefix: 'wiki_', label: 'Wiki', icon: './icons/enni.png' },
+  { prefix: 'enneo_', label: 'Enneo', icon: './icons/enneo-icon.svg' },
+  { prefix: 'gitlab_', label: 'GitLab', icon: './icons/gitlab.svg' },
+  { prefix: 'attio_', label: 'Attio', icon: './icons/attio.ico' },
+  { prefix: 'slack_', label: 'Slack', icon: './icons/slack.svg' },
+  { prefix: 'notion_', label: 'Notion', icon: './icons/notion.svg' },
+  { prefix: 'outlook_', label: 'Outlook', icon: './icons/outlook.svg' },
+  { prefix: 'pod_', label: 'Pods' },
+  { prefix: 'skill_', label: 'Skills' },
+  { prefix: 'dashboard_', label: 'Dashboard' },
+]
+
+const TOOL_ACTION_LABELS = {
+  semantic_search: 'Wissen durchsuchen', read_page: 'Seite lesen', write_page: 'Seite bearbeiten',
+  create_page: 'Seite erstellen', search_code: 'Code durchsuchen', api_get: 'Daten abrufen',
+  api_post: 'Aktion ausführen', list_tickets: 'Tickets auflisten', get_ticket: 'Ticket öffnen',
+  search_tickets: 'Tickets durchsuchen', send_message: 'Nachricht senden', create_file: 'Datei erstellen',
+  request_tool_connection: 'Verbindung anfragen',
+}
+
+function humanToolAction(action) {
+  if (TOOL_ACTION_LABELS[action]) return TOOL_ACTION_LABELS[action]
+  const parts = action.split('_').filter(Boolean)
+  const verbs = { read: 'lesen', get: 'abrufen', list: 'auflisten', search: 'durchsuchen', create: 'erstellen', update: 'aktualisieren', delete: 'löschen', send: 'senden', write: 'bearbeiten', add: 'hinzufügen' }
+  const nouns = { page: 'Seite', pages: 'Seiten', ticket: 'Ticket', tickets: 'Tickets', customer: 'Kunde', customers: 'Kunden', message: 'Nachricht', messages: 'Nachrichten', file: 'Datei', files: 'Dateien', code: 'Code', data: 'Daten', user: 'Nutzer', users: 'Nutzer', project: 'Projekt', projects: 'Projekte', api: 'API' }
+  const first = parts[0]
+  if (verbs[first] && parts.length > 1) {
+    const subject = parts.slice(1).map((p) => nouns[p] || p).join(' ')
+    return subject.charAt(0).toUpperCase() + subject.slice(1) + ' ' + verbs[first]
+  }
+  const words = parts.map((p) => nouns[p] || verbs[p] || p)
+  const label = words.join(' ')
+  return label ? label.charAt(0).toUpperCase() + label.slice(1) : 'Tool verwenden'
+}
+
+function skillToolInfo(tool) {
+  if (tool.startsWith('mcp__')) {
+    const [, server = 'MCP', ...action] = tool.split('__')
+    const label = server.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+    return { label, action: humanToolAction(action.join('_')), icon: null }
+  }
+  if (tool === 'create_file') return { label: 'Dateien', action: TOOL_ACTION_LABELS.create_file, icon: null }
+  if (tool === 'request_tool_connection') return { label: 'Connections', action: TOOL_ACTION_LABELS.request_tool_connection, icon: null }
+  const service = SKILL_TOOL_SERVICES.find((item) => tool.startsWith(item.prefix))
+  if (!service) return { label: 'Tool', action: humanToolAction(tool), icon: null }
+  return { ...service, action: humanToolAction(tool.slice(service.prefix.length)) }
+}
+
+function skillToolMarkup(tool, compact = false) {
+  const info = skillToolInfo(tool)
+  const logo = info.icon
+    ? `<img src="${info.icon}" alt="">`
+    : '<svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>'
+  return `<span class="skill-tool-card${compact ? ' compact' : ''}" title="Technisches Tool: ${esc(tool)}"><span class="skill-tool-logo">${logo}</span><span class="skill-tool-copy"><span class="skill-tool-service">${esc(info.label)}</span><span class="skill-tool-action">${esc(info.action)}</span></span></span>`
+}
+
+function renderSkillTools() {
+  const tools = $('sk-tools').value.split('\n').map((x) => x.trim()).filter(Boolean)
+  $('sk-tools-visual').innerHTML = tools.length
+    ? tools.map((tool) => skillToolMarkup(tool)).join('')
+    : '<div class="skill-tools-empty">Noch keine Tools mit diesem Skill verbunden.</div>'
+}
 
 function renderWorkflowFlow(container, text, toolsList = []) {
   const steps = parseWorkflowSteps(text)
@@ -3648,7 +3713,7 @@ function renderWorkflowFlow(container, text, toolsList = []) {
     node.className = 'wf-node'
     node.innerHTML = `<span class="wf-num">${esc(s.num)}</span>
       <div class="wf-body"><div class="wf-text">${esc(s.text.length > 260 ? s.text.slice(0, 260) + ' …' : s.text)}</div>
-      ${found.length ? `<div class="wf-chips">${found.map((f) => `<span class="wf-chip">${esc(f)}</span>`).join('')}</div>` : ''}</div>`
+      ${found.length ? `<div class="wf-chips">${found.map((f) => skillToolMarkup(f, true)).join('')}</div>` : ''}</div>`
     container.appendChild(node)
   }
 }
@@ -3681,6 +3746,7 @@ function openSkill(s, isAdmin) {
   $('sk-context').value = s?.context || ''
   $('sk-workflow').value = s?.workflow || ''
   $('sk-tools').value = (s?.tools || []).join('\n')
+  renderSkillTools()
   $('sk-triggers').value = s?.triggers || ''
   $('sk-dod').value = s?.definition_of_done || ''
   $('sk-corner').value = s?.corner_cases || ''
@@ -3690,9 +3756,16 @@ function openSkill(s, isAdmin) {
   $('sk-visibility').querySelector('option[value="team"]').disabled = !isAdmin
   $('sk-save').hidden = !canEdit
   $('sk-delete').hidden = !canEdit || !s
+  $('sk-tools-advanced').hidden = !canEdit
+  $('sk-tools-advanced').open = false
   $('skill-overlay').classList.add('open')
   if (canEdit) setTimeout(() => $('sk-name').focus(), 50)
 }
+
+$('sk-tools').addEventListener('input', () => {
+  renderSkillTools()
+  if (!$('sk-workflow-flow').hidden) renderWorkflowFlow($('sk-workflow-flow'), $('sk-workflow').value, $('sk-tools').value.split('\n').map((x) => x.trim()).filter(Boolean))
+})
 
 $('skill-add').addEventListener('click', async () => openSkill(null, (await ownProfile()).is_admin))
 $('sk-cancel').addEventListener('click', () => $('skill-overlay').classList.remove('open'))
