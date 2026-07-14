@@ -2428,7 +2428,7 @@ async function send() {
   }, 1000)
 
   try {
-    const res = await fetch(`${BACKEND_URL}/api/chat`, {
+    const chatRequest = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
       body: JSON.stringify({
@@ -2438,7 +2438,20 @@ async function send() {
         attachments: attachments.length ? attachments : undefined,
         pod_id: !currentConv && convPod ? convPod.id : undefined,
       }),
-    })
+    }
+    let res
+    try {
+      res = await fetch(`${BACKEND_URL}/api/chat`, chatRequest)
+    } catch (firstError) {
+      // Railway/Netzwerk kann einen einzelnen Verbindungsaufbau verlieren. Nur
+      // VOR Empfang der Response einmal neu verbinden; ein abgerissener SSE-Stream
+      // wird bewusst nicht erneut gesendet (sonst könnte die Nachricht doppelt laufen).
+      if (!(firstError instanceof TypeError)) throw firstError
+      setStatus('Verbindung wird wiederhergestellt …')
+      await new Promise((resolve) => setTimeout(resolve, 900))
+      await fetch(`${BACKEND_URL}/health`, { cache: 'no-store' }).catch(() => null)
+      res = await fetch(`${BACKEND_URL}/api/chat`, chatRequest)
+    }
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`)
 
     const reader = res.body.getReader()
@@ -2542,7 +2555,10 @@ async function send() {
     }
   } catch (err) {
     runIndicator?.remove()
-    ;(body || box).insertAdjacentHTML('beforeend', `<p style="color:var(--high)">Fehler: ${esc(err.message)}</p>`)
+    const message = err instanceof TypeError
+      ? 'Verbindung zu Enni unterbrochen. Bitte sende die Nachricht erneut.'
+      : `Fehler: ${err.message}`
+    ;(body || box).insertAdjacentHTML('beforeend', `<p style="color:var(--high)">${esc(message)}</p>`)
   }
 
   clearInterval(statusTimer)
