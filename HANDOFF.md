@@ -2,6 +2,12 @@
 
 **Zuletzt aktualisiert:** 2026-07-15 (Invite-Onboarding, Team-Profile und Pod-Mitgliederverwaltung)
 
+### Session 2026-07-15 — Invite-Links auf produktiver Domain
+
+- **Eine kanonische Domain:** Supabase Auth `site_url`, Redirect-Allowlist, Railway `SITE_URL`, Railway `FRONTEND_ORIGIN` und der Backend-Fallback zeigen jetzt auf `https://os.enneo.ai`. Die Netlify-Domain bleibt nur als erlaubter technischer Fallback erhalten.
+- **Alt-Testaccount vollständig entfernt:** `info@aleksa.ai` / „Aleks Test“ wurde inklusive Auth-User, Profil, Sessions, ausstehender Einladung und Avatar-Objekt gelöscht und kann neu eingeladen werden.
+- **Produktiv verifiziert:** Railway-Deployment `7d0e1b7b-bc25-41fc-aad6-91065c708bda` ist erfolgreich und `/health` grün. Ein echter temporärer Invite erzeugte `redirect_to=https://os.enneo.ai`; der Testaccount wurde anschließend gelöscht.
+
 ### Session 2026-07-15 — People, Onboarding & verständliche Zugriffe
 
 - **Verbindliches Invite-Onboarding:** Neue Profile durchlaufen serverseitig gespeichert drei Schritte für Name/Profilfoto, Abteilung und Passwort. Feste Abteilungen erhalten konsistente Farben; „Custom Tag“ erlaubt eigene Position und Farbe. Bestehende Accounts wurden bewusst als abgeschlossen migriert, damit nur neue Einladungen den Pflichtfluss sehen.

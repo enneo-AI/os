@@ -868,7 +868,7 @@ app.post('/api/admin/announcements', async (req, res) => {
 // Kollegen einladen (Admin): erzeugt einen Invite-/Login-Link zum Weitergeben.
 // Bewusst Link-basiert statt E-Mail-Versand — Supabase-SMTP ist rate-limitiert und
 // der Admin verschickt den Link ohnehin persönlich (Slack/Mail).
-const SITE_URL = process.env.SITE_URL || 'https://enneo-os.netlify.app'
+const SITE_URL = process.env.SITE_URL || 'https://os.enneo.ai'
 app.post('/api/invite', async (req, res) => {
   const user = await requireAdmin(req, res)
   if (!user) return
