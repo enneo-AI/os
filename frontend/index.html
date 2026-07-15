@@ -23,6 +23,8 @@
     --bg:#F5F3F8;
     --surface:rgba(255,255,255,.75); --surface-2:rgba(255,255,255,.6);
     --modal-footer-glass:rgba(239,236,247,.82); --modal-footer-highlight:rgba(255,255,255,.58);
+    --notification-glass-hi:rgba(255,255,255,.62); --notification-glass-lo:rgba(241,237,249,.46);
+    --notification-tab-hi:rgba(255,255,255,.72); --notification-tab-lo:rgba(244,240,251,.48);
     --code-bg:rgba(29,30,44,.05); --hover:rgba(29,30,44,.04); --press:rgba(29,30,44,.06);
     --key-hi:rgba(255,255,255,.68); --key-lo:rgba(255,255,255,.34);
     --cta-bg:#1D1E2C; --cta-text:#fff; --cta-hover:#33354a;
@@ -46,6 +48,8 @@
     --shadow:0 24px 60px -20px rgba(0,0,0,.55), 0 2px 8px rgba(0,0,0,.3);
     --surface:rgba(255,255,255,.06); --surface-2:rgba(255,255,255,.05);
     --modal-footer-glass:rgba(24,24,42,.82); --modal-footer-highlight:rgba(255,255,255,.08);
+    --notification-glass-hi:rgba(35,34,57,.72); --notification-glass-lo:rgba(20,20,35,.62);
+    --notification-tab-hi:rgba(255,255,255,.11); --notification-tab-lo:rgba(255,255,255,.045);
     --code-bg:rgba(255,255,255,.08); --hover:rgba(255,255,255,.05); --press:rgba(255,255,255,.08);
     --key-hi:rgba(255,255,255,.11); --key-lo:rgba(255,255,255,.04);
     --cta-bg:#E9EAF4; --cta-text:#1D1E2C; --cta-hover:#ffffff;
@@ -164,12 +168,12 @@
   .mobile-actions{display:flex;align-items:center}
   .notification-backdrop{position:fixed;inset:0;z-index:180;background:rgba(18,17,29,.18);opacity:0;pointer-events:none;transition:opacity .2s ease}
   .notification-backdrop.open{opacity:1;pointer-events:auto}
-  .notification-panel{position:fixed;z-index:190;right:14px;top:14px;width:min(420px,calc(100vw - 28px));height:calc(100dvh - 28px);display:flex;flex-direction:column;border:1px solid var(--glass-outline);border-radius:22px;background:var(--glass-strong);-webkit-backdrop-filter:blur(34px) saturate(1.65);backdrop-filter:blur(34px) saturate(1.65);box-shadow:0 35px 90px -30px rgba(22,18,43,.52);transform:translateX(calc(100% + 28px));visibility:hidden;transition:transform .25s cubic-bezier(.2,.75,.25,1),visibility 0s linear .25s;overflow:hidden;overscroll-behavior:contain}
+  .notification-panel{position:fixed;z-index:190;right:14px;top:14px;width:min(420px,calc(100vw - 28px));height:calc(100dvh - 28px);display:flex;flex-direction:column;border:1px solid var(--glass-outline);border-radius:22px;background:linear-gradient(145deg,var(--notification-glass-hi),var(--notification-glass-lo));-webkit-backdrop-filter:blur(42px) saturate(1.72);backdrop-filter:blur(42px) saturate(1.72);box-shadow:inset 0 1px 0 var(--glass-highlight),inset 0 -1px 0 rgba(255,255,255,.16),0 35px 90px -30px rgba(22,18,43,.52);transform:translateX(calc(100% + 28px));visibility:hidden;transition:transform .25s cubic-bezier(.2,.75,.25,1),visibility 0s linear .25s;overflow:hidden;overscroll-behavior:contain}
   .notification-panel.open{transform:none;visibility:visible;transition-delay:0s}
   .notification-head{display:flex;align-items:center;gap:10px;min-height:70px;padding:0 18px;border-bottom:1px solid var(--hair)}
   .notification-head h2{margin:0;font-size:17px;font-weight:670;letter-spacing:-.015em}.notification-head .btn{margin-left:auto}.notification-close{width:36px;height:36px;border:0;border-radius:11px;background:none;color:var(--ink-3);font-size:18px}.notification-close:hover{background:var(--hover);color:var(--ink)}
   .notification-toolbar{display:flex;align-items:center;gap:6px;padding:10px 14px;border-bottom:1px solid var(--hair)}
-  .notification-filter{height:32px;padding:0 12px;border:0;border-radius:999px;background:none;color:var(--ink-3);font-size:12px;font-weight:620}.notification-filter.on{background:var(--press);color:var(--ink)}
+  .notification-filter{height:32px;padding:0 12px;border:1px solid transparent;border-radius:999px;background:none;color:var(--ink-3);font-size:12px;font-weight:620}.notification-filter.on{border-color:var(--glass-outline);background:linear-gradient(145deg,var(--notification-tab-hi),var(--notification-tab-lo));color:var(--ink);box-shadow:inset 0 1px 0 var(--glass-highlight),0 6px 16px -13px rgba(43,31,84,.7)}
   .notification-settings-toggle{margin-left:auto;border:0;background:none;color:var(--ink-3);font-size:11.5px}.notification-settings-toggle:hover{color:var(--ink)}
   .notification-list{flex:1;min-height:0;overflow:auto}
   .notification-row{position:relative;width:100%;display:grid;grid-template-columns:38px minmax(0,1fr) auto;gap:11px;padding:15px 16px;border:0;border-bottom:1px solid var(--hair);background:none;text-align:left;color:var(--ink)}
