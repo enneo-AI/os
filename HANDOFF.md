@@ -2,6 +2,13 @@
 
 **Zuletzt aktualisiert:** 2026-07-15 (Account Governance + Knowledge-/Release-Sync; live auf https://os.enneo.ai)
 
+### Session 2026-07-15 — Prompt Queue als Composer-Shelf
+
+- **Queue aus dem Chat-Verlauf gelöst:** Wartende Prompts erscheinen nicht mehr als gedimmte Chat-Bubbles, sondern in einem kompakten, an die Input-Bar angedockten Glass-Shelf. Dadurch bleibt der aktive Turn visuell oben und die Ausführungsreihenfolge direkt am Eingabepunkt verständlich.
+- **Reihenfolge vollständig bedienbar:** Sechs-Punkt-Griff links für Drag-and-drop, zusätzlich Pfeiltasten am fokussierten Griff. Eine Drop-Linie zeigt die neue Position; „Steer“ verschiebt einen Prompt sofort an die erste Stelle.
+- **Queue-Aktionen:** einzelne Prompts entfernen, alle entfernen sowie über das Mehr-Menü bearbeiten, duplizieren oder ans Ende stellen. Dateianhänge erscheinen platzsparend als kleiner Badge. Bei mehr Einträgen scrollt nur das Shelf, nicht der Chat.
+- **Bestehendes Verhalten erhalten:** Queue bleibt pro Konversation isoliert, wird beim Chatwechsel korrekt ein-/ausgeblendet und nach Ende des laufenden Turns weiterhin automatisch von oben nach unten abgearbeitet. Light/Dark, Reduced Motion und schmale Viewports sind berücksichtigt. Reiner Frontend-Change; kein Railway-Deploy erforderlich.
+
 ### Session 2026-07-15 — OAuth-Integrationsplattform
 
 - **Railway-freie Einrichtung:** Outlook, Google Drive, Notion, Attio und Slack verwenden eine gemeinsame OAuth-Plattform. Admins hinterlegen die OAuth-App einmalig direkt im Marketplace (Redirect URI, Client-ID, Client-Secret, optional Microsoft-Tenant); Secrets werden AES-256-GCM-verschlüsselt gespeichert und sind weder über die Data API noch in der UI auslesbar. Danach erfolgt jede Account-Verbindung per normalem Anbieter-Login.

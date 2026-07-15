@@ -483,6 +483,7 @@ function renameConv(btn, c) {
 
 function newConversation() {
   currentConv = null
+  mountPromptQueue(null)
   viewSeq++
   updateComposerState()
   subscribeConvMessages(null) // alten Message-Kanal schließen
@@ -554,11 +555,9 @@ async function openConversation(c) {
   renderCtx()
   subscribeConvMessages(c.id) // Live-Nachrichten (Pod-Team-Chat, fremde Geräte)
   renderLiveProgressIfWorking(c) // läuft hier gerade ein Turn? → Gedanken live zeigen
-  // Wartende Prompts bewusst NACH dem aktiven Live-Container anzeigen.
-  if (promptQueues.get(c.id)?.length) {
-    mountPromptQueue(c.id)
-    setTimeout(() => drainPromptQueue(c.id), 400)
-  }
+  // Die Warteschlange sitzt am Composer und bleibt damit vom aktiven Turn getrennt.
+  mountPromptQueue(c.id)
+  if (promptQueues.get(c.id)?.length) setTimeout(() => drainPromptQueue(c.id), 400)
   window.scrollTo({ top: document.body.scrollHeight })
 }
 
@@ -2417,62 +2416,184 @@ function updateMentionBacks() {
 // ============================================================ Prompt-Warteschlange
 // Während Enni arbeitet, kann der Nutzer weitere Nachrichten senden — sie werden
 // pro Konversation gequeued und nach Abschluss des laufenden Turns automatisch gesendet.
-const promptQueues = new Map() // convId -> [{ text, files, el }]
-
-function queueAttachmentMeta(files) {
-  return (files || []).map((f) => ({ name: f.file.name, media_type: f.type }))
-}
+const promptQueues = new Map() // convId -> [{ text, files }]
+let draggedPrompt = null
 
 function removeQueuedPrompt(convId, item) {
   const list = promptQueues.get(convId) || []
   const idx = list.indexOf(item)
   if (idx >= 0) list.splice(idx, 1)
-  item.wrap?.remove()
-  if (!list.length) {
-    promptQueues.delete(convId)
-    $('msgs').querySelector('.prompt-queue')?.remove()
-  } else updatePromptQueue(convId)
+  if (!list.length) promptQueues.delete(convId)
+  mountPromptQueue(convId)
 }
 
-function renderQueuedPrompt(convId, item, dock) {
-  item.wrap = document.createElement('div')
-  item.wrap.className = 'queued-item'
-  item.el = renderUser(item.text || item.files.map((f) => f.file.name).join(', '), queueAttachmentMeta(item.files))
-  item.el.classList.add('queued')
-  item.tag = document.createElement('button')
-  item.tag.className = 'queued-tag'
-  item.tag.addEventListener('click', () => removeQueuedPrompt(convId, item))
-  item.wrap.append(item.el, item.tag)
-  dock.appendChild(item.wrap)
-}
-
-function updatePromptQueue(convId) {
+function reorderQueuedPrompt(convId, item, nextIndex) {
   const list = promptQueues.get(convId) || []
-  const dock = $('msgs').querySelector('.prompt-queue')
-  if (!dock) return
-  dock.querySelector('.prompt-queue-head').textContent = `Danach · ${list.length} ${list.length === 1 ? 'Prompt' : 'Prompts'}`
-  list.forEach((item, i) => { if (item.tag) item.tag.textContent = `${i + 1}. in der Warteschlange · entfernen` })
+  const from = list.indexOf(item)
+  if (from < 0) return
+  list.splice(from, 1)
+  const target = Math.max(0, Math.min(nextIndex, list.length))
+  list.splice(target, 0, item)
+  mountPromptQueue(convId)
+}
+
+function editQueuedPrompt(convId, item, row) {
+  row.querySelector('.queue-copy').hidden = true
+  row.querySelector('.queue-actions').hidden = true
+  const edit = document.createElement('div')
+  edit.className = 'queue-edit'
+  edit.innerHTML = '<textarea rows="2" aria-label="Prompt bearbeiten"></textarea><button class="cancel">Abbrechen</button><button class="save">Speichern</button>'
+  const input = edit.querySelector('textarea')
+  input.value = item.text || ''
+  const close = () => mountPromptQueue(convId)
+  edit.querySelector('.cancel').addEventListener('click', close)
+  edit.querySelector('.save').addEventListener('click', () => {
+    item.text = input.value.trim()
+    close()
+  })
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') close()
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') edit.querySelector('.save').click()
+  })
+  row.appendChild(edit)
+  input.focus()
+}
+
+function renderQueuedPrompt(convId, item, index, list) {
+  const row = document.createElement('div')
+  row.className = 'queue-row'
+  row.dataset.queueIndex = index
+  row.innerHTML = `
+    <button class="queue-drag" type="button" aria-label="Prompt ${index + 1} verschieben" title="Ziehen oder mit den Pfeiltasten verschieben">
+      <svg viewBox="0 0 16 18" aria-hidden="true"><circle cx="5" cy="4" r="1.2"/><circle cx="11" cy="4" r="1.2"/><circle cx="5" cy="9" r="1.2"/><circle cx="11" cy="9" r="1.2"/><circle cx="5" cy="14" r="1.2"/><circle cx="11" cy="14" r="1.2"/></svg>
+    </button>
+    <div class="queue-copy">
+      <span class="queue-order">${String(index + 1).padStart(2, '0')}</span>
+      <span class="queue-text"></span>
+    </div>
+    <div class="queue-actions">
+      <button class="queue-action steer" type="button" title="Als Nächstes ausführen" ${index === 0 ? 'disabled' : ''}>
+        <svg viewBox="0 0 24 24"><path d="M5 7v4a4 4 0 0 0 4 4h10"/><path d="m16 12 3 3-3 3"/></svg><span>Steer</span>
+      </button>
+      <button class="queue-action danger remove" type="button" aria-label="Prompt entfernen" title="Entfernen">
+        <svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="m7 7 1 13h8l1-13"/></svg>
+      </button>
+      <div class="queue-more-wrap">
+        <button class="queue-action queue-more" type="button" aria-label="Weitere Aktionen" aria-expanded="false" title="Mehr">
+          <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+        </button>
+        <div class="queue-menu" hidden>
+          <button type="button" data-action="edit">Bearbeiten</button>
+          <button type="button" data-action="duplicate">Duplizieren</button>
+          <button type="button" data-action="last">Ans Ende</button>
+        </div>
+      </div>
+    </div>`
+  const label = item.text || item.files?.map((f) => f.file.name).join(', ') || 'Dateianhang'
+  row.querySelector('.queue-text').textContent = label
+  if (item.files?.length) {
+    const file = document.createElement('span')
+    file.className = 'queue-file'
+    file.textContent = item.files.length === 1 ? item.files[0].file.name : `${item.files.length} Dateien`
+    file.title = item.files.map((f) => f.file.name).join(', ')
+    row.querySelector('.queue-copy').appendChild(file)
+  }
+
+  const drag = row.querySelector('.queue-drag')
+  drag.addEventListener('pointerdown', () => { row.draggable = true })
+  drag.addEventListener('pointerup', () => { row.draggable = false })
+  drag.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
+    e.preventDefault()
+    const delta = e.key === 'ArrowUp' ? -1 : 1
+    reorderQueuedPrompt(convId, item, index + delta)
+    document.querySelector(`[data-queue-index="${Math.max(0, Math.min(index + delta, list.length - 1))}"] .queue-drag`)?.focus()
+  })
+  row.addEventListener('dragstart', (e) => {
+    draggedPrompt = item
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', String(index))
+    requestAnimationFrame(() => row.classList.add('dragging'))
+  })
+  row.addEventListener('dragover', (e) => {
+    if (!draggedPrompt || draggedPrompt === item) return
+    e.preventDefault()
+    const after = e.clientY > row.getBoundingClientRect().top + row.offsetHeight / 2
+    document.querySelectorAll('.queue-row').forEach((el) => el.classList.remove('drop-before', 'drop-after'))
+    row.classList.add(after ? 'drop-after' : 'drop-before')
+    e.dataTransfer.dropEffect = 'move'
+  })
+  row.addEventListener('drop', (e) => {
+    e.preventDefault()
+    if (!draggedPrompt || draggedPrompt === item) return
+    const after = e.clientY > row.getBoundingClientRect().top + row.offsetHeight / 2
+    const remaining = list.filter((entry) => entry !== draggedPrompt)
+    const target = remaining.indexOf(item)
+    reorderQueuedPrompt(convId, draggedPrompt, target + (after ? 1 : 0))
+  })
+  row.addEventListener('dragend', () => {
+    draggedPrompt = null
+    row.draggable = false
+    document.querySelectorAll('.queue-row').forEach((el) => el.classList.remove('dragging', 'drop-before', 'drop-after'))
+  })
+  row.querySelector('.steer').addEventListener('click', () => reorderQueuedPrompt(convId, item, 0))
+  row.querySelector('.remove').addEventListener('click', () => removeQueuedPrompt(convId, item))
+  const more = row.querySelector('.queue-more')
+  const menu = row.querySelector('.queue-menu')
+  more.addEventListener('click', (e) => {
+    e.stopPropagation()
+    const open = menu.hidden
+    document.querySelectorAll('.queue-menu.floating').forEach((el) => el.remove())
+    document.querySelectorAll('.queue-more').forEach((el) => el.setAttribute('aria-expanded', 'false'))
+    if (open) {
+      document.body.appendChild(menu)
+      menu.classList.add('floating')
+      menu.hidden = false
+      const rect = more.getBoundingClientRect()
+      const menuRect = menu.getBoundingClientRect()
+      menu.style.left = `${Math.max(8, Math.min(rect.right - menuRect.width, window.innerWidth - menuRect.width - 8))}px`
+      menu.style.top = `${Math.max(8, rect.top - menuRect.height - 6)}px`
+    }
+    more.setAttribute('aria-expanded', String(open))
+  })
+  menu.addEventListener('click', (e) => {
+    const action = e.target.closest('button')?.dataset.action
+    if (action === 'edit') editQueuedPrompt(convId, item, row)
+    if (action === 'duplicate') {
+      list.splice(index + 1, 0, { text: item.text, files: [...(item.files || [])] })
+      mountPromptQueue(convId)
+    }
+    if (action === 'last') reorderQueuedPrompt(convId, item, list.length)
+  })
+  return row
 }
 
 function mountPromptQueue(convId) {
-  const box = $('msgs')
-  box.querySelector('.prompt-queue')?.remove()
+  document.querySelectorAll('.queue-menu.floating').forEach((el) => el.remove())
+  const host = $('prompt-queue-host')
+  const composer = host.closest('.composer')
+  host.innerHTML = ''
   const list = promptQueues.get(convId) || []
-  if (!list.length) return null
+  const visible = !!convId && currentConv?.id === convId && list.length > 0
+  host.hidden = !visible
+  composer.classList.toggle('has-queue', visible)
+  if (!visible) return null
   const dock = document.createElement('div')
   dock.className = 'prompt-queue'
   dock.dataset.conversation = convId
-  dock.innerHTML = '<div class="prompt-queue-head"></div>'
-  for (const item of list) renderQueuedPrompt(convId, item, dock)
-  box.appendChild(dock)
-  updatePromptQueue(convId)
+  dock.innerHTML = `<div class="prompt-queue-head"><span class="prompt-queue-pulse"></span><span class="prompt-queue-title">Als Nächstes</span><span class="prompt-queue-count">${list.length}</span><button class="prompt-queue-clear" type="button">Alle entfernen</button></div><div class="prompt-queue-list"></div>`
+  const rows = dock.querySelector('.prompt-queue-list')
+  list.forEach((item, index) => rows.appendChild(renderQueuedPrompt(convId, item, index, list)))
+  dock.querySelector('.prompt-queue-clear').addEventListener('click', () => {
+    promptQueues.delete(convId)
+    mountPromptQueue(convId)
+  })
+  host.appendChild(dock)
   return dock
 }
 
 function appendBeforePromptQueue(box, node) {
-  const dock = box.querySelector('.prompt-queue')
-  if (dock) box.insertBefore(node, dock)
-  else box.appendChild(node)
+  box.appendChild(node)
 }
 
 function enqueuePrompt(convId, text) {
@@ -2483,13 +2604,11 @@ function enqueuePrompt(convId, text) {
   input.value = ''
   autosize()
   const q = promptQueues.get(convId) || []
-  const item = { text, files, el: null, tag: null, wrap: null }
+  const item = { text, files }
   q.push(item)
   promptQueues.set(convId, q)
-  const dock = $('msgs').querySelector('.prompt-queue') || mountPromptQueue(convId)
-  if (item.wrap == null) renderQueuedPrompt(convId, item, dock)
-  updatePromptQueue(convId)
-  item.wrap.scrollIntoView({ block: 'end' })
+  mountPromptQueue(convId)
+  $('prompt-queue-host').querySelector('.queue-row:last-child')?.scrollIntoView({ block: 'nearest' })
 }
 
 function drainPromptQueue(convId) {
@@ -2498,16 +2617,19 @@ function drainPromptQueue(convId) {
   // Nur senden, wenn die Konversation gerade offen ist und nichts mehr läuft
   if (currentConv?.id !== convId || activeStreams.has(convId) || currentConv.working) return
   const item = q.shift()
-  item.wrap?.remove()
-  if (!q.length) {
-    promptQueues.delete(convId)
-    $('msgs').querySelector('.prompt-queue')?.remove()
-  } else updatePromptQueue(convId)
+  if (!q.length) promptQueues.delete(convId)
+  mountPromptQueue(convId)
   $('composer-input').value = item.text
   pendingFiles = item.files || []
   renderChips()
   send()
 }
+
+document.addEventListener('click', (e) => {
+  if (e.target.closest('.queue-more-wrap')) return
+  document.querySelectorAll('.queue-menu.floating').forEach((el) => el.remove())
+  document.querySelectorAll('.queue-more').forEach((el) => el.setAttribute('aria-expanded', 'false'))
+})
 
 async function send() {
   const input = $('composer-input')

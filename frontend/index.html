@@ -177,14 +177,51 @@
   .pal-item .pal-s{font-size:11.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .pal-empty{padding:26px 12px;text-align:center;color:var(--ink-3);font-size:13px}
 
-  /* Prompt-Warteschlange: eigener Block bleibt immer unter dem aktiven Turn */
-  .prompt-queue{display:flex;flex-direction:column;align-items:stretch;gap:8px;width:100%;padding-top:12px;border-top:1px solid var(--hair)}
-  .prompt-queue-head{display:flex;align-items:center;justify-content:flex-end;gap:7px;color:var(--ink-3);font-size:10.5px;font-weight:620;letter-spacing:.04em;text-transform:uppercase;padding:0 5px}
-  .prompt-queue-head::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--lila);box-shadow:0 0 0 4px rgba(123,90,226,.10)}
-  .queued-item{display:flex;flex-direction:column;align-items:flex-end;gap:3px;width:100%}
-  .m-user.queued{opacity:.58;box-shadow:none}
-  .queued-tag{border:0;background:none;color:var(--ink-3);font-size:10.5px;padding:0 6px;cursor:pointer}
-  .queued-tag:hover{color:var(--high)}
+  /* Prompt Queue — als schwebendes Glass-Shelf direkt an den Composer gedockt */
+  .prompt-queue-host[hidden]{display:none}
+  .prompt-queue-host{
+    position:relative;z-index:2;margin:0 14px -1px;border:1px solid var(--glass-outline);border-bottom-color:var(--hair);
+    border-radius:20px 20px 7px 7px;background:var(--composer-glass);background:color-mix(in srgb,var(--composer-glass) 88%,transparent);
+    -webkit-backdrop-filter:blur(30px) saturate(1.55);backdrop-filter:blur(30px) saturate(1.55);
+    box-shadow:0 -18px 48px -30px rgba(48,35,92,.38),inset 0 1px 0 var(--glass-highlight);
+    overflow:visible;animation:queue-in .2s cubic-bezier(.2,.8,.2,1)
+  }
+  @keyframes queue-in{from{opacity:0;transform:translateY(7px) scale(.99)}to{opacity:1;transform:none}}
+  .prompt-queue{display:flex;flex-direction:column;width:100%;padding:7px}
+  .prompt-queue-head{display:flex;align-items:center;min-height:30px;padding:1px 7px 5px;gap:8px;color:var(--ink-3)}
+  .prompt-queue-pulse{width:6px;height:6px;border-radius:50%;background:var(--lila);box-shadow:0 0 0 4px rgba(123,90,226,.10);flex:none}
+  .prompt-queue-title{font-size:10.5px;font-weight:680;letter-spacing:.075em;text-transform:uppercase}
+  .prompt-queue-count{font-family:var(--mono);font-size:10px;color:var(--ink-3);border:1px solid var(--hair);border-radius:999px;padding:1px 6px}
+  .prompt-queue-clear{margin-left:auto;border:0;background:none;color:var(--ink-3);font:inherit;font-size:10.5px;font-weight:600;padding:4px 6px;border-radius:7px}
+  .prompt-queue-clear:hover{color:var(--high);background:rgba(200,86,78,.09)}
+  .prompt-queue-list{display:flex;flex-direction:column;gap:2px;max-height:172px;overflow-y:auto;overscroll-behavior:contain}
+  .queue-row{position:relative;display:grid;grid-template-columns:34px minmax(0,1fr) auto;align-items:center;min-height:43px;border:1px solid transparent;border-radius:12px;padding:3px 5px 3px 2px;color:var(--ink-2);transition:background .14s ease,border-color .14s ease,opacity .14s ease,transform .14s ease}
+  .queue-row:hover,.queue-row:focus-within{background:var(--hover);border-color:var(--hair)}
+  .queue-row.dragging{opacity:.32;transform:scale(.99)}
+  .queue-row.drop-before::before,.queue-row.drop-after::after{content:"";position:absolute;left:36px;right:8px;height:2px;border-radius:999px;background:var(--lila);box-shadow:0 0 0 3px rgba(123,90,226,.10)}
+  .queue-row.drop-before::before{top:-2px}.queue-row.drop-after::after{bottom:-2px}
+  .queue-drag{width:30px;height:34px;border:0;border-radius:9px;background:transparent;color:var(--ink-3);display:inline-flex;align-items:center;justify-content:center;cursor:grab;touch-action:none}
+  .queue-drag:active{cursor:grabbing}.queue-drag:hover,.queue-drag:focus-visible{color:var(--ink);background:var(--press)}
+  .queue-drag svg{width:16px;height:18px;fill:currentColor;opacity:.72}
+  .queue-copy{display:flex;align-items:center;gap:8px;min-width:0;padding:0 5px}
+  .queue-order{font-family:var(--mono);font-size:9.5px;color:var(--ink-3);flex:none}
+  .queue-text{font-size:13.5px;font-weight:520;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
+  .queue-file{display:inline-flex;align-items:center;gap:4px;max-width:140px;border:1px solid var(--hair);border-radius:999px;padding:2px 7px;color:var(--ink-3);font-size:9.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:none}
+  .queue-actions{display:flex;align-items:center;gap:1px;flex:none}
+  .queue-action{height:30px;border:0;border-radius:9px;background:transparent;color:var(--ink-3);display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 8px;font:inherit;font-size:11.5px;font-weight:600;white-space:nowrap}
+  .queue-action:hover:not(:disabled),.queue-action:focus-visible{background:var(--press);color:var(--ink)}
+  .queue-action:disabled{opacity:.35;cursor:default}.queue-action.danger:hover{color:var(--high);background:rgba(200,86,78,.09)}
+  .queue-action svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .queue-more-wrap{position:relative}.queue-more{width:30px;padding:0}
+  .queue-menu{position:absolute;right:0;bottom:calc(100% + 5px);z-index:8;width:152px;padding:5px;border:1px solid var(--edge);border-radius:12px;background:var(--glass-strong);-webkit-backdrop-filter:blur(24px) saturate(1.5);backdrop-filter:blur(24px) saturate(1.5);box-shadow:0 18px 42px -14px rgba(29,30,44,.38),inset 0 1px 0 var(--glass-highlight)}
+  .queue-menu.floating{position:fixed;right:auto;bottom:auto;z-index:120}
+  .queue-menu[hidden]{display:none}.queue-menu button{width:100%;border:0;border-radius:8px;background:none;color:var(--ink-2);font:inherit;font-size:11.5px;font-weight:560;text-align:left;padding:7px 9px}.queue-menu button:hover{background:var(--hover);color:var(--ink)}
+  .queue-edit{grid-column:2/4;display:flex;align-items:flex-end;gap:6px;padding:4px 5px 6px}
+  .queue-edit textarea{min-width:0;flex:1;resize:none;border:1px solid var(--hair-strong);border-radius:10px;background:var(--surface-2);color:var(--ink);outline:0;font:inherit;font-size:12.5px;line-height:1.4;padding:7px 9px}.queue-edit textarea:focus{border-color:var(--lila);box-shadow:0 0 0 3px rgba(123,90,226,.09)}
+  .queue-edit button{height:30px;border:1px solid var(--hair);border-radius:9px;background:var(--surface);color:var(--ink-2);font:inherit;font-size:11px;font-weight:620;padding:0 9px}.queue-edit .save{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+  .composer.has-queue .ctrack{border-radius:9px 9px 26px 26px;box-shadow:0 18px 48px -28px rgba(71,48,142,.30),inset 0 1px 0 var(--glass-highlight),inset 0 -1px 0 rgba(255,255,255,.08)}
+  @media(max-width:720px){.prompt-queue-host{margin:0 6px -1px}.queue-action.steer span{display:none}.queue-action.steer{width:30px;padding:0}.queue-file{display:none}.prompt-queue-list{max-height:148px}}
+  @media(prefers-reduced-motion:reduce){.prompt-queue-host{animation:none}.queue-row{transition:none}}
 
   /* Tool-Verbindungs-Karte im Chat */
   .tc-form{display:flex;flex-direction:column;gap:8px;margin:10px 0}
@@ -1052,6 +1089,7 @@
         </div>
         <div class="msgs" id="msgs"></div>
         <div class="composer">
+          <div class="prompt-queue-host" id="prompt-queue-host" aria-live="polite" hidden></div>
           <div class="ctrack">
             <div class="chips" id="attach-chips" hidden></div>
             <div class="hl-wrap">
