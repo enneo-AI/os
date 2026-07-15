@@ -13,7 +13,7 @@ import { learningsPromptBlock } from './learnings.js'
 import { db } from './db.js'
 
 const anthropic = new Anthropic()
-const DEFAULT_MODEL = process.env.ENNI_MODEL || 'claude-opus-4-8'
+const DEFAULT_MODEL = process.env.ENNI_MODEL || 'claude-sonnet-5'
 export const ALLOWED_MODELS = ['claude-opus-4-8', 'claude-fable-5', 'claude-sonnet-5', 'claude-haiku-4-5']
 const MAX_TOOL_ITERATIONS = 12
 

@@ -498,15 +498,37 @@
   .compact-marker .cm-pill{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;color:var(--good);background:rgba(46,158,107,.08);border:1px solid rgba(46,158,107,.2);border-radius:999px;padding:5px 14px;cursor:pointer}
   .compact-marker .cm-sum{display:none;margin-top:10px;text-align:left;font-size:12.5px;color:var(--ink-2);background:var(--surface-2);border:1px solid var(--hair);border-radius:14px;padding:12px 16px;white-space:pre-wrap}
   .compact-marker.open .cm-sum{display:block}
-  .model-select{
+  .model-select,.model-trigger{
     border:0;border-radius:999px;padding:8px 13px;font-size:12px;font-weight:650;color:var(--ink-2);
     outline:0;cursor:pointer;flex:none;-webkit-appearance:none;appearance:none;height:36px;
     background:linear-gradient(180deg, var(--key-hi), var(--key-lo));
     box-shadow:inset 0 1px 0 rgba(255,255,255,.75), inset 0 -1px 0 rgba(29,30,44,.04), 0 1px 2px rgba(29,30,44,.08), 0 3px 8px -2px rgba(29,30,44,.10);
     transition:color .25s ease, transform .15s ease;
   }
-  .model-select:hover{color:var(--ink)}
-  .model-select:active{transform:translateY(1px)}
+  .model-select:hover,.model-trigger:hover{color:var(--ink)}
+  .model-select:active,.model-trigger:active{transform:translateY(1px)}
+  .model-picker{position:relative;flex:none}
+  .model-picker>select{display:none}
+  .model-trigger{display:flex;align-items:center;gap:6px;white-space:nowrap}
+  .model-trigger[aria-expanded="true"]{color:var(--ink);box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 0 0 1px rgba(123,90,226,.15),0 6px 16px -8px rgba(29,30,44,.25)}
+  .model-chevron{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;opacity:.55;transition:transform .18s ease}
+  .model-trigger[aria-expanded="true"] .model-chevron{transform:rotate(180deg)}
+  .model-menu{position:absolute;right:0;bottom:calc(100% + 9px);z-index:30;width:248px;padding:7px;border:1px solid var(--edge);border-radius:17px;background:var(--glass-strong);-webkit-backdrop-filter:blur(28px) saturate(1.55);backdrop-filter:blur(28px) saturate(1.55);box-shadow:0 20px 48px -16px rgba(29,30,44,.34),inset 0 1px 0 rgba(255,255,255,.45);transform-origin:bottom right;animation:model-pop .16s ease-out}
+  @keyframes model-pop{from{opacity:0;transform:translateY(5px) scale(.98)}to{opacity:1;transform:none}}
+  .model-option{position:relative;width:100%;min-height:38px;padding:8px 10px;border:0;border-radius:11px;background:transparent;color:var(--ink-2);display:flex;align-items:center;gap:8px;text-align:left;font:inherit;font-size:12.5px;font-weight:600;transition:background .14s ease,color .14s ease}
+  .model-option:hover:not(:disabled),.model-option[aria-selected="true"]{background:var(--hover);color:var(--ink)}
+  .model-option[aria-selected="true"]::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--lila);box-shadow:0 0 0 3px rgba(123,90,226,.12);flex:none}
+  .model-option:disabled{cursor:not-allowed;opacity:.46}
+  .model-menu-sep{height:1px;background:var(--hair);margin:6px 5px}
+  .model-tag{margin-left:auto;border:1px solid var(--hair);border-radius:999px;padding:2px 7px;font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);background:rgba(255,255,255,.08)}
+  .model-tag.standard{color:var(--lila-deep);border-color:rgba(123,90,226,.18);background:rgba(123,90,226,.08)}
+  .model-flame{position:relative;display:inline-flex;align-items:center;justify-content:center;color:#E27745;flex:none}
+  .model-flame[hidden]{display:none}
+  .model-flame svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 2px 4px rgba(226,119,69,.28))}
+  .model-flame::after{content:attr(data-tip);position:absolute;left:50%;bottom:calc(100% + 9px);width:220px;transform:translate(-50%,4px);pointer-events:none;opacity:0;padding:8px 10px;border:1px solid var(--edge);border-radius:10px;background:var(--glass-strong);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);box-shadow:0 12px 30px -12px rgba(29,30,44,.35);color:var(--ink-2);font-size:10.5px;font-weight:550;line-height:1.4;text-align:center;transition:opacity .14s ease,transform .14s ease;z-index:2}
+  .model-flame:hover::after,.model-flame:focus-visible::after{opacity:1;transform:translate(-50%,0)}
+  .model-flame.current::after{left:auto;right:-18px;transform:translateY(4px)}
+  .model-flame.current:hover::after,.model-flame.current:focus-visible::after{transform:none}
   .send{
     width:38px;height:38px;border-radius:50%;border:0;flex:none;color:#fff;
     display:inline-flex;align-items:center;justify-content:center;
@@ -1005,12 +1027,35 @@
                 </svg>
                 <span id="ctx-pct">0%</span>
               </button>
-              <select id="model-select" class="model-select" aria-label="Modell" title="KI-Modell wählen">
-                <option value="claude-opus-4-8">Opus 4.8</option>
-                <option value="claude-fable-5">Fable 5</option>
-                <option value="claude-sonnet-5">Sonnet 5</option>
-                <option value="claude-haiku-4-5">Haiku 4.5</option>
-              </select>
+              <div class="model-picker" id="model-picker">
+                <select id="model-select" aria-hidden="true" tabindex="-1">
+                  <option value="claude-sonnet-5">Sonnet 5</option>
+                  <option value="claude-fable-5">Fabel 5</option>
+                  <option value="claude-opus-4-8">Opus 4.8</option>
+                  <option value="claude-haiku-4-5">Haiku 4.5</option>
+                </select>
+                <button class="model-trigger" id="model-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="model-menu" title="KI-Modell wählen">
+                  <span id="model-current">Sonnet 5</span>
+                  <span class="model-flame current" id="model-current-flame" data-tip="Stärkstes Modell — benötigt allerdings die meisten Tokens." hidden>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.5 3.5c.7 3.2-.8 4.5-2.2 6.1-1.2 1.4-2.3 2.8-2.3 5.1a4 4 0 0 0 8 0c0-1.4-.5-2.7-1.5-4 .1 2.2-.9 3.2-2 3.8.4-2.3-.2-4.7-2-6.8"/></svg>
+                  </span>
+                  <svg class="model-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
+                </button>
+                <div class="model-menu" id="model-menu" role="listbox" aria-label="KI-Modell" hidden>
+                  <button class="model-option" type="button" role="option" data-model="claude-sonnet-5"><span>Sonnet 5</span><span class="model-tag standard">Standard</span></button>
+                  <button class="model-option" type="button" role="option" data-model="claude-fable-5">
+                    <span>Fabel 5</span>
+                    <span class="model-flame" data-tip="Stärkstes Modell — benötigt allerdings die meisten Tokens." aria-label="Stärkstes Modell; benötigt die meisten Tokens">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.5 3.5c.7 3.2-.8 4.5-2.2 6.1-1.2 1.4-2.3 2.8-2.3 5.1a4 4 0 0 0 8 0c0-1.4-.5-2.7-1.5-4 .1 2.2-.9 3.2-2 3.8.4-2.3-.2-4.7-2-6.8"/></svg>
+                    </span>
+                  </button>
+                  <button class="model-option" type="button" role="option" data-model="claude-opus-4-8"><span>Opus 4.8</span></button>
+                  <button class="model-option" type="button" role="option" data-model="claude-haiku-4-5"><span>Haiku 4.5</span></button>
+                  <div class="model-menu-sep" role="separator"></div>
+                  <button class="model-option" type="button" disabled><span>GPT-5.5</span><span class="model-tag">Coming soon</span></button>
+                  <button class="model-option" type="button" disabled><span>GPT-5.6 Sol</span><span class="model-tag">Coming soon</span></button>
+                </div>
+              </div>
               <button class="send" id="send-btn" aria-label="Senden">
                 <svg viewBox="0 0 24 24"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
               </button>

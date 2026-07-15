@@ -469,7 +469,7 @@ function newConversation() {
   subscribeConvMessages(null) // alten Message-Kanal schließen
   closeProgressChannel()
   $('chat-close').hidden = true
-  $('model-select').value = 'claude-opus-4-8'
+  setModel('claude-sonnet-5')
   $('composer-input').placeholder = convPod ? 'Nachricht ans Team — @enni ruft Enni …' : 'Frag Enni …'
   $('chat-title').textContent = 'Neue Konversation'
   renderNewConversationEmpty()
@@ -3411,9 +3411,60 @@ async function refreshCosts() {
   $('k-count').textContent = rows.length
 }
 
-// Modell-Wahl: Opus 4.8 ist Default bei jedem Chat-Start (Reset in newConversation);
-// innerhalb einer Konversation bleibt die Auswahl bestehen.
-$('model-select').value = 'claude-opus-4-8'
+// Modell-Wahl: Sonnet 5 ist Default bei jedem Chat-Start. Der sichtbare Glass-Picker
+// schreibt weiterhin in das versteckte Select, das der bestehende Send-Flow liest.
+const MODEL_LABELS = {
+  'claude-sonnet-5': 'Sonnet 5',
+  'claude-fable-5': 'Fabel 5',
+  'claude-opus-4-8': 'Opus 4.8',
+  'claude-haiku-4-5': 'Haiku 4.5',
+}
+
+function setModel(model) {
+  if (!MODEL_LABELS[model]) return
+  $('model-select').value = model
+  $('model-current').textContent = MODEL_LABELS[model]
+  $('model-current-flame').hidden = model !== 'claude-fable-5'
+  document.querySelectorAll('#model-menu [data-model]').forEach((option) => {
+    option.setAttribute('aria-selected', String(option.dataset.model === model))
+  })
+}
+
+function closeModelMenu() {
+  $('model-menu').hidden = true
+  $('model-trigger').setAttribute('aria-expanded', 'false')
+}
+
+function openModelMenu() {
+  $('model-menu').hidden = false
+  $('model-trigger').setAttribute('aria-expanded', 'true')
+}
+
+$('model-trigger').addEventListener('click', (event) => {
+  event.stopPropagation()
+  if ($('model-menu').hidden) openModelMenu()
+  else closeModelMenu()
+})
+document.querySelectorAll('#model-menu [data-model]').forEach((option) => {
+  option.addEventListener('click', () => {
+    setModel(option.dataset.model)
+    closeModelMenu()
+    $('model-trigger').focus()
+  })
+})
+$('model-picker').addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    closeModelMenu()
+    $('model-trigger').focus()
+  } else if (event.key === 'ArrowDown' && document.activeElement === $('model-trigger')) {
+    event.preventDefault()
+    openModelMenu()
+  }
+})
+document.addEventListener('click', (event) => {
+  if (!event.target.closest('#model-picker')) closeModelMenu()
+})
+setModel('claude-sonnet-5')
 
 // ============================================================ Connectors (MCP-Server verknüpfen)
 let cnCategory = 'tool'
