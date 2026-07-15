@@ -45,6 +45,18 @@ function chunkMarkdown(title, content) {
     }
     let buf = ''
     for (const para of sec.split(/\n\n+/)) {
+      if (para.length > MAX) {
+        if (buf.trim()) { chunks.push(buf.trim()); buf = '' }
+        let rest = para
+        while (rest.length > MAX) {
+          let cut = rest.lastIndexOf(' ', MAX)
+          if (cut < Math.floor(MAX * 0.6)) cut = MAX
+          chunks.push(rest.slice(0, cut).trim())
+          rest = rest.slice(cut).trim()
+        }
+        buf = rest
+        continue
+      }
       if (buf && buf.length + para.length + 2 > MAX) {
         chunks.push(buf.trim())
         buf = ''

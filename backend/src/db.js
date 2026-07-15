@@ -14,5 +14,11 @@ export async function getUserFromRequest(req) {
   if (!token) return null
   const { data, error } = await db.auth.getUser(token)
   if (error || !data?.user) return null
+  const { data: profile } = await db
+    .from('profiles')
+    .select('account_status')
+    .eq('id', data.user.id)
+    .maybeSingle()
+  if (profile?.account_status === 'disabled') return null
   return data.user
 }

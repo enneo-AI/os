@@ -1,6 +1,15 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-14 (UI/UX-System + visueller Skill-Tool-Picker; MVP live auf https://enneo-os.netlify.app)
+**Zuletzt aktualisiert:** 2026-07-15 (Account Governance + Knowledge-/Release-Sync; live auf https://os.enneo.ai)
+
+### Session 2026-07-15 — Account Governance + Enni Knowledge-/Release-Sync
+
+- **Zwei Rollen konsequent umgesetzt:** Member arbeiten im eigenen Scope; Admins verwalten zusätzlich Team-Ressourcen und Freigaben. Invite-Flow nimmt `Member`/`Admin` entgegen und speichert die Rolle serverseitig über `pending_invites` statt unsicherer User-Metadaten. Mitgliederliste erlaubt Admins Rollenwechsel sowie Aktivieren/Deaktivieren; eigener Admin und letzter aktiver Admin sind geschützt.
+- **Einheitlicher Scope erweitert:** Routinen und Wiki-Seiten nutzen jetzt ebenfalls `personal → proposed → team`, inklusive Admin-Review. Admins können persönliche Skills und Custom-Tools gezielt einem Account zuweisen. Team-Wiki-Seiten sind für Members read-only; neue Member-Seiten und URL-Imports starten persönlich.
+- **RLS gehärtet:** persönliche Connector-Metadaten und Restricted-Space-Wiki-Inhalte sind nicht mehr org-weit sichtbar. Eine restrictive `active_account_only`-Policy liegt auf 25 Fachtabellen, sodass deaktivierte Accounts auch mit altem JWT keinen Data-API-Zugriff behalten. Rollen-/Freigabeaktionen laufen über Backend-Guards und werden in `audit_log` attribuiert.
+- **Enni bleibt aktuell:** `knowledge_sources` enthält die offizielle vollständige Produktdokumentation (`docs.enneo.ai/llms-full.txt`) sowie gemergte Änderungen aus `enneo/enneo`. Der Backend-Ticker synchronisiert alle 6 Stunden, führt Hash-Deduplizierung und RAG-Reindexierung in 20-Seiten-Batches durch und protokolliert jeden Lauf. Admin-UI „Wissen & Releases“ zeigt Status und erlaubt manuellen Sync.
+- **Wöchentlicher Digest:** Team-Routine „Wöchentliche Enneo Release Notes“ läuft montags 09:00. Release-Kontext der letzten 30 Tage wird kompakt und mit GitLab-Quellen in Ennis Systemkontext geladen. Initialer Live-Sync: 80 gemergte Änderungen, Dokumentationsindex 417 deutsche Seiten; erster breiter Batch 20 Seiten erfolgreich.
+- **Migration:** `20260715084328_account_governance_release_sync.sql` atomar live auf Supabase `aiwhomrvspfxotkllngz`, Migration History eingetragen. Neue Backend-Module: `audit.js`, `knowledge-sync.js`.
 
 ### Session 2026-07-14 — UI/UX-System, Spaces und visueller Skill-Tool-Picker
 

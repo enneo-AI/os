@@ -369,7 +369,8 @@ document.querySelectorAll('.admin-area').forEach((b) =>
 )
 
 // Admin-Sidebar: genau einen Arbeitsbereich zeigen
-const ADMIN_TABS = new Set(['reviews', 'usage', 'members'])
+const ADMIN_TABS = new Set(['reviews', 'usage', 'members', 'knowledge'])
+const ADMIN_ONLY_TABS = new Set(['reviews', 'knowledge'])
 
 function setAdminTab(tab, sync = true) {
   if (!ADMIN_TABS.has(tab)) tab = 'usage'
@@ -391,9 +392,10 @@ async function loadAdmin() {
   const { is_admin } = await ownProfile()
   const requested = new URLSearchParams(location.search).get('tab')
   const initial = ADMIN_TABS.has(requested) ? requested : is_admin ? 'reviews' : 'usage'
-  setAdminTab(!is_admin && initial === 'reviews' ? 'usage' : initial, false)
+  setAdminTab(!is_admin && ADMIN_ONLY_TABS.has(initial) ? 'usage' : initial, false)
   await Promise.all([
     refreshCosts(), loadMembers(), loadKnowledgeUpdates(), loadLearnings(), loadSkillProposals(), loadToolProposals(),
+    loadRoutineProposals(), loadWikiPageProposals(), loadKnowledgeSources(),
   ])
 }
 
@@ -1231,6 +1233,104 @@ async function loadToolProposals() {
   }
 }
 
+async function loadRoutineProposals() {
+  const { is_admin } = await ownProfile()
+  const panel = $('panel-routines')
+  panel.hidden = !is_admin
+  if (!is_admin) return
+  const [{ data: rows }, profs] = await Promise.all([
+    sb.from('routines').select('*').eq('visibility', 'proposed').order('created_at'),
+    allProfiles(),
+  ])
+  const list = $('rp-list')
+  const proposed = rows || []
+  $('rp-count').textContent = proposed.length ? `${proposed.length} offen` : 'nichts offen'
+  list.innerHTML = proposed.length ? '' : '<div class="empty-plain">Keine offenen Routinen-Vorschläge.</div>'
+  const act = async (id, action) => {
+    const res = await fetch(`${BACKEND_URL}/api/routines/${id}/${action}`, {
+      method: 'POST', headers: { Authorization: `Bearer ${await token()}` },
+    })
+    if (!res.ok) { window.alert((await res.json().catch(() => ({}))).error || 'Fehler'); return }
+    loadRoutineProposals(); loadRoutines()
+  }
+  for (const routine of proposed) {
+    const row = document.createElement('div')
+    row.className = 'row'
+    row.innerHTML = `<div><div class="r-name">${esc(routine.name)}</div><div class="r-sub">${esc(routine.schedule_label || routine.cron)} · von ${esc(profName(profs, routine.created_by))} · persönlich bereits aktiv</div></div><button class="btn quiet" style="padding:5px 13px;font-size:12px">Ablehnen</button><button class="btn dark" style="padding:5px 13px;font-size:12px">Für alle freischalten</button>`
+    const [reject, approve] = row.querySelectorAll('button')
+    reject.addEventListener('click', () => act(routine.id, 'reject'))
+    approve.addEventListener('click', () => act(routine.id, 'approve'))
+    list.appendChild(row)
+  }
+}
+
+async function loadWikiPageProposals() {
+  const { is_admin } = await ownProfile()
+  const panel = $('panel-pages')
+  panel.hidden = !is_admin
+  if (!is_admin) return
+  const [{ data: pages }, profs] = await Promise.all([
+    sb.from('wiki_pages').select('id, slug, title, created_by, updated_at').eq('visibility', 'proposed').order('updated_at', { ascending: false }),
+    allProfiles(),
+  ])
+  const proposed = pages || []
+  $('pp-count').textContent = proposed.length ? `${proposed.length} offen` : 'nichts offen'
+  const list = $('pp-list')
+  list.innerHTML = proposed.length ? '' : '<div class="empty-plain">Keine offenen Seiten-Vorschläge.</div>'
+  const act = async (id, action) => {
+    const res = await fetch(`${BACKEND_URL}/api/wiki-pages/${id}/${action}`, { method: 'POST', headers: { Authorization: `Bearer ${await token()}` } })
+    if (!res.ok) { window.alert((await res.json().catch(() => ({}))).error || 'Fehler'); return }
+    wikiPages = null; loadWikiPageProposals(); loadSpacesTree()
+  }
+  for (const page of proposed) {
+    const row = document.createElement('div')
+    row.className = 'row'
+    row.innerHTML = `<div><div class="r-name">${esc(page.title)}</div><div class="r-sub">${esc(page.slug)} · von ${esc(profName(profs, page.created_by))}</div></div><button class="btn quiet" style="padding:5px 13px;font-size:12px">Ablehnen</button><button class="btn dark" style="padding:5px 13px;font-size:12px">Für alle freischalten</button>`
+    const [reject, approve] = row.querySelectorAll('button')
+    reject.addEventListener('click', () => act(page.id, 'reject'))
+    approve.addEventListener('click', () => act(page.id, 'approve'))
+    list.appendChild(row)
+  }
+}
+
+async function loadKnowledgeSources() {
+  const { is_admin } = await ownProfile()
+  const link = document.querySelector('.admin-link[data-admin-tab="knowledge"]')
+  if (link) link.hidden = !is_admin
+  if (!is_admin) return
+  const { data: sources, error } = await sb.from('knowledge_sources').select('*').order('created_at')
+  const list = $('knowledge-source-list')
+  const err = $('knowledge-source-err')
+  err.textContent = error?.message || ''
+  list.innerHTML = ''
+  for (const source of sources || []) {
+    const row = document.createElement('div')
+    row.className = 'source-row'
+    const synced = source.last_synced_at
+      ? `zuletzt ${new Date(source.last_synced_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`
+      : 'noch nicht synchronisiert'
+    const label = source.kind === 'docs_full' ? 'Dokumentation' : 'GitLab-Änderungen'
+    row.innerHTML = `<span class="source-mark"><svg viewBox="0 0 24 24">${source.kind === 'docs_full' ? '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V4a2 2 0 0 0-2-2H6.5A2.5 2.5 0 0 0 4 4.5v15z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>' : '<path d="M8 7h8M8 12h8M8 17h5"/><rect x="4" y="3" width="16" height="18" rx="3"/>'}</svg></span><div class="source-copy"><div class="source-name">${esc(source.name)}</div><div class="source-meta">${label} · ${synced}${source.last_error ? ` · Fehler: ${esc(source.last_error)}` : ''}</div></div><button class="source-action">Jetzt prüfen</button>`
+    const button = row.querySelector('button')
+    button.addEventListener('click', async () => {
+      err.textContent = ''
+      button.disabled = true
+      button.textContent = 'Synchronisiere …'
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/admin/knowledge-sources/${source.id}/sync`, { method: 'POST', headers: { Authorization: `Bearer ${await token()}` } })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+        loadKnowledgeSources()
+      } catch (error) {
+        err.textContent = error.message
+        button.disabled = false
+        button.textContent = 'Erneut versuchen'
+      }
+    })
+    list.appendChild(row)
+  }
+}
+
 function diffHtml(diff) {
   return (diff || '')
     .split('\n')
@@ -1393,8 +1493,8 @@ let profilesCache = null
 
 async function allProfiles() {
   if (!profilesCache) {
-    const { data } = await sb.from('profiles').select('id, display_name, email, avatar_url')
-    profilesCache = data || []
+    const { data } = await sb.from('profiles').select('id, display_name, email, avatar_url, account_status')
+    profilesCache = (data || []).filter((profile) => profile.account_status !== 'disabled')
   }
   return profilesCache
 }
@@ -3279,11 +3379,24 @@ async function openWikiPage(slug) {
   $('doc-title').textContent = pageLabel(data)
   $('doc-body').innerHTML = md(data.content.replace(/^#\s+.+\n/, ''))
   enhanceCode($('doc-body'))
-  $('doc-edit').hidden = false
+  const { is_admin } = await ownProfile()
+  const mine = data.created_by === session.user.id
+  $('doc-edit').hidden = !(is_admin || (mine && data.visibility !== 'team'))
+  $('doc-share').hidden = !(mine && data.visibility === 'personal')
+  $('doc-share').textContent = data.visibility === 'proposed' ? 'Freigabe angefragt' : 'Für Team vorschlagen'
   activateArea('wiki')
   window.scrollTo({ top: 0 })
 }
 $('doc-edit').addEventListener('click', () => { if (currentPage) openPageEditor(currentPage) })
+$('doc-share').addEventListener('click', async () => {
+  if (!currentPage || currentPage.visibility !== 'personal') return
+  $('doc-share').disabled = true
+  const { error } = await sb.from('wiki_pages').update({ visibility: 'proposed', updated_by: session.user.id }).eq('id', currentPage.id)
+  $('doc-share').disabled = false
+  if (error) { window.alert(error.message); return }
+  currentPage.visibility = 'proposed'
+  $('doc-share').hidden = true
+})
 $('doc-back').addEventListener('click', () => { if (currentSpace) openSpaceHome(currentSpace) })
 
 // ---------- Seiten-Editor (neu anlegen + bearbeiten) — nach dem Speichern wird die
@@ -3354,6 +3467,7 @@ $('pe-save').addEventListener('click', async () => {
   $('pe-save').disabled = true
   $('pe-save').textContent = 'Speichert …'
   try {
+    const { is_admin } = await ownProfile()
     let slug
     if (editingPage) {
       slug = editingPage.slug
@@ -3369,6 +3483,7 @@ $('pe-save').addEventListener('click', async () => {
         space_id: currentSpace?.id || null,
         created_by: session.user.id,
         updated_by: session.user.id,
+        visibility: is_admin ? 'team' : 'personal',
       })
       if (error) throw new Error(error.code === '23505' ? `Es gibt schon eine Seite mit dem Slug "${slug}".` : error.message)
     }
@@ -3404,7 +3519,7 @@ $('pe-delete').addEventListener('click', async () => {
 // ============================================================ Mitglieder (Admin)
 async function loadMembers() {
   const [{ data }, { is_admin }] = await Promise.all([
-    sb.from('profiles').select('email, display_name, is_admin, role_title').order('created_at'),
+    sb.from('profiles').select('id, email, display_name, is_admin, account_status, role_title').order('created_at'),
     ownProfile(),
   ])
   $('invite-box').hidden = !is_admin
@@ -3413,11 +3528,42 @@ async function loadMembers() {
   $('member-count').textContent = `${(data || []).length} Accounts`
   for (const m of data || []) {
     const row = document.createElement('div')
-    row.className = 'row'
+    const active = m.account_status !== 'disabled'
+    row.className = 'row member-row'
     row.innerHTML = `<div><div class="r-name">${esc(m.display_name || m.email)}</div><div class="r-sub">${esc(m.email)}${m.role_title ? ' · ' + esc(m.role_title) : ''}</div></div>
-      <div></div><span class="role${m.is_admin ? ' admin' : ''}">${m.is_admin ? 'Admin' : 'Member'}</span>`
+      ${is_admin ? `<select class="member-role" aria-label="Rolle von ${esc(m.display_name || m.email)}" ${m.id === session.user.id ? 'disabled title="Die eigene Admin-Rolle kann nicht geändert werden"' : ''}><option value="member"${m.is_admin ? '' : ' selected'}>Member</option><option value="admin"${m.is_admin ? ' selected' : ''}>Admin</option></select>
+      <button class="member-state${active ? '' : ' disabled'}" ${m.id === session.user.id ? 'disabled' : ''}>${active ? 'Deaktivieren' : 'Aktivieren'}</button>` : `<span class="role${m.is_admin ? ' admin' : ''}">${m.is_admin ? 'Admin' : 'Member'}</span><span></span>`}`
+    if (!active) row.querySelector('.r-sub').insertAdjacentText('beforeend', ' · deaktiviert')
+    if (is_admin) {
+      const roleSelect = row.querySelector('.member-role')
+      const stateButton = row.querySelector('.member-state')
+      roleSelect?.addEventListener('change', async () => {
+        const previous = m.is_admin ? 'admin' : 'member'
+        roleSelect.disabled = true
+        try { await updateMember(m.id, { role: roleSelect.value }); loadMembers() }
+        catch (error) { roleSelect.value = previous; roleSelect.disabled = false; $('inv-err').textContent = error.message }
+      })
+      stateButton?.addEventListener('click', async () => {
+        stateButton.disabled = true
+        try { await updateMember(m.id, { status: active ? 'disabled' : 'active' }); loadMembers() }
+        catch (error) { stateButton.disabled = false; $('inv-err').textContent = error.message }
+      })
+    }
     list.appendChild(row)
   }
+}
+
+async function updateMember(id, patch) {
+  $('inv-err').textContent = ''
+  const res = await fetch(`${BACKEND_URL}/api/admin/members/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+    body: JSON.stringify(patch),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+  profilesCache = null
+  return data.member
 }
 
 // Mitglied einladen (Admin): Backend erzeugt Invite-/Login-Link zum Weitergeben
@@ -3431,7 +3577,7 @@ async function createInvite() {
     const res = await fetch(`${BACKEND_URL}/api/invite`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, role: $('inv-role').value }),
     })
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
@@ -3439,6 +3585,7 @@ async function createInvite() {
     $('inv-result').hidden = false
     $('inv-copy').textContent = data.existing ? 'Login-Link kopieren' : 'Einladungslink kopieren'
     $('inv-email').value = ''
+    $('inv-role').value = 'member'
     loadMembers()
   } catch (err) {
     $('inv-err').textContent = err.message
@@ -3738,12 +3885,18 @@ for (const [kind, cfg] of Object.entries(NATIVE_CONNECTORS)) {
 }
 
 document.querySelectorAll('[data-category]').forEach((b) =>
-  b.addEventListener('click', () => {
+  b.addEventListener('click', async () => {
     cnCategory = b.dataset.category
     $('cm-title').textContent = cnCategory === 'tool' ? 'Eigenes Tool verknüpfen' : 'Connection verknüpfen'
     $('cn-name').value = ''
     $('cn-url').value = ''
     $('cn-token').value = ''
+    const { is_admin } = await ownProfile()
+    $('cn-owner-wrap').hidden = !is_admin
+    if (is_admin) {
+      const profiles = await allProfiles()
+      $('cn-owner').innerHTML = profiles.map((profile) => `<option value="${profile.id}"${profile.id === session.user.id ? ' selected' : ''}>${esc(profile.display_name || profile.email)}</option>`).join('')
+    }
     $('cn-err').textContent = ''
     $('conn-overlay').classList.add('open')
     setTimeout(() => $('cn-name').focus(), 50)
@@ -3764,6 +3917,8 @@ $('cn-save').addEventListener('click', async () => {
         url: $('cn-url').value,
         token: $('cn-token').value || undefined,
         category: cnCategory,
+        scope: 'personal',
+        owner: $('cn-owner-wrap').hidden ? session.user.id : $('cn-owner').value,
       }),
     })
     const data = await res.json()
@@ -4041,6 +4196,12 @@ function openSkill(s, isAdmin) {
   $('sk-slug').value = s?.slug || ''
   $('sk-category').value = s?.category || ''
   $('sk-visibility').value = s?.visibility || (isAdmin ? 'team' : 'personal')
+  $('sk-owner-wrap').hidden = !isAdmin
+  if (isAdmin) {
+    allProfiles().then((profiles) => {
+      $('sk-owner').innerHTML = profiles.map((profile) => `<option value="${profile.id}"${profile.id === (s?.created_by || session.user.id) ? ' selected' : ''}>${esc(profile.display_name || profile.email)}</option>`).join('')
+    })
+  }
   $('sk-enabled').checked = s ? s.enabled : true
   $('sk-context').value = s?.context || ''
   $('sk-workflow').value = s?.workflow || ''
@@ -4089,6 +4250,7 @@ $('sk-save').addEventListener('click', async () => {
   const slug = $('sk-slug').value.trim().toLowerCase()
   if (!name) { err.textContent = 'Name fehlt.'; return }
   if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) { err.textContent = 'Slug bitte in kebab-case (a-z, 0-9, Bindestrich) — er ist zugleich der Slash-Command.'; return }
+  const { is_admin } = await ownProfile()
   const row = {
     name,
     slug,
@@ -4102,11 +4264,12 @@ $('sk-save').addEventListener('click', async () => {
     definition_of_done: $('sk-dod').value.trim(),
     corner_cases: $('sk-corner').value.trim(),
     updated_by: session.user.id,
+    ...(is_admin ? { created_by: $('sk-owner').value || session.user.id } : {}),
   }
   $('sk-save').disabled = true
   const q = editingSkill
     ? sb.from('skills').update(row).eq('id', editingSkill.id)
-    : sb.from('skills').insert({ ...row, created_by: session.user.id })
+    : sb.from('skills').insert({ ...row, created_by: row.created_by || session.user.id })
   const { error } = await q
   $('sk-save').disabled = false
   if (error) {
@@ -4160,14 +4323,17 @@ function formFromCron(cron) {
 $('rt-freq').addEventListener('change', () => { $('rt-dow-wrap').hidden = $('rt-freq').value !== 'weekly' })
 
 async function loadRoutines() {
-  const [{ data: routines }, profs] = await Promise.all([
+  const [{ data: routines }, profs, { is_admin }] = await Promise.all([
     sb.from('routines').select('*').order('created_at'),
     allProfiles(),
+    ownProfile(),
   ])
   const list = $('routine-list')
   list.innerHTML = ''
   if (!(routines || []).length) list.innerHTML = '<div class="empty-plain">Noch keine Routinen.</div>'
   for (const r of routines || []) {
+    const mine = r.created_by === session.user.id
+    const editable = is_admin || (mine && r.visibility !== 'team')
     const pod = podsList.find((p) => p.id === r.pod_id)
     const last = r.last_run_at
       ? ` · zuletzt ${new Date(r.last_run_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}${r.last_result === 'ok' ? '' : ' ⚠'}`
@@ -4177,10 +4343,17 @@ async function loadRoutines() {
     row.style.cursor = 'pointer'
     row.innerHTML = `<span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:var(--lila-deep);fill:none;stroke-width:1.7;stroke-linecap:round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg></span>
       <div><div class="c-name">${esc(r.name)}</div><div class="c-sub">${esc(r.schedule_label || r.cron)} · ${pod ? `Pod „${esc(pod.name)}“` : 'Privat'} · ${esc(profName(profs, r.created_by))}${last}</div></div>
+      ${r.visibility === 'proposed' ? '<span class="sk-badge prop">Team-weit vorgeschlagen</span>' : r.visibility === 'personal' ? '<span class="sk-badge">Persönlich</span>' : ''}
+      ${mine && r.visibility === 'personal' ? '<button class="btn quiet rt-share" style="padding:4px 12px;font-size:11.5px">Teilen</button>' : ''}
       <span class="c-right ${r.enabled ? 'ok' : 'off'}"><span class="dot-s"></span>${r.enabled ? 'Aktiv' : 'Aus'}</span>
-      <button class="c-del rt-run" title="Jetzt ausführen" style="display:inline-flex"><svg viewBox="0 0 24 24" style="fill:none"><polygon points="6 4 20 12 6 20 6 4"/></svg></button>`
-    row.addEventListener('click', (e) => { if (!e.target.closest('.rt-run')) openRoutine(r) })
-    row.querySelector('.rt-run').addEventListener('click', async (ev) => {
+      ${editable ? '<button class="c-del rt-run" title="Jetzt ausführen" style="display:inline-flex"><svg viewBox="0 0 24 24" style="fill:none"><polygon points="6 4 20 12 6 20 6 4"/></svg></button>' : ''}`
+    row.addEventListener('click', (e) => { if (editable && !e.target.closest('.rt-run,.rt-share')) openRoutine(r) })
+    row.querySelector('.rt-share')?.addEventListener('click', async () => {
+      const { error } = await sb.from('routines').update({ visibility: 'proposed' }).eq('id', r.id)
+      if (error) { window.alert(error.message); return }
+      loadRoutines()
+    })
+    row.querySelector('.rt-run')?.addEventListener('click', async (ev) => {
       const btn = ev.currentTarget
       btn.style.opacity = '.4'
       const res = await fetch(`${BACKEND_URL}/api/routines/${r.id}/run`, {
@@ -4225,11 +4398,13 @@ $('rt-save').addEventListener('click', async () => {
   const prompt = $('rt-prompt').value.trim()
   if (!name || !prompt) { err.textContent = 'Name und Auftrag sind Pflicht.'; return }
   const { cron, label } = cronFromForm()
+  const { is_admin } = await ownProfile()
   const row = {
     name, prompt, cron, schedule_label: label,
     pod_id: $('rt-pod').value || null,
     model: $('rt-model').value,
     enabled: $('rt-enabled').checked,
+    ...(!editingRoutine ? { visibility: is_admin ? 'team' : 'personal' } : {}),
   }
   $('rt-save').disabled = true
   const q = editingRoutine

@@ -925,6 +925,20 @@
   .invite-compact{display:flex;gap:9px;margin-top:20px;padding-top:18px;border-top:1px solid var(--hair)}
   .invite-compact input{flex:1;min-width:0;border:1px solid var(--hair);border-radius:12px;background:var(--surface);padding:9px 13px;font-size:13px;outline:0}
   .invite-compact input:focus{border-color:var(--lila);box-shadow:0 0 0 3px rgba(123,90,226,.1)}
+  .invite-role,.member-role{height:38px;border:1px solid var(--glass-outline);border-radius:11px;background:linear-gradient(145deg,var(--key-hi),var(--surface-2));color:var(--ink);padding:0 32px 0 12px;font:inherit;font-size:12px;font-weight:620;outline:0;box-shadow:inset 0 1px 0 var(--glass-highlight)}
+  .invite-role:focus,.member-role:focus{border-color:var(--lila);box-shadow:inset 0 1px 0 var(--glass-highlight),0 0 0 3px rgba(123,90,226,.1)}
+  .member-row{grid-template-columns:minmax(0,1fr) auto auto!important}
+  .member-state{border:0;background:none;color:var(--ink-3);font-size:11.5px;font-weight:600;padding:6px 8px;border-radius:9px}
+  .member-state:hover{background:var(--hover);color:var(--ink)}
+  .member-state.disabled{color:var(--good)}
+  .source-row{display:grid;grid-template-columns:36px minmax(0,1fr) auto;align-items:center;gap:13px;min-height:66px;border-bottom:1px solid var(--hair)}
+  .source-row:last-child{border-bottom:0}.source-copy{min-width:0}.source-name{font-size:13.5px;font-weight:620}.source-meta{font-size:11.5px;color:var(--ink-3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .source-mark{width:34px;height:34px;border:1px solid var(--glass-outline);border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--lila-deep);background:linear-gradient(145deg,var(--key-hi),var(--surface-2));box-shadow:inset 0 1px 0 var(--glass-highlight)}
+  .source-mark svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .source-action{height:32px;border:1px solid var(--glass-outline);border-radius:10px;background:linear-gradient(145deg,var(--key-hi),var(--surface-2));color:var(--ink-2);padding:0 12px;font-size:11.5px;font-weight:620;box-shadow:inset 0 1px 0 var(--glass-highlight)}
+  .source-action:hover{color:var(--ink);border-color:rgba(123,90,226,.28)}.source-action:disabled{opacity:.55}
+  .digest-line{display:flex;align-items:center;gap:12px;margin-top:22px;padding:14px 2px;border-top:1px solid var(--hair);border-bottom:1px solid var(--hair)}
+  .digest-line strong{font-size:13px;font-weight:620}.digest-line span{font-size:11.5px;color:var(--ink-3)}
   #member-count{margin-left:auto}
   @media(max-width:900px){.admin-shell{padding:28px 18px 50px}}
 </style>
@@ -1003,6 +1017,7 @@
         <button class="sb-item admin-link on" data-admin-tab="reviews" hidden><span class="txt">Freigaben</span></button>
         <button class="sb-item admin-link" data-admin-tab="usage"><span class="txt">Nutzung</span></button>
         <button class="sb-item admin-link" data-admin-tab="members"><span class="txt">Mitglieder</span></button>
+        <button class="sb-item admin-link" data-admin-tab="knowledge" hidden><span class="txt">Wissen & Releases</span></button>
       </div>
     </div>
 
@@ -1238,6 +1253,7 @@
         <div class="doc-nav"><button class="space-action space-back" id="doc-back" aria-label="Zurück zum Space"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button><div class="doc-crumb" id="doc-crumb">Company Data</div></div>
         <div style="display:flex;align-items:flex-start;gap:16px">
           <h1 id="doc-title" style="flex:1">Company Data</h1>
+          <button class="btn quiet" id="doc-share" hidden style="flex:none;margin-top:6px">Für Team vorschlagen</button>
           <button class="btn quiet" id="doc-edit" hidden style="flex:none;margin-top:6px">Bearbeiten</button>
         </div>
         <div class="doc-body" id="doc-body"><p style="color:var(--ink-3)">Wähle links einen Space — oder eine Seite über die Suche.</p></div>
@@ -1389,6 +1405,14 @@
               <h3>Tools <span class="ku-count" id="tp-count"></span></h3>
               <div id="tp-list"></div>
             </section>
+            <section class="list-panel" id="panel-routines" hidden>
+              <h3>Routinen <span class="ku-count" id="rp-count"></span></h3>
+              <div id="rp-list"></div>
+            </section>
+            <section class="list-panel" id="panel-pages" hidden>
+              <h3>Wiki-Seiten <span class="ku-count" id="pp-count"></span></h3>
+              <div id="pp-list"></div>
+            </section>
           </div>
         </div>
 
@@ -1406,6 +1430,7 @@
           <div id="member-list"></div>
           <div class="invite-compact" id="invite-box" hidden>
             <input type="email" id="inv-email" name="invite-email" aria-label="E-Mail-Adresse" autocomplete="off" spellcheck="false" placeholder="name@enneo.ai">
+            <select class="invite-role" id="inv-role" aria-label="Rolle"><option value="member">Member</option><option value="admin">Admin</option></select>
             <button class="btn dark" id="inv-create">Einladen</button>
           </div>
           <div class="err" id="inv-err"></div>
@@ -1413,6 +1438,13 @@
             <code id="inv-link"></code>
             <button class="btn quiet" id="inv-copy">Kopieren</button>
           </div>
+        </div>
+
+        <div class="admin-pane" data-admin-pane="knowledge" hidden>
+          <div class="admin-pane-head"><h3>Wissen &amp; Releases</h3><p>Vertrauenswürdige Quellen, automatisch aktuell gehalten.</p></div>
+          <div id="knowledge-source-list"></div>
+          <div class="digest-line"><div><strong>Wöchentlicher Release-Digest</strong><br><span>Montags 09:00 · als Team-Routine · Ziel kann unter Routinen geändert werden</span></div><span class="role admin" style="margin-left:auto">Aktiv</span></div>
+          <div class="err" id="knowledge-source-err"></div>
         </div>
 
       </div>
@@ -1456,6 +1488,7 @@
     <input type="text" id="cn-url" placeholder="https://mcp.example.com/mcp">
     <label for="cn-token">Bearer-Token (optional)</label>
     <input type="password" id="cn-token" autocomplete="off" placeholder="leer lassen, wenn der Server offen ist">
+    <div id="cn-owner-wrap" hidden><label for="cn-owner">Für Account</label><select id="cn-owner" class="sk-select"></select></div>
     <p class="pf-hint">Beim Speichern wird die Verbindung getestet und die Tool-Liste geladen. OAuth-basierte MCP-Server folgen später.</p>
     <div class="err" id="cn-err"></div>
     <div class="m-actions">
@@ -1493,6 +1526,10 @@
           <option value="team">Team-weit — gilt für alle</option>
         </select>
       </div>
+    </div>
+    <div id="sk-owner-wrap" hidden>
+      <label for="sk-owner">Für Account <span class="lbl-hint">— Admins können einen persönlichen Skill direkt zuweisen</span></label>
+      <select id="sk-owner" class="sk-select" style="margin-bottom:18px"></select>
     </div>
     <div class="row" style="padding:8px 2px;margin-bottom:12px">
       <div><div class="r-name">Aktiv</div><div class="r-sub">Deaktivierte Skills sind für Enni unsichtbar und lassen sich nicht per /slash aufrufen.</div></div>

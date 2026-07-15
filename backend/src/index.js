@@ -5,6 +5,8 @@ import { runEnniTurn, ALLOWED_MODELS, generateTitle, availableToolDefinitions } 
 import { attachmentsToBlocks, attachmentMeta } from './attachments.js'
 import { logUsage } from './usage.js'
 import { startRoutineTicker, runRoutine } from './routines.js'
+import { startKnowledgeSyncTicker, syncKnowledgeSource } from './knowledge-sync.js'
+import { logAudit } from './audit.js'
 
 const app = express()
 app.use(express.json({ limit: '30mb' })) // Anhänge kommen als Base64 im Body
@@ -467,7 +469,9 @@ app.post('/api/knowledge-update/:id/approve', async (req, res) => {
   if (!user) return
   try {
     const { applyKnowledgeUpdate } = await import('./tools/wiki.js')
-    res.json(await applyKnowledgeUpdate(req.params.id, user.id))
+    const result = await applyKnowledgeUpdate(req.params.id, user.id)
+    await logAudit(user.id, 'knowledge_update.approve', 'knowledge_update', req.params.id)
+    res.json(result)
   } catch (err) {
     res.status(400).json({ error: err.message })
   }
@@ -478,7 +482,9 @@ app.post('/api/knowledge-update/:id/reject', async (req, res) => {
   if (!user) return
   try {
     const { rejectKnowledgeUpdate } = await import('./tools/wiki.js')
-    res.json(await rejectKnowledgeUpdate(req.params.id, user.id))
+    const result = await rejectKnowledgeUpdate(req.params.id, user.id)
+    await logAudit(user.id, 'knowledge_update.reject', 'knowledge_update', req.params.id)
+    res.json(result)
   } catch (err) {
     res.status(400).json({ error: err.message })
   }
@@ -507,10 +513,16 @@ app.post('/api/invite', async (req, res) => {
   const user = await requireAdmin(req, res)
   if (!user) return
   const email = String(req.body?.email || '').trim().toLowerCase()
+  const role = req.body?.role === 'admin' ? 'admin' : 'member'
   if (!/^[a-z0-9._%+-]+@enneo\.ai$/.test(email)) {
     return res.status(400).json({ error: 'Nur @enneo.ai-Adressen können eingeladen werden.' })
   }
   const opts = { redirectTo: SITE_URL }
+  const { error: pendingError } = await db.from('pending_invites').upsert({
+    email, requested_role: role, invited_by: user.id,
+    expires_at: new Date(Date.now() + 14 * 86400000).toISOString(),
+  }, { onConflict: 'email' })
+  if (pendingError) return res.status(400).json({ error: pendingError.message })
   let existing = false
   let { data, error } = await db.auth.admin.generateLink({
     type: 'invite', email,
@@ -521,10 +533,78 @@ app.post('/api/invite', async (req, res) => {
     existing = true
     ;({ data, error } = await db.auth.admin.generateLink({ type: 'magiclink', email, options: opts }))
   }
-  if (error) return res.status(400).json({ error: error.message })
+  if (error) {
+    await db.from('pending_invites').delete().eq('email', email)
+    return res.status(400).json({ error: error.message })
+  }
+  if (existing) {
+    await db.from('pending_invites').delete().eq('email', email)
+  }
   const link = data?.properties?.action_link || data?.action_link
   if (!link) return res.status(500).json({ error: 'Kein Link erzeugt' })
-  res.json({ link, existing })
+  await logAudit(user.id, existing ? 'member.reinvite' : 'member.invite', 'profile', email, { role })
+  res.json({ link, existing, role })
+})
+
+app.patch('/api/admin/members/:id', async (req, res) => {
+  const actor = await requireAdmin(req, res)
+  if (!actor) return
+  const { data: target } = await db.from('profiles').select('id, email, is_admin, account_status').eq('id', req.params.id).maybeSingle()
+  if (!target) return res.status(404).json({ error: 'Account nicht gefunden' })
+  const nextRole = req.body?.role === undefined ? null : req.body.role
+  const nextStatus = req.body?.status === undefined ? null : req.body.status
+  if (nextRole !== null && !['member', 'admin'].includes(nextRole)) return res.status(400).json({ error: 'Ungültige Rolle' })
+  if (nextStatus !== null && !['active', 'disabled'].includes(nextStatus)) return res.status(400).json({ error: 'Ungültiger Status' })
+  if (target.id === actor.id && (nextRole === 'member' || nextStatus === 'disabled')) {
+    return res.status(400).json({ error: 'Du kannst deinen eigenen Admin-Zugang nicht herabstufen oder deaktivieren.' })
+  }
+  if (target.is_admin && (nextRole === 'member' || nextStatus === 'disabled')) {
+    const { count } = await db.from('profiles').select('*', { count: 'exact', head: true }).eq('is_admin', true).eq('account_status', 'active')
+    if ((count || 0) <= 1) return res.status(400).json({ error: 'Der letzte aktive Admin kann nicht entfernt werden.' })
+  }
+  const patch = {}
+  if (nextRole !== null) patch.is_admin = nextRole === 'admin'
+  if (nextStatus !== null) patch.account_status = nextStatus
+  if (!Object.keys(patch).length) return res.status(400).json({ error: 'Keine Änderung angegeben' })
+  const { data, error } = await db.from('profiles').update(patch).eq('id', target.id)
+    .select('id, email, display_name, is_admin, account_status, role_title').single()
+  if (error) return res.status(400).json({ error: error.message })
+  await logAudit(actor.id, 'member.update', 'profile', target.id, {
+    before: { role: target.is_admin ? 'admin' : 'member', status: target.account_status },
+    after: { role: data.is_admin ? 'admin' : 'member', status: data.account_status },
+  })
+  res.json({ member: data })
+})
+
+app.post('/api/admin/knowledge-sources/:id/sync', async (req, res) => {
+  const user = await requireAdmin(req, res)
+  if (!user) return
+  try { res.json(await syncKnowledgeSource(req.params.id, user.id)) }
+  catch (error) { res.status(500).json({ error: error.message }) }
+})
+
+app.post('/api/routines/:id/:action(approve|reject|demote)', async (req, res) => {
+  const user = await requireAdmin(req, res)
+  if (!user) return
+  const visibility = req.params.action === 'approve' ? 'team' : 'personal'
+  const { data, error } = await db.from('routines').update({ visibility }).eq('id', req.params.id)
+    .select('id, name, visibility').maybeSingle()
+  if (error) return res.status(400).json({ error: error.message })
+  if (!data) return res.status(404).json({ error: 'Routine nicht gefunden' })
+  await logAudit(user.id, `routine.${req.params.action}`, 'routine', data.id, { visibility })
+  res.json({ ok: true, routine: data })
+})
+
+app.post('/api/wiki-pages/:id/:action(approve|reject|demote)', async (req, res) => {
+  const user = await requireAdmin(req, res)
+  if (!user) return
+  const visibility = req.params.action === 'approve' ? 'team' : 'personal'
+  const { data, error } = await db.from('wiki_pages').update({ visibility, updated_by: user.id }).eq('id', req.params.id)
+    .select('id, slug, title, visibility').maybeSingle()
+  if (error) return res.status(400).json({ error: error.message })
+  if (!data) return res.status(404).json({ error: 'Seite nicht gefunden' })
+  await logAudit(user.id, `wiki_page.${req.params.action}`, 'wiki_page', data.id, { visibility })
+  res.json({ ok: true, page: data })
 })
 
 app.post('/api/connectors', async (req, res) => {
@@ -536,7 +616,12 @@ app.post('/api/connectors', async (req, res) => {
   const isAdmin = !!prof?.is_admin
   const { name, url, token, category, kind } = req.body || {}
   const personal = !isAdmin || req.body?.scope === 'personal'
-  const owner = personal ? user.id : null
+  const requestedOwner = isAdmin && req.body?.owner ? String(req.body.owner) : user.id
+  if (personal && requestedOwner !== user.id) {
+    const { data: target } = await db.from('profiles').select('id').eq('id', requestedOwner).eq('account_status', 'active').maybeSingle()
+    if (!target) return res.status(400).json({ error: 'Ziel-Account nicht gefunden oder deaktiviert.' })
+  }
+  const owner = personal ? requestedOwner : null
   const visibility = personal ? 'personal' : 'team'
 
   // Legacy-Fallback für bestehende Clients; die sichtbare UI nutzt ausschließlich OAuth.
@@ -667,6 +752,7 @@ app.post('/api/connectors/:id/share', async (req, res) => {
     .maybeSingle()
   if (error) return res.status(400).json({ error: error.message })
   if (!data) return res.status(404).json({ error: 'Tool nicht gefunden oder nicht deins' })
+  await logAudit(user.id, 'connector.propose', 'connector', data.id)
   res.json({ ok: true, visibility: 'proposed' })
 })
 
@@ -686,6 +772,7 @@ app.post('/api/connectors/:id/:action(approve|reject)', async (req, res) => {
   const { invalidateSlackCache } = await import('./tools/slack.js')
   const { invalidateMcpCache } = await import('./tools/mcp.js')
   invalidateAttioCache(); invalidateSlackCache(); invalidateMcpCache()
+  await logAudit(user.id, `connector.${req.params.action}`, 'connector', conn.id, { visibility: target })
   res.json({ ok: true, visibility: target })
 })
 
@@ -737,7 +824,9 @@ app.post('/api/learnings/:id/:action(approve|reject)', async (req, res) => {
   if (!user) return
   try {
     const { reviewLearning } = await import('./learnings.js')
-    res.json(await reviewLearning(req.params.id, req.params.action, user.id))
+    const result = await reviewLearning(req.params.id, req.params.action, user.id)
+    await logAudit(user.id, `learning.${req.params.action}`, 'learning', req.params.id)
+    res.json(result)
   } catch (err) {
     res.status(400).json({ error: err.message })
   }
@@ -749,7 +838,9 @@ app.post('/api/learnings/:id/demote', async (req, res) => {
   if (!user) return
   try {
     const { demoteLearning } = await import('./learnings.js')
-    res.json(await demoteLearning(req.params.id, user.id))
+    const result = await demoteLearning(req.params.id, user.id)
+    await logAudit(user.id, 'learning.demote', 'learning', req.params.id)
+    res.json(result)
   } catch (err) {
     res.status(400).json({ error: err.message })
   }
@@ -770,6 +861,7 @@ app.post('/api/skills/:id/:action(approve|reject|demote)', async (req, res) => {
     .maybeSingle()
   if (error) return res.status(400).json({ error: error.message })
   if (!data) return res.status(404).json({ error: 'Skill nicht gefunden' })
+  await logAudit(user.id, `skill.${req.params.action}`, 'skill', data.id, { visibility: data.visibility })
   res.json({ ok: true, visibility: data.visibility })
 })
 
@@ -801,6 +893,7 @@ app.post('/api/wiki/import-url', async (req, res) => {
   if (!process.env.FIRECRAWL_BRIDGE_URL || !process.env.FIRECRAWL_BRIDGE_TOKEN)
     return res.status(500).json({ error: 'URL-Import ist nicht konfiguriert (FIRECRAWL_BRIDGE_URL/TOKEN fehlen)' })
   try {
+    const { data: profile } = await db.from('profiles').select('is_admin').eq('id', user.id).maybeSingle()
     const fc = await fetch(process.env.FIRECRAWL_BRIDGE_URL, {
       method: 'POST',
       headers: {
@@ -823,10 +916,15 @@ app.post('/api/wiki/import-url', async (req, res) => {
     const folder = slugPart(String(req.body?.folder || '')) || 'import'
     const slug = `${folder}/${slugPart(title)}`.slice(0, 90)
     const content = `> Quelle: ${url} · importiert am ${new Date().toLocaleDateString('de-DE')}\n\n${markdown}`
+    const { data: existingPage } = await db.from('wiki_pages').select('created_by, visibility').eq('slug', slug).maybeSingle()
+    if (existingPage && !profile?.is_admin && (existingPage.created_by !== user.id || existingPage.visibility === 'team')) {
+      throw new Error(`Es gibt bereits eine Team-Seite mit dem Slug "${slug}".`)
+    }
     const { data: page, error } = await db
       .from('wiki_pages')
       .upsert(
-        { slug, title, content, space_id: req.body?.space_id || null, created_by: user.id, updated_by: user.id },
+        { slug, title, content, space_id: req.body?.space_id || null, created_by: user.id, updated_by: user.id,
+          visibility: profile?.is_admin ? 'team' : 'personal' },
         { onConflict: 'slug' }
       )
       .select('id, slug, title, content')
@@ -872,5 +970,8 @@ app.post('/api/routines/:id/run', async (req, res) => {
 })
 
 const port = Number(process.env.PORT || 8080)
-app.listen(port, () => console.log(`enneo OS backend läuft auf :${port}`))
+app.listen(port, () => {
+  console.log(`enneo OS backend läuft auf :${port}`)
+  startKnowledgeSyncTicker()
+})
 startRoutineTicker()

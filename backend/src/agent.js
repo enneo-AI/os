@@ -10,6 +10,7 @@ import { attioToolDefinitions, runAttioTool } from './tools/attio.js'
 import { slackToolDefinitions, runSlackTool } from './tools/slack.js'
 import { registrationToolDefinitions, runRegistrationTool } from './tools/registration.js'
 import { learningsPromptBlock } from './learnings.js'
+import { releaseNotesPromptBlock } from './knowledge-sync.js'
 import { db } from './db.js'
 
 const anthropic = new Anthropic()
@@ -141,6 +142,12 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
   } catch (err) {
     console.error('Profil-Load fehlgeschlagen:', err.message)
   }
+  let releasesBlock = null
+  try {
+    releasesBlock = await releaseNotesPromptBlock()
+  } catch (err) {
+    console.error('Release-Notes-Load fehlgeschlagen:', err.message)
+  }
   // Aktuelles Datum als eigener (uncached) Block — sonst kann Enni "diese Woche",
   // "gestern", "letzter Monat" nicht einordnen (z.B. bei Attio-/Slack-/Report-Fragen).
   // Wochen-Grenzen explizit mitgeben: Modelle verrechnen sich sonst gern beim Mo-So-Mapping.
@@ -158,6 +165,7 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
     { type: 'text', text: `Aktuelles Datum und Uhrzeit: ${now} (Europe/Berlin). Die aktuelle Woche läuft von Montag, ${d(monday)}, bis Sonntag, ${d(sunday)}. Rechne relative Zeitangaben ("diese Woche", "gestern", "letzter Monat") immer davon ausgehend.` },
     ...(skillsBlock ? [{ type: 'text', text: skillsBlock }] : []),
     ...(learningsBlock ? [{ type: 'text', text: learningsBlock }] : []),
+    ...(releasesBlock ? [{ type: 'text', text: releasesBlock }] : []),
     ...(personalBlock ? [{ type: 'text', text: personalBlock }] : []),
     ...(extraSystem ? [{ type: 'text', text: extraSystem }] : []),
   ]
