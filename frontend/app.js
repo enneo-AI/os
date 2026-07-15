@@ -436,18 +436,24 @@ $('onboarding-next').addEventListener('click', async () => {
   try {
     const patch = {
       display_name: $('onboarding-name').value.trim(),
-      role_title: $('onboarding-role').value.trim() || null,
+      role_title: $('onboarding-role').value.trim(),
       department: onboardingDepartment,
       department_label: onboardingDepartment === 'custom' ? $('onboarding-custom-label').value.trim() : null,
       department_color: onboardingDepartment === 'custom' ? $('onboarding-custom-color').value.toUpperCase() : null,
-      onboarding_completed_at: new Date().toISOString(),
     }
     if (onboardingAvatarFile) patch.avatar_url = await uploadAvatar(onboardingAvatarFile)
-    const { error: passwordError } = await sb.auth.updateUser({ password })
-    if (passwordError) throw passwordError
+    // Profil zuerst speichern, den Abschlussmarker aber erst setzen, wenn auch das
+    // Passwort erfolgreich ist. So bleibt ein fehlgeschlagener Schritt wiederholbar.
     const { error: profileError } = await sb.from('profiles').update(patch).eq('id', session.user.id)
-    if (profileError) throw profileError
-    myProfile = { ...(myProfile || {}), ...patch }
+    if (profileError) throw new Error('Dein Profil konnte nicht gespeichert werden. Bitte versuche es erneut.')
+    const { error: passwordError } = await sb.auth.updateUser({ password })
+    // Nach dem bisherigen Fehler wurde das Passwort bereits gesetzt, bevor das
+    // Profil scheiterte. Derselbe Wert ist dann korrekt und darf den Retry abschließen.
+    if (passwordError && !/different from the old password/i.test(passwordError.message)) throw passwordError
+    const completedAt = new Date().toISOString()
+    const { error: completionError } = await sb.from('profiles').update({ onboarding_completed_at: completedAt }).eq('id', session.user.id)
+    if (completionError) throw new Error('Die Einrichtung konnte nicht abgeschlossen werden. Bitte versuche es erneut.')
+    myProfile = { ...(myProfile || {}), ...patch, onboarding_completed_at: completedAt }
     profilesCache = null
     $('onboarding-overlay').classList.remove('open')
     $('app-view').inert = false
