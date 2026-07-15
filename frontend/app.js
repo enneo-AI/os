@@ -111,11 +111,243 @@ async function showApp() {
   $('app-view').hidden = false
   renderFooterProfile()
   subscribeRealtime()
-  await Promise.all([loadConversations(), loadPods(), refreshCosts(), loadConnectorRows()])
+  await Promise.all([loadConversations(), loadPods(), refreshCosts(), loadConnectorRows(), loadNotifications()])
   await route()
+  registerServiceWorker()
   handleOAuthReturn()
   onboardingNudge()
 }
+
+// ============================================================ Notifications
+let notificationItems = []
+let notificationFilter = 'all'
+let notificationPreferences = null
+let notificationReturnFocus = null
+
+async function notificationApi(path = '', options = {}) {
+  const response = await fetch(`${BACKEND_URL}/api${path}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${await token()}`,
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(options.headers || {}),
+    },
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`)
+  return data
+}
+
+function notificationAge(value) {
+  const seconds = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 1000))
+  if (seconds < 60) return 'Jetzt'
+  if (seconds < 3600) return `vor ${Math.floor(seconds / 60)} Min.`
+  if (seconds < 86400) return `vor ${Math.floor(seconds / 3600)} Std.`
+  return new Date(value).toLocaleDateString('de-DE', { day: '2-digit', month: 'short' })
+}
+
+const notificationMarks = {
+  mention: '@', team_mention: '@', task_assignment: '✓', task_comment: '↳',
+  agent_complete: 'E', routine_complete: '↻', system_update: '↑',
+}
+
+function paintNotificationBadges() {
+  const unread = notificationItems.filter((item) => !item.read_at).length
+  for (const id of ['notification-badge', 'mobile-notification-badge']) {
+    const badge = $(id)
+    badge.hidden = unread === 0
+    badge.textContent = unread > 99 ? '99+' : String(unread)
+  }
+  if ('setAppBadge' in navigator) {
+    if (unread) navigator.setAppBadge(unread).catch(() => {})
+    else navigator.clearAppBadge?.().catch(() => {})
+  }
+}
+
+function renderNotifications() {
+  paintNotificationBadges()
+  const list = $('notification-list')
+  const visible = notificationFilter === 'unread' ? notificationItems.filter((item) => !item.read_at) : notificationItems
+  list.innerHTML = ''
+  for (const item of visible) {
+    const row = document.createElement('button')
+    row.className = `notification-row${item.read_at ? '' : ' unread'}`
+    row.innerHTML = `<span class="notification-icon">${esc(notificationMarks[item.type] || '·')}</span><span class="notification-copy"><span class="notification-title">${esc(item.title)}</span><span class="notification-body">${esc(item.body)}</span></span><span class="notification-time">${esc(notificationAge(item.created_at))}</span>`
+    row.addEventListener('click', () => openNotification(item))
+    list.appendChild(row)
+  }
+  if (!visible.length) list.innerHTML = `<div class="notification-empty">${notificationFilter === 'unread' ? 'Alles gelesen.' : 'Hier erscheinen Erwähnungen, Aufgaben und Enni-Ergebnisse.'}</div>`
+}
+
+async function loadNotifications() {
+  try {
+    const data = await notificationApi('/notifications?limit=100')
+    notificationItems = data.notifications || []
+    renderNotifications()
+  } catch (error) {
+    console.error('Notifications:', error.message)
+  }
+}
+
+async function openNotification(item) {
+  if (!item.read_at) {
+    item.read_at = new Date().toISOString()
+    renderNotifications()
+    notificationApi(`/notifications/${item.id}/read`, { method: 'POST' }).catch(() => {})
+  }
+  closeNotifications()
+  if (item.action_url?.startsWith('/')) {
+    history.pushState({}, '', item.action_url)
+    await route()
+  }
+}
+
+function openNotifications() {
+  notificationReturnFocus = document.activeElement
+  $('notification-panel').classList.add('open')
+  $('notification-panel').setAttribute('aria-hidden', 'false')
+  $('notification-backdrop').classList.add('open')
+  $('app-view').inert = true
+  document.body.style.overflow = 'hidden'
+  loadNotifications()
+  $('notification-close').focus()
+}
+
+function closeNotifications() {
+  const wasOpen = $('notification-panel').classList.contains('open')
+  $('notification-panel').classList.remove('open')
+  $('notification-panel').setAttribute('aria-hidden', 'true')
+  $('notification-backdrop').classList.remove('open')
+  $('app-view').inert = false
+  document.body.style.overflow = ''
+  if (wasOpen) notificationReturnFocus?.focus?.()
+  notificationReturnFocus = null
+}
+
+$('notification-trigger').addEventListener('click', openNotifications)
+$('mobile-notification-trigger').addEventListener('click', openNotifications)
+$('notification-close').addEventListener('click', closeNotifications)
+$('notification-backdrop').addEventListener('click', closeNotifications)
+document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && $('notification-panel').classList.contains('open')) closeNotifications() })
+$('notification-read-all').addEventListener('click', async () => {
+  notificationItems.forEach((item) => { item.read_at ||= new Date().toISOString() })
+  renderNotifications()
+  await notificationApi('/notifications/read-all', { method: 'POST' })
+})
+document.querySelectorAll('[data-notification-filter]').forEach((button) => button.addEventListener('click', () => {
+  notificationFilter = button.dataset.notificationFilter
+  document.querySelectorAll('[data-notification-filter]').forEach((item) => item.classList.toggle('on', item === button))
+  renderNotifications()
+}))
+
+function setSwitch(button, on) {
+  button.classList.toggle('on', !!on)
+  button.setAttribute('aria-checked', String(!!on))
+}
+
+async function loadNotificationPreferences() {
+  try {
+    const { preferences } = await notificationApi('/notifications/preferences')
+    notificationPreferences = preferences
+    setSwitch($('push-toggle'), preferences.browser_push && window.Notification?.permission === 'granted')
+    setSwitch($('quiet-toggle'), preferences.quiet_hours_enabled)
+    $('quiet-start').value = String(preferences.quiet_start || '18:00').slice(0, 5)
+    $('quiet-end').value = String(preferences.quiet_end || '08:00').slice(0, 5)
+    $('quiet-time').hidden = !preferences.quiet_hours_enabled
+    renderMutedPods()
+    const iosNeedsInstall = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.matchMedia('(display-mode: standalone)').matches && !navigator.standalone
+    if (iosNeedsInstall) $('notification-settings-error').textContent = 'Auf iPhone/iPad zuerst über „Teilen → Zum Home-Bildschirm“ installieren; danach kann Browser-Push aktiviert werden.'
+  } catch (error) {
+    $('notification-settings-error').textContent = error.message
+  }
+}
+
+function renderMutedPods() {
+  const host = $('muted-pods')
+  const muted = new Set(notificationPreferences?.muted_pod_ids || [])
+  host.innerHTML = podsList.length ? podsList.map((pod) => `<label class="muted-pod-row"><input type="checkbox" value="${esc(pod.id)}"${muted.has(pod.id) ? ' checked' : ''}>${esc(pod.name)}</label>`).join('') : '<div class="notification-setting-copy"><span>Keine Pods vorhanden.</span></div>'
+  host.querySelectorAll('input').forEach((input) => input.addEventListener('change', saveNotificationPreferences))
+}
+
+async function saveNotificationPreferences() {
+  if (!notificationPreferences) return
+  const mutedIds = [...$('muted-pods').querySelectorAll('input:checked')].map((input) => input.value)
+  try {
+    const { preferences } = await notificationApi('/notifications/preferences', {
+      method: 'PUT',
+      body: JSON.stringify({
+        ...notificationPreferences,
+        browser_push: $('push-toggle').classList.contains('on'),
+        quiet_hours_enabled: $('quiet-toggle').classList.contains('on'),
+        quiet_start: $('quiet-start').value,
+        quiet_end: $('quiet-end').value,
+        muted_pod_ids: mutedIds,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Berlin',
+      }),
+    })
+    notificationPreferences = preferences
+    $('notification-settings-error').textContent = ''
+  } catch (error) {
+    $('notification-settings-error').textContent = error.message
+  }
+}
+
+function urlBase64ToUint8Array(value) {
+  const padding = '='.repeat((4 - value.length % 4) % 4)
+  const raw = atob((value + padding).replace(/-/g, '+').replace(/_/g, '/'))
+  return Uint8Array.from([...raw].map((character) => character.charCodeAt(0)))
+}
+
+async function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return null
+  try { return await navigator.serviceWorker.register('/sw.js') }
+  catch (error) { console.error('Service Worker:', error.message); return null }
+}
+
+async function enablePush() {
+  if (!('PushManager' in window) || !('Notification' in window)) throw new Error('Dieser Browser unterstützt keine Push-Benachrichtigungen.')
+  const permission = await Notification.requestPermission()
+  if (permission !== 'granted') throw new Error('Browser-Benachrichtigungen wurden nicht erlaubt.')
+  const registration = await registerServiceWorker()
+  if (!registration) throw new Error('Der Service Worker konnte nicht registriert werden.')
+  const { public_key: publicKey } = await notificationApi('/push/public-key')
+  let subscription = await registration.pushManager.getSubscription()
+  if (!subscription) subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) })
+  await notificationApi('/push/subscribe', { method: 'POST', body: JSON.stringify({ subscription: subscription.toJSON() }) })
+  setSwitch($('push-toggle'), true)
+  notificationPreferences.browser_push = true
+}
+
+async function disablePush() {
+  const registration = await navigator.serviceWorker?.ready
+  const subscription = await registration?.pushManager.getSubscription()
+  await notificationApi('/push/subscribe', { method: 'DELETE', body: JSON.stringify({ endpoint: subscription?.endpoint || '' }) })
+  await subscription?.unsubscribe()
+  setSwitch($('push-toggle'), false)
+  notificationPreferences.browser_push = false
+}
+
+$('notification-settings-toggle').addEventListener('click', async () => {
+  const settings = $('notification-settings')
+  settings.hidden = !settings.hidden
+  if (!settings.hidden) await loadNotificationPreferences()
+})
+$('push-toggle').addEventListener('click', async () => {
+  $('notification-settings-error').textContent = ''
+  try {
+    if ($('push-toggle').classList.contains('on')) await disablePush()
+    else await enablePush()
+  } catch (error) {
+    $('notification-settings-error').textContent = error.message
+    setSwitch($('push-toggle'), false)
+  }
+})
+$('quiet-toggle').addEventListener('click', async () => {
+  setSwitch($('quiet-toggle'), !$('quiet-toggle').classList.contains('on'))
+  $('quiet-time').hidden = !$('quiet-toggle').classList.contains('on')
+  await saveNotificationPreferences()
+})
+for (const id of ['quiet-start', 'quiet-end']) $(id).addEventListener('change', saveNotificationPreferences)
 
 // Onboarding: beim ersten Login (Rolle + Über-mich noch leer) einmalig das Profil öffnen,
 // damit Enni von Anfang an personalisiert. Einmal pro Account, danach nie wieder.
@@ -372,9 +604,23 @@ async function route() {
   const p = location.pathname
   if (p.startsWith('/pod/')) {
     const pod = podsList.find((x) => x.id === p.slice(5))
-    const requestedTab = new URLSearchParams(location.search).get('tab')
+    const params = new URLSearchParams(location.search)
+    const requestedTab = params.get('tab')
     const tab = ['overview', 'convs', 'tasks', 'board', 'files', 'settings'].includes(requestedTab) ? requestedTab : 'overview'
-    if (pod) return openPod(pod, tab)
+    if (pod) {
+      await openPod(pod, tab)
+      const conversationId = params.get('conversation')
+      const taskId = params.get('task')
+      if (conversationId) {
+        const { data: conversation } = await sb.from('conversations').select('*').eq('id', conversationId).eq('pod_id', pod.id).maybeSingle()
+        if (conversation) { convPod = pod; return openConversation(conversation) }
+      }
+      if (taskId) {
+        const { data: task } = await sb.from('pod_tasks').select('*').eq('id', taskId).eq('pod_id', pod.id).maybeSingle()
+        if (task) return openTaskDetail(task)
+      }
+      return
+    }
   }
   if (p.startsWith('/chat/')) {
     const { data: c } = await sb.from('conversations').select('*').eq('id', p.slice(6)).maybeSingle()
@@ -424,8 +670,8 @@ document.querySelectorAll('.admin-area').forEach((b) =>
 )
 
 // Admin-Sidebar: genau einen Arbeitsbereich zeigen
-const ADMIN_TABS = new Set(['reviews', 'usage', 'members', 'knowledge'])
-const ADMIN_ONLY_TABS = new Set(['reviews', 'knowledge'])
+const ADMIN_TABS = new Set(['reviews', 'usage', 'members', 'knowledge', 'announcements'])
+const ADMIN_ONLY_TABS = new Set(['reviews', 'knowledge', 'announcements'])
 
 function setAdminTab(tab, sync = true) {
   if (!ADMIN_TABS.has(tab)) tab = 'usage'
@@ -445,14 +691,57 @@ document.querySelectorAll('.admin-link').forEach((b) =>
 
 async function loadAdmin() {
   const { is_admin } = await ownProfile()
+  const announcementLink = document.querySelector('.admin-link[data-admin-tab="announcements"]')
+  if (announcementLink) announcementLink.hidden = !is_admin
   const requested = new URLSearchParams(location.search).get('tab')
   const initial = ADMIN_TABS.has(requested) ? requested : is_admin ? 'reviews' : 'usage'
   setAdminTab(!is_admin && ADMIN_ONLY_TABS.has(initial) ? 'usage' : initial, false)
   await Promise.all([
     refreshCosts(), loadMembers(), loadKnowledgeUpdates(), loadLearnings(), loadSkillProposals(), loadToolProposals(),
     loadToolResearchProposals(), loadUiChangeRequests(), loadRoutineProposals(), loadWikiPageProposals(), loadKnowledgeSources(),
+    is_admin ? loadAnnouncements() : Promise.resolve(),
   ])
 }
+
+async function loadAnnouncements() {
+  const host = $('announcement-history')
+  try {
+    const { announcements } = await notificationApi('/admin/announcements')
+    host.innerHTML = (announcements || []).map((item) => `<div class="announcement-history-row"><strong>${esc(item.title)}</strong><p>${esc(item.body)}</p><span>${item.audience === 'all' ? 'Alle' : item.audience === 'admins' ? 'Admins' : 'Members'} · ${new Date(item.published_at).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })}</span></div>`).join('') || '<div class="notification-empty">Noch keine Mitteilungen veröffentlicht.</div>'
+  } catch (error) {
+    host.innerHTML = `<div class="err">${esc(error.message)}</div>`
+  }
+}
+
+$('announcement-form').addEventListener('submit', async (event) => {
+  event.preventDefault()
+  const button = $('announcement-publish')
+  const errorBox = $('announcement-error')
+  button.disabled = true
+  button.textContent = 'Wird veröffentlicht …'
+  errorBox.textContent = ''
+  try {
+    const result = await notificationApi('/admin/announcements', {
+      method: 'POST',
+      body: JSON.stringify({
+        title: $('announcement-title').value.trim(),
+        body: $('announcement-body').value.trim(),
+        audience: $('announcement-audience').value,
+        action_url: $('announcement-link').value.trim(),
+      }),
+    })
+    $('announcement-form').reset()
+    errorBox.style.color = 'var(--good)'
+    errorBox.textContent = `An ${result.recipients} Accounts veröffentlicht.`
+    await loadAnnouncements()
+  } catch (error) {
+    errorBox.style.color = ''
+    errorBox.textContent = error.message
+  } finally {
+    button.disabled = false
+    button.textContent = 'Update veröffentlichen'
+  }
+})
 
 // ============================================================ Conversations
 function convGroup(dateStr) {
@@ -3164,7 +3453,7 @@ function renderMentionBack(textarea, back) {
   if (!back) return
   const val = textarea.value
   if (!val) { back.innerHTML = ''; return }
-  const names = ['enni', ...(profilesCache || []).map((p) => p.display_name || p.email).filter(Boolean)]
+  const names = ['enni', 'team', ...(profilesCache || []).map((p) => p.display_name || p.email).filter(Boolean)]
   const mentionRe = new RegExp(`@(${names.sort((a, b) => b.length - a.length).map(escRe).join('|')})`, 'gi')
   const skillSlugs = (skillsCache || []).map((skill) => skill.slug).filter(Boolean).sort((a, b) => b.length - a.length)
   let highlighted = esc(val)
@@ -3743,6 +4032,7 @@ function mentionCandidatesFor(pod, profs) {
   }
   return [
     { insert: '@enni', name: 'Enni ruft den AI-Assistenten in die Konversation' },
+    { insert: '@team', name: 'Alle aktiven Mitglieder dieses Pods benachrichtigen' },
     ...people
       .filter((p) => p.id !== session.user.id)
       .map((p) => ({
@@ -5639,6 +5929,7 @@ function subscribeRealtime() {
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'conversations' }, (p) => onConvChange(p.new))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'pod_tasks' }, (p) => onPodWorkChange(p.new?.pod_id ? p.new : p.old))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'pod_task_comments' }, (p) => onPodWorkChange(p.new?.pod_id ? p.new : p.old))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${session.user.id}` }, () => loadNotifications())
     .subscribe()
 }
 

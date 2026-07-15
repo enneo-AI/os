@@ -4,8 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
+<meta name="theme-color" content="#F5F3F8">
 <title>enneo OS</title>
 <link rel="icon" type="image/svg+xml" href="/icons/enneo-icon.svg">
+<link rel="manifest" href="/manifest.webmanifest">
 <script>document.documentElement.dataset.theme = localStorage.getItem('enni-theme') || 'light'</script>
 <style>
   :root{
@@ -157,6 +159,28 @@
   .sb-lupe{width:38px;flex:none;border:0;border-radius:11px;background:none;color:var(--ink-3);display:inline-flex;align-items:center;justify-content:center;transition:color .15s,background .15s}
   .sb-lupe:hover{color:var(--ink);background:var(--hover)}
   .sb-lupe svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+  .notification-trigger{position:relative}
+  .notification-badge{position:absolute;right:2px;top:2px;min-width:16px;height:16px;padding:0 4px;border:2px solid var(--bg);border-radius:999px;background:var(--lila-deep);color:#fff;font-size:9px;font-weight:750;line-height:12px;text-align:center;font-variant-numeric:tabular-nums}
+  .mobile-actions{display:flex;align-items:center}
+  .notification-backdrop{position:fixed;inset:0;z-index:180;background:rgba(18,17,29,.18);opacity:0;pointer-events:none;transition:opacity .2s ease}
+  .notification-backdrop.open{opacity:1;pointer-events:auto}
+  .notification-panel{position:fixed;z-index:190;right:14px;top:14px;width:min(420px,calc(100vw - 28px));height:calc(100dvh - 28px);display:flex;flex-direction:column;border:1px solid var(--glass-outline);border-radius:22px;background:var(--glass-strong);-webkit-backdrop-filter:blur(34px) saturate(1.65);backdrop-filter:blur(34px) saturate(1.65);box-shadow:0 35px 90px -30px rgba(22,18,43,.52);transform:translateX(calc(100% + 28px));visibility:hidden;transition:transform .25s cubic-bezier(.2,.75,.25,1),visibility 0s linear .25s;overflow:hidden;overscroll-behavior:contain}
+  .notification-panel.open{transform:none;visibility:visible;transition-delay:0s}
+  .notification-head{display:flex;align-items:center;gap:10px;min-height:70px;padding:0 18px;border-bottom:1px solid var(--hair)}
+  .notification-head h2{margin:0;font-size:17px;font-weight:670;letter-spacing:-.015em}.notification-head .btn{margin-left:auto}.notification-close{width:36px;height:36px;border:0;border-radius:11px;background:none;color:var(--ink-3);font-size:18px}.notification-close:hover{background:var(--hover);color:var(--ink)}
+  .notification-toolbar{display:flex;align-items:center;gap:6px;padding:10px 14px;border-bottom:1px solid var(--hair)}
+  .notification-filter{height:32px;padding:0 12px;border:0;border-radius:999px;background:none;color:var(--ink-3);font-size:12px;font-weight:620}.notification-filter.on{background:var(--press);color:var(--ink)}
+  .notification-settings-toggle{margin-left:auto;border:0;background:none;color:var(--ink-3);font-size:11.5px}.notification-settings-toggle:hover{color:var(--ink)}
+  .notification-list{flex:1;min-height:0;overflow:auto}
+  .notification-row{position:relative;width:100%;display:grid;grid-template-columns:38px minmax(0,1fr) auto;gap:11px;padding:15px 16px;border:0;border-bottom:1px solid var(--hair);background:none;text-align:left;color:var(--ink)}
+  .notification-row:hover{background:var(--hover)}.notification-row.unread{background:rgba(123,90,226,.055)}
+  .notification-row.unread::before{content:"";position:absolute;left:6px;top:23px;width:5px;height:5px;border-radius:50%;background:var(--lila-deep)}
+  .notification-icon{width:38px;height:38px;border:1px solid var(--glass-outline);border-radius:12px;display:flex;align-items:center;justify-content:center;background:linear-gradient(145deg,var(--key-hi),var(--surface-2));color:var(--lila-deep);font-size:15px;font-weight:720;box-shadow:inset 0 1px 0 var(--glass-highlight)}
+  .notification-copy{min-width:0}.notification-title{font-size:13px;font-weight:650;line-height:1.35}.notification-body{margin-top:3px;color:var(--ink-2);font-size:12px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.notification-time{padding-top:1px;color:var(--ink-3);font-size:10.5px;white-space:nowrap}.notification-empty{padding:72px 26px;text-align:center;color:var(--ink-3);font-size:13px}
+  .notification-settings{max-height:48%;overflow:auto;padding:16px 18px calc(18px + env(safe-area-inset-bottom));border-top:1px solid var(--hair);background:var(--surface-2)}
+  .notification-setting-row{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:11px 0;border-bottom:1px solid var(--hair)}.notification-setting-copy strong{display:block;font-size:12.5px}.notification-setting-copy span{display:block;margin-top:2px;color:var(--ink-3);font-size:11px}.notification-switch{width:42px;height:24px;border:0;border-radius:999px;background:var(--ring-track);padding:3px;transition:background .15s}.notification-switch::after{content:"";display:block;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.2);transition:transform .16s}.notification-switch.on{background:var(--lila-deep)}.notification-switch.on::after{transform:translateX(18px)}
+  .quiet-time{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px 0}.quiet-time label,.muted-pods-title{font-size:10px;font-weight:680;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}.quiet-time input{width:100%;margin-top:5px;border:1px solid var(--hair);border-radius:10px;background:var(--surface);padding:8px 10px}.muted-pods-title{margin:12px 0 5px}.muted-pod-row{display:flex;align-items:center;gap:9px;min-height:38px;font-size:12px;color:var(--ink-2)}
+  @media(prefers-reduced-motion:reduce){.notification-panel,.notification-backdrop,.notification-switch,.notification-switch::after{transition:none}}
 
   /* Globale Suche — Command-Palette (⌘K) */
   .pal-overlay{align-items:flex-start;background:rgba(29,30,44,.28)}
@@ -1072,6 +1096,11 @@
   .invite-compact{display:flex;gap:9px;margin-top:20px;padding-top:18px;border-top:1px solid var(--hair)}
   .invite-compact input{flex:1;min-width:0;border:1px solid var(--hair);border-radius:12px;background:var(--surface);padding:9px 13px;font-size:13px;outline:0}
   .invite-compact input:focus{border-color:var(--focus-edge);box-shadow:0 0 0 3px var(--focus-ring)}
+  .announcement-form{display:grid;gap:14px;max-width:680px;padding:20px 0;border-top:1px solid var(--hair)}
+  .announcement-form label{font-size:10.5px;font-weight:680;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+  .announcement-form input,.announcement-form textarea,.announcement-form select{width:100%;margin-top:6px;border:1px solid var(--hair);border-radius:12px;background:var(--surface);padding:10px 12px;outline:0}.announcement-form textarea{min-height:110px;resize:vertical}.announcement-form input:focus,.announcement-form textarea:focus,.announcement-form select:focus{border-color:var(--focus-edge);box-shadow:0 0 0 3px var(--focus-ring)}
+  .announcement-actions{display:flex;align-items:center;gap:12px}.announcement-actions .err{margin:0}
+  .announcement-history{margin-top:28px;border-top:1px solid var(--hair)}.announcement-history-row{padding:14px 2px;border-bottom:1px solid var(--hair)}.announcement-history-row strong{font-size:13px}.announcement-history-row p{margin:3px 0;color:var(--ink-2);font-size:12px}.announcement-history-row span{font-size:10.5px;color:var(--ink-3)}
   .invite-role,.member-role{height:38px;border:1px solid var(--glass-outline);border-radius:11px;background:linear-gradient(145deg,var(--key-hi),var(--surface-2));color:var(--ink);padding:0 32px 0 12px;font:inherit;font-size:12px;font-weight:620;outline:0;box-shadow:inset 0 1px 0 var(--glass-highlight)}
   .invite-role:focus,.member-role:focus{border-color:var(--focus-edge);box-shadow:inset 0 1px 0 var(--glass-highlight),0 0 0 3px var(--focus-ring)}
   .member-row{grid-template-columns:minmax(0,1fr) auto auto!important}
@@ -1106,10 +1135,11 @@
     .seg button{min-height:44px;padding:7px 5px}
     body.mobile-nav-open{overflow:hidden;touch-action:none}
     .app{display:block;min-height:100dvh}
-    .mobile-topbar{position:fixed;inset:0 0 auto;z-index:90;display:grid;grid-template-columns:44px minmax(0,1fr) 44px;align-items:end;height:calc(54px + env(safe-area-inset-top));padding:env(safe-area-inset-top) 8px 5px;background:var(--sidebar-glass);-webkit-backdrop-filter:blur(28px) saturate(1.55);backdrop-filter:blur(28px) saturate(1.55);border-bottom:1px solid var(--glass-outline);box-shadow:0 10px 30px -24px rgba(29,30,44,.45)}
-    .mobile-nav-trigger,.mobile-search,.mobile-nav-close{width:44px;height:44px;border:0;border-radius:13px;background:transparent;color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center}
+    .mobile-topbar{position:fixed;inset:0 0 auto;z-index:90;display:grid;grid-template-columns:44px minmax(0,1fr) auto;align-items:end;height:calc(54px + env(safe-area-inset-top));padding:env(safe-area-inset-top) 8px 5px;background:var(--sidebar-glass);-webkit-backdrop-filter:blur(28px) saturate(1.55);backdrop-filter:blur(28px) saturate(1.55);border-bottom:1px solid var(--glass-outline);box-shadow:0 10px 30px -24px rgba(29,30,44,.45)}
+    .mobile-nav-trigger,.mobile-search,.mobile-notifications,.mobile-nav-close{width:44px;height:44px;border:0;border-radius:13px;background:transparent;color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center}
     .mobile-nav-trigger:active,.mobile-search:active,.mobile-nav-close:active{background:var(--press);transform:scale(.96)}
-    .mobile-nav-trigger svg,.mobile-search svg,.mobile-nav-close svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+    .mobile-nav-trigger svg,.mobile-search svg,.mobile-notifications svg,.mobile-nav-close svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+    .notification-panel{right:0;top:0;width:100vw;height:100dvh;border:0;border-radius:0}.notification-head{padding-top:env(safe-area-inset-top);min-height:calc(64px + env(safe-area-inset-top))}.notification-backdrop{display:none}.notification-row{min-height:72px}.notification-settings{max-height:55%}
     .mobile-brand{min-width:0;align-self:center;display:flex;align-items:center;justify-content:center;gap:8px;padding-top:5px}
     .mobile-brand .enni-dot{width:25px;height:25px}
     .mobile-page-title{font-size:13px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1182,7 +1212,7 @@
   <header class="mobile-topbar">
     <button class="mobile-nav-trigger" id="mobile-nav-trigger" type="button" aria-label="Navigation öffnen" aria-controls="primary-sidebar" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
     <div class="mobile-brand"><span class="enni-dot" aria-hidden="true">E</span><span class="mobile-page-title" id="mobile-page-title">Chat</span></div>
-    <button class="mobile-search" id="mobile-search" type="button" aria-label="Suchen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></button>
+    <div class="mobile-actions"><button class="mobile-notifications notification-trigger" id="mobile-notification-trigger" type="button" aria-label="Benachrichtigungen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg><span class="notification-badge" id="mobile-notification-badge" hidden>0</span></button><button class="mobile-search" id="mobile-search" type="button" aria-label="Suchen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></button></div>
   </header>
   <div class="mobile-sidebar-backdrop" id="mobile-sidebar-backdrop" aria-hidden="true"></div>
   <aside class="sidebar" id="primary-sidebar">
@@ -1205,7 +1235,10 @@
     <!-- Sidebar-Inhalt: Chat -->
     <div class="sb-ctx" id="sb-chat">
       <div class="sb-top">
-        <button class="sb-new" id="new-chat"><span class="sb-new-plus">＋</span><span>Neue Konversation</span></button>
+        <button class="sb-new" id="new-chat"><span class="sb-new-plus">＋</span><span>Neuer Chat</span></button>
+        <button class="sb-lupe notification-trigger" id="notification-trigger" title="Benachrichtigungen" aria-label="Benachrichtigungen">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg><span class="notification-badge" id="notification-badge" hidden>0</span>
+        </button>
         <button class="sb-lupe" id="global-search-btn" title="Suchen (⌘K)" aria-label="Suchen">
           <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </button>
@@ -1239,6 +1272,7 @@
         <button class="sb-item admin-link" data-admin-tab="usage"><span class="txt">Nutzung</span></button>
         <button class="sb-item admin-link" data-admin-tab="members"><span class="txt">Mitglieder</span></button>
         <button class="sb-item admin-link" data-admin-tab="knowledge" hidden><span class="txt">Wissen & Releases</span></button>
+        <button class="sb-item admin-link" data-admin-tab="announcements" hidden><span class="txt">Mitteilungen</span></button>
       </div>
     </div>
 
@@ -1739,10 +1773,36 @@
           <div class="err" id="knowledge-source-err"></div>
         </div>
 
+        <div class="admin-pane" data-admin-pane="announcements" hidden>
+          <div class="admin-pane-head"><h3>Mitteilungen</h3><p>Produkt-Updates gezielt im Workspace und per Browser-Push veröffentlichen.</p></div>
+          <form class="announcement-form" id="announcement-form">
+            <label>Titel<input type="text" id="announcement-title" name="announcement-title" maxlength="180" autocomplete="off" required placeholder="Was ist neu? …"></label>
+            <label>Nachricht<textarea id="announcement-body" name="announcement-body" maxlength="2000" autocomplete="off" required placeholder="Kurz, konkret und handlungsorientiert …"></textarea></label>
+            <label>Zielgruppe<select id="announcement-audience" name="announcement-audience"><option value="all">Alle aktiven Nutzer</option><option value="admins">Nur Admins</option><option value="members">Nur Members</option></select></label>
+            <label>Interner Link — optional<input type="text" id="announcement-link" name="announcement-link" autocomplete="off" spellcheck="false" placeholder="/spaces oder /pod/…"></label>
+            <div class="announcement-actions"><button class="btn dark" type="submit" id="announcement-publish">Update veröffentlichen</button><div class="err" id="announcement-error" aria-live="polite"></div></div>
+          </form>
+          <div class="announcement-history" id="announcement-history"></div>
+        </div>
+
       </div>
     </section>
   </main>
 </div>
+
+<div class="notification-backdrop" id="notification-backdrop"></div>
+<aside class="notification-panel" id="notification-panel" aria-label="Benachrichtigungen" aria-hidden="true">
+  <div class="notification-head"><h2>Benachrichtigungen</h2><button class="btn quiet" id="notification-read-all">Alle gelesen</button><button class="notification-close" id="notification-close" aria-label="Schließen">✕</button></div>
+  <div class="notification-toolbar"><button class="notification-filter on" data-notification-filter="all">Alle</button><button class="notification-filter" data-notification-filter="unread">Ungelesen</button><button class="notification-settings-toggle" id="notification-settings-toggle">Einstellungen</button></div>
+  <div class="notification-list" id="notification-list"></div>
+  <div class="notification-settings" id="notification-settings" hidden>
+    <div class="notification-setting-row"><div class="notification-setting-copy"><strong>Browser-Benachrichtigungen</strong><span>Erwähnungen und abgeschlossene Enni-Läufe auch außerhalb von enneo OS.</span></div><button class="notification-switch" id="push-toggle" type="button" role="switch" aria-checked="false"></button></div>
+    <div class="notification-setting-row"><div class="notification-setting-copy"><strong>Ruhezeiten</strong><span>Push pausiert, die Inbox sammelt weiter.</span></div><button class="notification-switch" id="quiet-toggle" type="button" role="switch" aria-checked="false"></button></div>
+    <div class="quiet-time" id="quiet-time"><label>Von<input type="time" id="quiet-start" value="18:00"></label><label>Bis<input type="time" id="quiet-end" value="08:00"></label></div>
+    <div class="muted-pods-title">Stummgeschaltete Pods</div><div id="muted-pods"></div>
+    <div class="err" id="notification-settings-error" aria-live="polite"></div>
+  </div>
+</aside>
 
 <!-- ================= TOOL DETAIL PANEL ================= -->
 <aside class="tool-panel" id="tool-panel" aria-label="Tool-Detail">

@@ -8,6 +8,9 @@ import { startRoutineTicker, runRoutine } from './routines.js'
 import { startKnowledgeSyncTicker, syncKnowledgeSource } from './knowledge-sync.js'
 import { logAudit } from './audit.js'
 import { getAttioRecordSummary, hasAttioConnection, searchAttioRecords } from './tools/attio.js'
+import {
+  createNotification, createNotifications, notifyPodMentions, pushPublicKey, startPushTicker,
+} from './notifications.js'
 
 const app = express()
 app.use(express.json({ limit: '30mb' })) // Anhänge kommen als Base64 im Body
@@ -372,13 +375,23 @@ app.post('/api/chat', async (req, res) => {
   const storedText = meta.length
     ? `${message || ''}\n\n[Angehängte Dateien: ${meta.map((m) => m.name).join(', ')}]`.trim()
     : message
-  await db.from('messages').insert({
+  const { data: userMessage, error: userMessageError } = await db.from('messages').insert({
     conversation_id: convId,
     role: 'user',
     content: storedText,
     attachments: meta.length ? meta : null,
     author_id: user.id,
-  })
+  }).select('id').single()
+  if (userMessageError) return res.status(500).json({ error: userMessageError.message })
+  if (pod) {
+    try {
+      await notifyPodMentions({
+        pod, actorId: user.id, messageId: userMessage.id, conversationId: convId, text: message,
+      })
+    } catch (error) {
+      console.error('Mention-Benachrichtigung fehlgeschlagen:', error.message)
+    }
+  }
   const turnContent = fileBlocks.length
     ? [...fileBlocks, { type: 'text', text: message || 'Bitte analysiere die angehängten Dateien.' }]
     : message
@@ -527,6 +540,24 @@ app.post('/api/chat', async (req, res) => {
       .from('conversations')
       .update({ updated_at: new Date().toISOString(), working: false, unread: true })
       .eq('id', convId)
+
+    if (!result.aborted) {
+      try {
+        await createNotification({
+          user_id: user.id,
+          type: 'agent_complete',
+          pod_id: pod?.id || null,
+          conversation_id: convId,
+          message_id: msg?.id || null,
+          title: 'Enni ist fertig',
+          body: (result.text || '').replace(/\s+/g, ' ').trim().slice(0, 240),
+          action_url: pod ? `/pod/${pod.id}?tab=convs&conversation=${convId}` : `/chat/${convId}`,
+          metadata: { duration_ms: durationMs },
+        })
+      } catch (error) {
+        console.error('Enni-Fertig-Benachrichtigung fehlgeschlagen:', error.message)
+      }
+    }
 
     emit({ type: 'done', message_id: msg?.id, cost_eur: cost, usage: result.usage, duration_ms: durationMs, stopped: result.aborted || undefined })
 
@@ -685,6 +716,154 @@ async function requireAdmin(req, res) {
   }
   return user
 }
+
+// ============================================================ Notifications + Web Push
+app.get('/api/notifications', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50))
+  let query = db.from('notifications').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(limit)
+  if (req.query.filter === 'unread') query = query.is('read_at', null)
+  const { data, error } = await query
+  if (error) return res.status(400).json({ error: error.message })
+  const actorIds = [...new Set((data || []).map((item) => item.actor_id).filter(Boolean))]
+  const { data: actors } = actorIds.length
+    ? await db.from('profiles').select('id, display_name, email, avatar_url').in('id', actorIds)
+    : { data: [] }
+  const actorMap = Object.fromEntries((actors || []).map((actor) => [actor.id, actor]))
+  res.json({ notifications: (data || []).map((item) => ({ ...item, actor: actorMap[item.actor_id] || null })) })
+})
+
+app.post('/api/notifications/read-all', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const { error } = await db.from('notifications').update({ read_at: new Date().toISOString() }).eq('user_id', user.id).is('read_at', null)
+  if (error) return res.status(400).json({ error: error.message })
+  res.json({ ok: true })
+})
+
+app.post('/api/notifications/:id/read', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const { data, error } = await db.from('notifications').update({ read_at: new Date().toISOString() })
+    .eq('id', req.params.id).eq('user_id', user.id).select('id').maybeSingle()
+  if (error) return res.status(400).json({ error: error.message })
+  if (!data) return res.status(404).json({ error: 'Benachrichtigung nicht gefunden' })
+  res.json({ ok: true })
+})
+
+app.get('/api/notifications/preferences', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  let { data, error } = await db.from('notification_preferences').select('*').eq('user_id', user.id).maybeSingle()
+  if (!data && !error) {
+    ;({ data, error } = await db.from('notification_preferences').insert({ user_id: user.id }).select('*').single())
+  }
+  if (error) return res.status(400).json({ error: error.message })
+  res.json({ preferences: data })
+})
+
+app.put('/api/notifications/preferences', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const body = req.body || {}
+  const mutedIds = [...new Set(Array.isArray(body.muted_pod_ids) ? body.muted_pod_ids.slice(0, 100) : [])]
+  const visibleMuted = []
+  for (const id of mutedIds) if (await podIfVisible(id, user.id)) visibleMuted.push(id)
+  const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/
+  const patch = {
+    user_id: user.id,
+    browser_push: !!body.browser_push,
+    muted_pod_ids: visibleMuted,
+    quiet_hours_enabled: !!body.quiet_hours_enabled,
+    quiet_start: hhmm.test(body.quiet_start || '') ? body.quiet_start : '18:00',
+    quiet_end: hhmm.test(body.quiet_end || '') ? body.quiet_end : '08:00',
+    timezone: String(body.timezone || 'Europe/Berlin').slice(0, 80),
+  }
+  const { data, error } = await db.from('notification_preferences').upsert(patch).select('*').single()
+  if (error) return res.status(400).json({ error: error.message })
+  res.json({ preferences: data })
+})
+
+app.get('/api/push/public-key', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const key = pushPublicKey()
+  if (!key) return res.status(503).json({ error: 'Browser-Push ist noch nicht konfiguriert.' })
+  res.json({ public_key: key })
+})
+
+app.post('/api/push/subscribe', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const subscription = req.body?.subscription
+  if (!subscription?.endpoint?.startsWith('https://') || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
+    return res.status(400).json({ error: 'Ungültiges Push-Abonnement' })
+  }
+  const { data: existingSubscription } = await db.from('push_subscriptions').select('user_id').eq('endpoint', subscription.endpoint).maybeSingle()
+  if (existingSubscription && existingSubscription.user_id !== user.id) {
+    return res.status(409).json({ error: 'Dieses Push-Abonnement gehört bereits zu einem anderen Account.' })
+  }
+  const { error } = await db.from('push_subscriptions').upsert({
+    user_id: user.id,
+    endpoint: subscription.endpoint,
+    p256dh: subscription.keys.p256dh,
+    auth: subscription.keys.auth,
+    user_agent: String(req.headers['user-agent'] || '').slice(0, 500),
+    enabled: true,
+    failure_count: 0,
+  }, { onConflict: 'endpoint' })
+  if (error) return res.status(400).json({ error: error.message })
+  await db.from('notification_preferences').upsert({ user_id: user.id, browser_push: true }, { onConflict: 'user_id' })
+  res.json({ ok: true })
+})
+
+app.delete('/api/push/subscribe', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const endpoint = String(req.body?.endpoint || '')
+  if (endpoint) await db.from('push_subscriptions').delete().eq('user_id', user.id).eq('endpoint', endpoint)
+  await db.from('notification_preferences').upsert({ user_id: user.id, browser_push: false }, { onConflict: 'user_id' })
+  res.json({ ok: true })
+})
+
+app.get('/api/admin/announcements', async (req, res) => {
+  const user = await requireAdmin(req, res)
+  if (!user) return
+  const { data, error } = await db.from('system_announcements').select('*').order('published_at', { ascending: false }).limit(20)
+  if (error) return res.status(400).json({ error: error.message })
+  res.json({ announcements: data || [] })
+})
+
+app.post('/api/admin/announcements', async (req, res) => {
+  const user = await requireAdmin(req, res)
+  if (!user) return
+  const title = String(req.body?.title || '').trim()
+  const body = String(req.body?.body || '').trim()
+  const audience = ['all', 'admins', 'members'].includes(req.body?.audience) ? req.body.audience : 'all'
+  const actionUrl = String(req.body?.action_url || '').trim()
+  if (!title || title.length > 180 || !body || body.length > 2000) return res.status(400).json({ error: 'Titel oder Nachricht ist ungültig.' })
+  if (actionUrl && !actionUrl.startsWith('/')) return res.status(400).json({ error: 'Der Link muss ein interner Pfad sein (z. B. /spaces).' })
+  const { data: announcement, error } = await db.from('system_announcements').insert({
+    title, body, audience, action_url: actionUrl || null, created_by: user.id,
+  }).select('*').single()
+  if (error) return res.status(400).json({ error: error.message })
+  let profilesQuery = db.from('profiles').select('id').eq('account_status', 'active')
+  if (audience === 'admins') profilesQuery = profilesQuery.eq('is_admin', true)
+  if (audience === 'members') profilesQuery = profilesQuery.eq('is_admin', false)
+  const { data: profiles } = await profilesQuery
+  await createNotifications((profiles || []).map((profile) => ({
+    user_id: profile.id,
+    type: 'system_update',
+    actor_id: user.id,
+    title,
+    body,
+    action_url: actionUrl || '/chat',
+    metadata: { announcement_id: announcement.id, audience },
+  })))
+  await logAudit(user.id, 'announcement.publish', 'system_announcement', announcement.id, { audience, recipients: profiles?.length || 0 })
+  res.json({ announcement, recipients: profiles?.length || 0 })
+})
 
 // Kollegen einladen (Admin): erzeugt einen Invite-/Login-Link zum Weitergeben.
 // Bewusst Link-basiert statt E-Mail-Versand — Supabase-SMTP ist rate-limitiert und
@@ -1395,6 +1574,7 @@ app.post('/api/routines/:id/run', async (req, res) => {
 const port = Number(process.env.PORT || 8080)
 app.listen(port, () => {
   console.log(`enneo OS backend läuft auf :${port}`)
+  startPushTicker()
   startKnowledgeSyncTicker()
   import('./tool-research.js').then(({ resumeToolResearch }) => resumeToolResearch()).catch((err) => console.error('Tool-Recherche konnte nicht fortgesetzt werden:', err.message))
 })

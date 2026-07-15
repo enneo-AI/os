@@ -1,6 +1,7 @@
 import { db } from './db.js'
 import { runEnniTurn, ALLOWED_MODELS } from './agent.js'
 import { logUsage } from './usage.js'
+import { createNotification } from './notifications.js'
 
 // ============================================================ Routinen-Ticker
 // Läuft im Railway-Prozess: alle 30s prüfen, welche Routine in der aktuellen
@@ -141,6 +142,21 @@ async function runRoutineForAccount(r, userId) {
     source: 'routine',
   })
   await db.from('conversations').update({ working: false, unread: true }).eq('id', conv.id)
+  try {
+    await createNotification({
+      user_id: userId,
+      type: 'routine_complete',
+      pod_id: r.pod_id || null,
+      conversation_id: conv.id,
+      message_id: msg?.id || null,
+      title: `Routine abgeschlossen: ${r.name}`,
+      body: (result.text || '').replace(/\s+/g, ' ').trim().slice(0, 240),
+      action_url: r.pod_id ? `/pod/${r.pod_id}?tab=convs&conversation=${conv.id}` : `/chat/${conv.id}`,
+      metadata: { routine_id: r.id, routine_name: r.name },
+    })
+  } catch (error) {
+    console.error('Routine-Benachrichtigung fehlgeschlagen:', error.message)
+  }
   return conv.id
 }
 

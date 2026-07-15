@@ -87,3 +87,27 @@ test('Pod customer links keep Attio read-only, scoped and lazy', () => {
   assert.match(migration, /grant select on table public\.pod_attio_links to authenticated/)
   assert.match(migration, /revoke all on table public\.pod_attio_links from anon, authenticated/)
 })
+
+test('notifications are user-scoped, admin-published and push-capable', () => {
+  const indexSource = readFileSync(join(here, '../src/index.js'), 'utf8')
+  const notificationSource = readFileSync(join(here, '../src/notifications.js'), 'utf8')
+  const frontendSource = readFileSync(join(here, '../../frontend/app.js'), 'utf8')
+  const serviceWorker = readFileSync(join(here, '../../frontend/sw.js'), 'utf8')
+  const migration = readFileSync(
+    join(here, '../../supabase/migrations/20260715173540_notifications_and_web_push.sql'),
+    'utf8'
+  )
+
+  assert.match(migration, /notifications_select_own/)
+  assert.match(migration, /user_id = \(select auth\.uid\(\)\)/)
+  assert.match(migration, /revoke all on public\.push_subscriptions from anon, authenticated/)
+  assert.match(migration, /private\.notify_task_assignment/)
+  assert.match(migration, /private\.notify_task_comment/)
+  assert.match(indexSource, /app\.post\('\/api\/admin\/announcements'/)
+  assert.match(indexSource, /const user = await requireAdmin\(req, res\)/)
+  assert.match(notificationSource, /tokens\.includes\('team'\)/)
+  assert.match(notificationSource, /webpush\.sendNotification/)
+  assert.match(frontendSource, /Notification\.requestPermission/)
+  assert.match(serviceWorker, /showNotification/)
+  assert.match(serviceWorker, /notificationclick/)
+})
