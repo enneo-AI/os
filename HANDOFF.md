@@ -1,6 +1,12 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-15 (Account Governance + Knowledge-/Release-Sync; live auf https://os.enneo.ai)
+**Zuletzt aktualisiert:** 2026-07-15 (neutrale Glass-Fokuszustände + externe Einladungen; live auf https://os.enneo.ai)
+
+### Session 2026-07-15 — Premium-Fokus und externe Accounts
+
+- **Keine lila Input-Rahmen mehr:** Die globale violette Browser-Outline wurde für Inputs entfernt. Chat-Composer und Formfelder nutzen jetzt einen neutralen, theme-adaptiven Glass-Fokus aus feiner Kante und weichem Halo; die Tastatur-Navigation bleibt sichtbar. Der Composer hebt den gesamten Glass-Container hervor statt ein Rechteck um die innere Textarea zu zeichnen.
+- **Beliebige E-Mail-Domains:** Admins können jetzt auch Testnutzer, Kunden und Partner außerhalb von `@enneo.ai` einladen. Backend und Datenbank-Trigger akzeptieren jede syntaktisch gültige E-Mail; Rollen werden weiterhin ausschließlich über `pending_invites` vergeben. Migration `20260715125703_allow_external_invite_emails.sql` ist live.
+- **Verifiziert:** Ein temporärer `@example.com`-Auth-User wurde erfolgreich inklusive normalem Profil angelegt und danach wieder vollständig gelöscht. Die alte Domain-Sperre aus Migration `0009` ist damit bewusst durch die neue Migration überschrieben.
 
 ### Session 2026-07-15 — Globale und Restricted Routinen
 

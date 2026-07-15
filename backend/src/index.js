@@ -514,8 +514,8 @@ app.post('/api/invite', async (req, res) => {
   if (!user) return
   const email = String(req.body?.email || '').trim().toLowerCase()
   const role = req.body?.role === 'admin' ? 'admin' : 'member'
-  if (!/^[a-z0-9._%+-]+@enneo\.ai$/.test(email)) {
-    return res.status(400).json({ error: 'Nur @enneo.ai-Adressen können eingeladen werden.' })
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: 'Bitte gib eine gültige E-Mail-Adresse ein.' })
   }
   const opts = { redirectTo: SITE_URL }
   const { error: pendingError } = await db.from('pending_invites').upsert({
