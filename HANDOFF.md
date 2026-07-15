@@ -2,6 +2,12 @@
 
 **Zuletzt aktualisiert:** 2026-07-15 (Project Pulse, Aufgabenliste und Kanban-Board für Pods live)
 
+### Session 2026-07-15 — Enni-Projektstand-Aufruf und Slash-Skill-Labels
+
+- **Projektstand ruft Enni jetzt wirklich:** „Enni · Projektstand analysieren“ setzt der automatisch erzeugten Pod-Nachricht nun `@enni` voran. Damit durchläuft sie bewusst denselben Mention-Guard wie manuell markierte Teamnachrichten und erzeugt eine Enni-Antwort statt nur eines still gespeicherten Pod-Updates.
+- **Slash-Skills als Composer-Label:** Ein über das Slash-Menü ausgewählter, verfügbarer Skill wird im bestehenden Highlight-Layer jetzt genauso als kompakte violette Pill dargestellt wie `@enni` und Pod-Mitglieder. Der eigentliche Textwert bleibt unverändert (`/slug `), sodass Backend-Routing, Tastaturbearbeitung und Copy/Paste identisch weiterlaufen.
+- **Verifiziert:** JavaScript-Syntax, Backend-Tests 4/4 und Diff-Check grün. Browser-Test bestätigte `/dokument` als gerendertes Skill-Label sowie die automatisch gesendete `@enni`-Projektstand-Nachricht inklusive Enni-Antwortcontainer.
+
 ### Session 2026-07-15 — Alternative Kanban-Ansicht für Pod-Aufgaben
 
 - **Board als echte Alternativansicht:** Zwischen „Aufgaben“ und „Dateien“ liegt der neue URL-deeplinkbare Reiter `?tab=board`. Er zeigt dieselben `pod_tasks` in den vier Spalten Offen, In Arbeit, Blockiert und Erledigt — ohne zweite Datenhaltung oder abweichende Zustände.

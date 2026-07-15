@@ -1861,7 +1861,7 @@ $('pulse-ask-enni').addEventListener('click', () => {
   convPod = activePod
   newConversation()
   $('chat-title').textContent = `Projektstand · ${activePod.name}`
-  $('composer-input').value = `Analysiere den aktuellen Projektstand dieses Pods. Fasse Fortschritt, blockierte oder überfällige Aufgaben, fehlende Verantwortlichkeiten und die drei sinnvollsten nächsten Schritte knapp zusammen. Ändere noch nichts ohne Rückfrage.`
+  $('composer-input').value = `@enni Analysiere den aktuellen Projektstand dieses Pods. Fasse Fortschritt, blockierte oder überfällige Aufgaben, fehlende Verantwortlichkeiten und die drei sinnvollsten nächsten Schritte knapp zusammen. Ändere noch nichts ohne Rückfrage.`
   autosize()
   send()
 })
@@ -3033,8 +3033,14 @@ function renderMentionBack(textarea, back) {
   const val = textarea.value
   if (!val) { back.innerHTML = ''; return }
   const names = ['enni', ...(profilesCache || []).map((p) => p.display_name || p.email).filter(Boolean)]
-  const re = new RegExp(`@(${names.sort((a, b) => b.length - a.length).map(escRe).join('|')})`, 'gi')
-  back.innerHTML = esc(val).replace(re, '<span class="mtag">$&</span>')
+  const mentionRe = new RegExp(`@(${names.sort((a, b) => b.length - a.length).map(escRe).join('|')})`, 'gi')
+  const skillSlugs = (skillsCache || []).map((skill) => skill.slug).filter(Boolean).sort((a, b) => b.length - a.length)
+  let highlighted = esc(val)
+  if (skillSlugs.length) {
+    const skillRe = new RegExp(`^/(${skillSlugs.map(escRe).join('|')})(?=\\s|$)`, 'i')
+    highlighted = highlighted.replace(skillRe, '<span class="mtag skill-tag">$&</span>')
+  }
+  back.innerHTML = highlighted.replace(mentionRe, '<span class="mtag">$&</span>')
   back.scrollTop = textarea.scrollTop
 }
 function updateMentionBacks() {
