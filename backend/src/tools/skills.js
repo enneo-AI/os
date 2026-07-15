@@ -38,6 +38,7 @@ export function skillsPromptBlock(skills) {
 }
 
 const INTENT_RULES = [
+  { slug: 'ux-ui-engineering', re: /\b(ux|ui|user experience|user interface|layout|responsive|accessibility|barrierefrei|komponente|frontend|css|design)\b.*(?:aender|änder|fix|verbesser|umbau|anpass|request|anfrag|umsetz)\w*|(?:aender|änder|fix|verbesser|umbau|anpass|umsetz|prüf)\w*.*\b(ux|ui|layout|responsive|accessibility|barrierefrei|komponente|frontend|css|design)\b/i },
   { slug: 'praesentation', re: /\b(präsentation|praesentation|deck|slides?|folien?|pitch deck)\b/i, output: true },
   { slug: 'dokument', re: /\b(dokument|pdf|brief|report|bericht|memo|angebot)\b.*\b(datei|verschicken|ausdrucken|erstell|fertig)|\bals (pdf|datei)\b/i, output: true },
   { slug: 'api-frage', re: /\b(api|endpoint|webhook|auth|monorepo|gitlab|code|quellcode|implementier|konfigurationsfeld|plattform-feature)\b/i },

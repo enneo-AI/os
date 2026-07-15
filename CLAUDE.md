@@ -21,7 +21,7 @@
 
 - **Frontend** `frontend/`: Vanilla HTML+JS ohne Build (esm.sh für supabase-js/marked/DOMPurify). Konfiguration in `config.js` (Anon-Key ist public). SPA-Routing über History API: `/chat`, `/chat/:id`, `/spaces`, `/spaces/tools`, `/spaces/connections`, `/admin`, `/pod/:id`.
 - **Backend** `backend/`: Node 22 + Express + `@anthropic-ai/sdk` (manueller Tool-Loop, KEIN Agent-SDK — Begründung in `backend/README.md`). SSE-Streaming. Endpoints: `POST /api/chat` (message, conversation_id?, model?, attachments?, pod_id?), `POST /api/compact`, `GET /health`.
-- **Enni-Tools:** `wiki_semantic_search` (RAG, pgvector Top-8-Chunks — IMMER zuerst), `wiki_search`/`wiki_list_pages`/`wiki_read_page`, GitLab read-only (`gitlab_search_projects/_search_code/_read_file/_list_merge_requests`).
+- **Enni-Tools:** `wiki_semantic_search` (RAG, pgvector Top-8-Chunks — IMMER zuerst), `wiki_search`/`wiki_list_pages`/`wiki_read_page`, GitLab read-only (`gitlab_search_projects/_search_code/_read_file/_list_merge_requests`). Der teamweite Skill `/ux-ui-engineering` hat zwei serverseitig getrennte Modi: Members nur eigene `ui_change_requests`; aktive Admins zusätzlich Request-Management und GitLab-Writes ausschließlich auf freigegebenen `enni/ui-*`-Branches im `enneo`-Namespace. Kein Default-Branch-Write, Merge oder Auto-Merge.
 - **Modelle:** User wählt im Chat-Dropdown (Opus 4.8 Default / Sonnet 5 / Haiku 4.5). Haiku kann KEIN adaptive thinking — Parameter wird modellabhängig gesetzt. Kosten pro Antwort in `llm_usage` (cost_eur), Preise in `backend/src/usage.js`.
 - **Kontext:** Prompt-Caching (wandernder Breakpoint im Tool-Loop, alte Marker löschen — max. 4!). Compaction nach Dust: Ring im Composer, 33/70/80-Schwellen, `role='compaction'`-Anker, Haiku fasst zusammen.
 - **Anhänge:** Excel/CSV/JPEG/PNG/PDF (max 4×10MB); Excel→CSV via `xlsx` in `backend/src/attachments.js`; Inhalt geht NUR im Upload-Turn ans Modell (Kosten!), Verlauf behält Marker + `messages.attachments`-Metadaten.
@@ -29,7 +29,7 @@
 
 ## Datenmodell (Migrations 0001–0006)
 
-`profiles` (is_admin) · `conversations` (user_id, pod_id) · `messages` (role inkl. compaction, thinking, tool_calls, attachments, author_id) · `llm_usage` · `wiki_pages` (space_id) · `wiki_chunks` (pgvector 384, RPC `match_wiki_chunks`) · `knowledge_updates` (Diff-Loop, **noch ungenutzt — Punkt 5 im HANDOFF**) · `spaces`/`space_members`/`space_connections` (Dust-Spaces) · `pods`/`pod_members`/`pod_tasks`/`pod_files` (+ Storage-Bucket `pod-files`) · Helper `is_pod_visible()` SECURITY DEFINER.
+`profiles` (is_admin) · `conversations` (user_id, pod_id) · `messages` (role inkl. compaction, thinking, tool_calls, attachments, author_id) · `llm_usage` · `wiki_pages` (space_id) · `wiki_chunks` (pgvector 384, RPC `match_wiki_chunks`) · `knowledge_updates` · `ui_change_requests` (Member-eigene UX/UI-Anfragen, Admin-Review/Umsetzung) · `spaces`/`space_members`/`space_connections` (Dust-Spaces) · `pods`/`pod_members`/`pod_tasks`/`pod_files` (+ Storage-Bucket `pod-files`) · Helper `is_pod_visible()` SECURITY DEFINER.
 
 **RLS-Falle (2× gestolpert):** Neue Tabellen brauchen GRANTs (`grant … to authenticated/service_role`). Und: SELECT-Policies dürfen für die eigene Tabelle KEINE Security-Definer-Selbst-Requery-Funktion nutzen (INSERT..RETURNING sieht die Zeile sonst nicht) — inline schreiben.
 

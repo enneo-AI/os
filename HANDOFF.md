@@ -2,6 +2,15 @@
 
 **Zuletzt aktualisiert:** 2026-07-15 (Enni IQ-/Persönlichkeits-Upgrade live und produktiv verifiziert)
 
+### Session 2026-07-15 — Rollenbasierter UX/UI-Engineering-Skill
+
+- **Ein Skill, zwei technisch getrennte Modi:** `/ux-ui-engineering` ist teamweit sichtbar. Members dürfen Screenshots/Feedback mit Wiki + GitLab read-only untersuchen und ausschließlich eine eigene strukturierte Anfrage erstellen bzw. verfolgen. Admins erhalten zusätzlich Queue-Verwaltung und die privilegierten GitLab-Umsetzungswerkzeuge.
+- **Harte Grenze statt Prompt-Versprechen:** Der Toolkatalog wird pro Account aus `profiles.is_admin + account_status` gebildet. Members sehen nur `ux_ui_request_change` und `ux_ui_list_my_requests`; Admins zusätzlich `ux_ui_list_requests`, `ux_ui_manage_request`, `gitlab_ui_create_branch`, `gitlab_ui_write_file` und `gitlab_ui_create_merge_request`. Jeder privilegierte Tool-Call prüft die Rolle erneut serverseitig.
+- **Sicherer GitLab-Workflow:** Schreibzugriff gilt nur für den konfigurierten `enneo`-Namespace, nur bei einem zuvor freigegebenen Request und nur auf Branches mit Prefix `enni/ui-`. Default-Branch-Writes, Merge und Auto-Merge existieren nicht. Ein Request kann erst nach vorhandenem MR-Link plus dokumentierter Build-/CI-/Visual-Verifikation abgeschlossen werden.
+- **Eigene Review-Queue:** Migrationen `20260715150844_ux_ui_change_governance.sql` + `20260715151854_ux_ui_active_account_guard.sql` sind live. `ui_change_requests` ist browserseitig read-only; Members sehen per RLS nur eigene Rows, aktive Admins alle. Deaktivierte Accounts sehen auch mit altem JWT nichts. Administration → Freigaben hat eine neue kompakte UX/UI-Queue mit Details, Admin-Notiz, Rückfrage, Ablehnen, Freigeben, Umsetzung und geprüftem Abschluss.
+- **Verifiziert:** Unit/Policy-Tests 4/4; echte temporäre Member-/Member-/Admin-Accounts bestätigten Tool-Trennung, Cross-Account-RLS, gesperrte Browser-Writes, Disabled-JWT-Guard und Admin-Freigabe. Reale Sonnet-Läufe: Member erstellte selbstständig genau einen Request ohne Mutation; Admin las dieselbe Queue und respektierte „noch nichts ändern“. GitLab-Smoke auf `enneo/ops-fe`: temporärer `enni/ui-*`-Branch + Datei-Write + Read erfolgreich, anschließend Branch gelöscht.
+- **Deploy-Stand:** Datenbankmigrationen live; Frontend/Backend-Deploy folgt mit dem zugehörigen Code-Commit.
+
 ### Session 2026-07-15 — Enni IQ, Persönlichkeit und bewusstes Tool-/Skill-Routing (live)
 
 - **Senior-Persönlichkeit statt Assistenten-Floskeln:** Der System-Prompt verlangt Ergebnis/Empfehlung zuerst, konkrete belegte Aussagen, freundlichen Widerspruch bei falschen Annahmen und klare Unsicherheitsmarkierung. Generische Einleitungen, Frage-Wiederholungen und austauschbare Ratschläge sind explizit ausgeschlossen.

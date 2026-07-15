@@ -448,7 +448,7 @@ async function loadAdmin() {
   setAdminTab(!is_admin && ADMIN_ONLY_TABS.has(initial) ? 'usage' : initial, false)
   await Promise.all([
     refreshCosts(), loadMembers(), loadKnowledgeUpdates(), loadLearnings(), loadSkillProposals(), loadToolProposals(),
-    loadToolResearchProposals(), loadRoutineProposals(), loadWikiPageProposals(), loadKnowledgeSources(),
+    loadToolResearchProposals(), loadUiChangeRequests(), loadRoutineProposals(), loadWikiPageProposals(), loadKnowledgeSources(),
   ])
 }
 
@@ -1307,6 +1307,96 @@ async function loadToolResearchProposals() {
     const [view, approve] = row.querySelectorAll('button')
     view.addEventListener('click', () => openToolResearchDetail(item, true))
     approve.addEventListener('click', () => decideToolResearch(item.id, 'approve'))
+    list.appendChild(row)
+  }
+}
+
+const UI_REQUEST_LABELS = {
+  requested: 'Offen', approved: 'Freigegeben', implementing: 'In Umsetzung',
+  changes_requested: 'Rückfrage', completed: 'Abgeschlossen', rejected: 'Abgelehnt',
+}
+
+async function loadUiChangeRequests() {
+  const { is_admin } = await ownProfile()
+  const panel = $('panel-ui-requests')
+  panel.hidden = !is_admin
+  if (!is_admin) return
+  const [response, profs] = await Promise.all([
+    fetch(`${BACKEND_URL}/api/ui-change-requests`, { headers: { Authorization: `Bearer ${await token()}` } }),
+    allProfiles(),
+  ])
+  const payload = await response.json().catch(() => ({}))
+  const list = $('ui-request-list')
+  if (!response.ok) {
+    $('ui-request-count').textContent = 'Fehler'
+    list.innerHTML = `<div class="empty-plain">${esc(payload.error || 'Anfragen konnten nicht geladen werden.')}</div>`
+    return
+  }
+  const active = (payload.requests || []).filter((request) => !['completed', 'rejected'].includes(request.status))
+  $('ui-request-count').textContent = active.length ? `${active.length} offen` : 'nichts offen'
+  list.innerHTML = active.length ? '' : '<div class="empty-plain">Keine offenen UX/UI-Änderungsanfragen.</div>'
+
+  const update = async (request, status, notes, verification = '') => {
+    const res = await fetch(`${BACKEND_URL}/api/admin/ui-change-requests/${request.id}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${await token()}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, admin_notes: notes, verification }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) { window.alert(data.error || 'Status konnte nicht aktualisiert werden.'); return false }
+    await loadUiChangeRequests()
+    return true
+  }
+
+  for (const request of active) {
+    const row = document.createElement('article')
+    row.className = 'ui-request'
+    const criteria = (request.acceptance_criteria || []).map((item) => `<li>${esc(item)}</li>`).join('')
+    const mr = request.result?.merge_request_url
+      ? `<p><strong>Merge Request:</strong> <a href="${esc(request.result.merge_request_url)}" target="_blank" rel="noopener">${esc(request.result.merge_request_url)}</a></p>`
+      : ''
+    row.innerHTML = `<div class="ui-request-head"><div><div class="ui-request-title">${esc(request.title)}</div>
+      <div class="ui-request-meta">${esc(profName(profs, request.requested_by))}${request.target_project ? ` · ${esc(request.target_project)}` : ''}${request.target_route ? ` · ${esc(request.target_route)}` : ''} · ${new Date(request.created_at).toLocaleDateString('de-DE')}</div></div>
+      <span class="ui-request-status ${esc(request.status)}">${esc(UI_REQUEST_LABELS[request.status] || request.status)}</span>
+      <button class="btn quiet ui-request-toggle" style="padding:5px 12px;font-size:11.5px">Prüfen</button></div>
+      <div class="ui-request-detail" hidden><p>${esc(request.request_text || '')}</p>${criteria ? `<ul>${criteria}</ul>` : ''}${mr}
+      <label>Admin-Notiz</label><textarea placeholder="Entscheidung, Rückfrage oder Umsetzungshinweis …">${esc(request.admin_notes || '')}</textarea>
+      <div class="ui-request-actions"></div></div>`
+    const detail = row.querySelector('.ui-request-detail')
+    row.querySelector('.ui-request-toggle').addEventListener('click', (event) => {
+      detail.hidden = !detail.hidden
+      event.currentTarget.textContent = detail.hidden ? 'Prüfen' : 'Schließen'
+    })
+    const notes = row.querySelector('textarea')
+    const actions = row.querySelector('.ui-request-actions')
+    const addAction = (label, status, primary = false) => {
+      const button = document.createElement('button')
+      button.className = `btn ${primary ? 'dark' : 'quiet'}`
+      button.textContent = label
+      button.addEventListener('click', async () => {
+        let verification = ''
+        if (status === 'completed') {
+          verification = window.prompt('Welche Build-, CI- oder visuelle Prüfung wurde bestanden?')?.trim() || ''
+          if (!verification) return
+        }
+        actions.querySelectorAll('button').forEach((item) => (item.disabled = true))
+        if (!(await update(request, status, notes.value.trim(), verification))) {
+          actions.querySelectorAll('button').forEach((item) => (item.disabled = false))
+        }
+      })
+      actions.appendChild(button)
+    }
+    if (request.status === 'requested' || request.status === 'changes_requested') {
+      addAction('Ablehnen', 'rejected')
+      addAction('Rückfrage', 'changes_requested')
+      addAction('Freigeben', 'approved', true)
+    } else if (request.status === 'approved') {
+      addAction('Rückfrage', 'changes_requested')
+      addAction('Umsetzung starten', 'implementing', true)
+    } else if (request.status === 'implementing') {
+      addAction('Rückfrage', 'changes_requested')
+      if (request.result?.merge_request_url) addAction('Abschließen', 'completed', true)
+    }
     list.appendChild(row)
   }
 }

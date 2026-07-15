@@ -15,6 +15,8 @@ export function capabilityPromptBlock(definitions) {
     ['Google Drive', has('google_drive_'), count('google_drive_')],
     ['Notion', has('notion_'), count('notion_')],
     ['Skills', has('skill_'), count('skill_')],
+    ['UX/UI-Aenderungsanfragen', has('ux_ui_'), count('ux_ui_')],
+    ['UX/UI-Code-Umsetzung (Admin)', names.includes('gitlab_ui_create_branch'), count('gitlab_ui_')],
     ['enneo-Brand-Dateien', names.includes('create_file'), names.includes('create_file') ? 1 : 0],
     ['Pod-Kontext', has('pod_'), count('pod_')],
   ]

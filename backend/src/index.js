@@ -861,6 +861,54 @@ app.post('/api/tool-requests/:id/:action(approve|reject)', async (req, res) => {
   res.json({ request: data })
 })
 
+// UX/UI-Engineering: Members sehen/erstellen nur eigene Requests; Admins sehen
+// die gesamte Queue und verwalten sie. Die eigentliche Code-Umsetzung bleibt in
+// Ennis admin-only Tool-Katalog und ist an approved Requests gebunden.
+app.get('/api/ui-change-requests', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const { data: profile } = await db.from('profiles').select('is_admin').eq('id', user.id).maybeSingle()
+  try {
+    const { runUxUiTool } = await import('./tools/ux-ui.js')
+    const raw = await runUxUiTool(profile?.is_admin ? 'ux_ui_list_requests' : 'ux_ui_list_my_requests', {
+      limit: Math.min(Number(req.query.limit) || 100, 100),
+      ...(req.query.status ? { status: String(req.query.status) } : {}),
+    }, { userId: user.id })
+    res.json({ requests: JSON.parse(raw), is_admin: !!profile?.is_admin })
+  } catch (error) {
+    res.status(400).json({ error: error.message })
+  }
+})
+
+app.post('/api/ui-change-requests', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  try {
+    const { runUxUiTool } = await import('./tools/ux-ui.js')
+    const raw = await runUxUiTool('ux_ui_request_change', req.body || {}, { userId: user.id })
+    res.status(201).json(JSON.parse(raw))
+  } catch (error) {
+    res.status(400).json({ error: error.message })
+  }
+})
+
+app.patch('/api/admin/ui-change-requests/:id', async (req, res) => {
+  const user = await requireAdmin(req, res)
+  if (!user) return
+  try {
+    const { runUxUiTool } = await import('./tools/ux-ui.js')
+    const raw = await runUxUiTool('ux_ui_manage_request', {
+      request_id: req.params.id,
+      status: req.body?.status,
+      admin_notes: req.body?.admin_notes,
+      verification: req.body?.verification,
+    }, { userId: user.id })
+    res.json({ request: JSON.parse(raw) })
+  } catch (error) {
+    res.status(400).json({ error: error.message })
+  }
+})
+
 // Einheitliche OAuth-Plattform: Provider-Credentials werden einmalig durch einen
 // Admin in enneo OS konfiguriert; Accounts verbinden sich danach per Anbieter-Login.
 app.get('/api/oauth/providers', async (req, res) => {

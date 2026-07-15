@@ -17,6 +17,7 @@ import { attioToolDefinitions, runAttioTool } from './tools/attio.js'
 import { slackToolDefinitions, runSlackTool } from './tools/slack.js'
 import { productivityToolDefinitions, runProductivityTool } from './tools/productivity.js'
 import { registrationToolDefinitions, runRegistrationTool } from './tools/registration.js'
+import { uxUiToolDefinitions, runUxUiTool } from './tools/ux-ui.js'
 import { learningsPromptBlock } from './learnings.js'
 import { releaseNotesPromptBlock } from './knowledge-sync.js'
 import { capabilityPromptBlock } from './behavior.js'
@@ -68,6 +69,7 @@ Antworte IMMER in der Sprache der letzten Nachricht des Nutzers. Schreibt er auf
 - Outlook, Google Drive und Notion: Nutze outlook_*, google_drive_* bzw. notion_* sobald die entsprechende Connection verfügbar ist. Diese Tools sind read-only. Suche zuerst, lies Details danach über die zurückgegebene ID. Behaupte nie Zugriff auf nicht freigegebene Notion-Seiten oder Google-Dateien.
 - WISSENS-UPDATE-LOOP: Wenn du in einer Konversation dauerhaft gültiges Firmenwissen lernst — neue Fakten, Korrekturen an Wiki-Inhalten, getroffene Entscheidungen, Prozessänderungen — schlage PROAKTIV ein Wiki-Update vor: erst wiki_read_page auf die Zielseite (falls vorhanden), dann wiki_propose_update mit dem kompletten neuen Inhalt. Die Vorschläge sieht NUR der Admin in einer Review-Liste und prüft sie gesammelt — nicht der Nutzer im Chat. Sag dem Nutzer nur kurz, dass du dir das als Wissens-Vorschlag notiert hast. Kein Vorschlag für Flüchtiges (Termine, Smalltalk, Debug-Zwischenstände). Behaupte nie, das Wiki sei aktualisiert, solange es nur vorgeschlagen ist.
 - DATEIEN & PRÄSENTATIONEN: Bei Dokumenten/PDFs muss /dokument, bei Decks/Slides /praesentation vollständig geladen sein (Auto-Block oder skill_read). Wenn der Inhalt einen weiteren Fach-Skill braucht (z. B. Sales Call, Health-Check, Executive Brief), diesen ZUERST und den Ausgabe-Skill DANACH anwenden. Erstelle erst nach der fachlichen Recherche mit create_file die Datei im enneo-Brand-Design (standardmäßig echtes PDF; format="html" nur auf ausdrücklichen Wunsch). Inhalte: Deutsch, Sie-Form, pragmatisch, kein Hype, keine Emojis. Nach dem Erstellen: Link als Markdown-Link ausgeben.
+- UX/UI-ENGINEERING: Bei Layout-, UX-, UI-, Responsive-, Accessibility- oder Komponenten-Aenderungen gilt /ux-ui-engineering. Die Tool-Verfuegbarkeit ist die harte Rollen-Grenze: Fehlt ux_ui_manage_request, ist der Nutzer Member und du darfst ausschliesslich analysieren, den echten Code read-only pruefen und mit ux_ui_request_change eine Anfrage fuer SEINEN Account einreichen. Niemals so tun, als koenntest du fuer Members Code, Branches, Merge Requests, fremde Accounts oder Team-Ressourcen veraendern. Ist ux_ui_manage_request verfuegbar, ist der Nutzer Admin; auch dann erst Request anlegen/freigeben, nur auf enni/ui-Branch schreiben, nie direkt auf den Default-Branch und nie mergen.
 - Wenn du etwas im Wiki nicht findest, sag das ehrlich. Erfinde keine internen Fakten.
 - Sei direkt und knapp. Keine Floskeln.
 - QUALITÄTSCHECK VOR DEM SENDEN: Ist die konkrete Nutzerfrage wirklich beantwortet? Ist die wichtigste Aussage belegt? Habe ich einen passenden Skill oder eine verfügbare Connection übersehen? Enthält die Antwort eine klare Konsequenz oder Empfehlung statt nur Hintergrund? Streiche generische Einleitungen, Wiederholungen und austauschbare Ratschläge.
@@ -92,7 +94,7 @@ const TOOLS = [
 // eintippen zu müssen. Dynamische Connectoren werden pro Nutzer aufgelöst.
 export async function availableToolDefinitions(userId) {
   let definitions = [...TOOLS, ...podToolDefinitions]
-  for (const loader of [mcpToolDefinitions, attioToolDefinitions, slackToolDefinitions, productivityToolDefinitions]) {
+  for (const loader of [uxUiToolDefinitions, mcpToolDefinitions, attioToolDefinitions, slackToolDefinitions, productivityToolDefinitions]) {
     try {
       definitions = [...definitions, ...(await loader(userId))]
     } catch (err) {
@@ -108,6 +110,7 @@ async function executeTool(name, input, ctx) {
     if (name.startsWith('mcp__')) return { content: await runMcpTool(name, input, ctx), isError: false }
     if (name.startsWith('pod_')) return { content: await runPodTool(name, input, ctx), isError: false }
     if (name.startsWith('wiki_')) return { content: await runWikiTool(name, input, ctx), isError: false }
+    if (name.startsWith('ux_ui_') || name.startsWith('gitlab_ui_')) return { content: await runUxUiTool(name, input, ctx), isError: false }
     if (name.startsWith('gitlab_')) return { content: await runGitlabTool(name, input), isError: false }
     if (name.startsWith('enneo_')) return { content: await runEnneoTool(name, input, ctx), isError: false }
     if (name.startsWith('skill_')) return { content: await runSkillTool(name, input, ctx), isError: false }
@@ -206,6 +209,12 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
   // Statische Tools + Pod-Kontext-Tools (nur in Pod-Konversationen)
   // + live geladene Tools der verknüpften MCP-Server (gecacht, nicht-fatal)
   let turnTools = ctx.podId ? [...TOOLS, ...podToolDefinitions] : TOOLS
+  try {
+    const uxUiDefs = await uxUiToolDefinitions(ctx.userId)
+    if (uxUiDefs.length) turnTools = [...turnTools, ...uxUiDefs]
+  } catch (err) {
+    console.error('UX/UI-Tool-Discovery fehlgeschlagen:', err.message)
+  }
   try {
     const mcpDefs = await mcpToolDefinitions(ctx.userId)
     if (mcpDefs.length) turnTools = [...turnTools, ...mcpDefs]

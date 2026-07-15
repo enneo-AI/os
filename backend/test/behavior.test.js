@@ -14,6 +14,8 @@ test('capability block reflects the actual per-turn tool catalog', () => {
     { name: 'attio_query_records' },
     { name: 'skill_read' },
     { name: 'create_file' },
+    { name: 'ux_ui_request_change' },
+    { name: 'gitlab_ui_create_branch' },
     { name: 'mcp__deepwiki__read_wiki_structure' },
   ])
 
@@ -22,6 +24,8 @@ test('capability block reflects the actual per-turn tool catalog', () => {
   assert.match(block, /Attio CRM & Meetings: VERFÜGBAR/)
   assert.match(block, /Slack: nicht verbunden/)
   assert.match(block, /enneo-Brand-Dateien: VERFÜGBAR/)
+  assert.match(block, /UX\/UI-Aenderungsanfragen: VERFÜGBAR/)
+  assert.match(block, /UX\/UI-Code-Umsetzung \(Admin\): VERFÜGBAR/)
   assert.match(block, /Weitere MCP-Server: deepwiki/)
 })
 
@@ -50,4 +54,17 @@ test('skill router preserves specialization and composition rules', () => {
   assert.match(source, /sales-call-prep, danach \/praesentation/)
   assert.match(source, /selectSkillsForPrompt/)
   assert.match(source, /Explizite Nutzerwünsche zu Länge, Format und Fokus haben Vorrang/)
+  assert.match(source, /ux-ui-engineering/)
+})
+
+test('UX/UI engineering keeps member and admin capabilities technically separated', () => {
+  const source = readFileSync(join(here, '../src/tools/ux-ui.js'), 'utf8')
+
+  assert.match(source, /commonDefinitions/)
+  assert.match(source, /adminDefinitions/)
+  assert.match(source, /profile\?\.is_admin && profile\.account_status === 'active'/)
+  assert.match(source, /Nur Admins duerfen UX\/UI-Anfragen verwalten oder umsetzen/)
+  assert.match(source, /\^enni\\\/ui-/)
+  assert.match(source, /Default-Branch darf nicht beschrieben werden/)
+  assert.match(source, /completed erfordert Merge-Request-Link und dokumentierte Verifikation/)
 })
