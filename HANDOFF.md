@@ -1,6 +1,15 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-15 (Pods sind mit Attio-Kunden verknüpfbar; Enni nutzt die Kundenidentität kontextuell)
+**Zuletzt aktualisiert:** 2026-07-15 (Invite-Onboarding, Team-Profile und Pod-Mitgliederverwaltung)
+
+### Session 2026-07-15 — People, Onboarding & verständliche Zugriffe
+
+- **Verbindliches Invite-Onboarding:** Neue Profile durchlaufen serverseitig gespeichert drei Schritte für Name/Profilfoto, Abteilung und Passwort. Feste Abteilungen erhalten konsistente Farben; „Custom Tag“ erlaubt eigene Position und Farbe. Bestehende Accounts wurden bewusst als abgeschlossen migriert, damit nur neue Einladungen den Pflichtfluss sehen.
+- **Kurze Produkttour:** Nach dem Onboarding erklärt eine 5-Schritt-Tour Chat, Pods, Tools/Spaces, Team-Verzeichnis und Benachrichtigungen. Abschluss bzw. Überspringen wird geräteübergreifend in `profiles.tour_completed_at` gespeichert.
+- **Menschen überall sichtbar:** Neue Rail-Navigation „Team“ gruppiert aktive Accounts nach Abteilung und zeigt Foto, Name, Rolle und Label. Klickbare Profilansichten stehen dort, in Pod-Mitgliederlisten und an Team-Nachrichten zur Verfügung; eigene Chat-Nachrichten zeigen ebenfalls den Avatar.
+- **Restricted Pods wirklich verwaltbar:** Pod-Besitzer und Admins können in den Einstellungen Mitglieder hinzufügen oder entfernen. Open Pods erklären den automatischen Teamzugriff; Members sehen die Liste und Profile read-only. Die bestehende Owner/Admin-RLS bleibt die einzige Berechtigungsquelle.
+- **Marketplace entwirrt:** Tools, Skills und Routinen erklären jetzt einheitlich „Persönlich / Ausgewählt / Teamweit“ und tragen sichtbare Scope-Labels. Nicht konfigurierte OAuth-Tools zeigen Members „Admin erforderlich“ statt eines scheinbar funktionslosen „Einrichten“-Buttons; Klick erklärt den nächsten Schritt. Die Spaces-Sidebar trennt „Enni konfigurieren“ von „Wissen & Spaces“.
+- **Datenmodell & Verifikation:** Migration `20260715175415_people_onboarding_and_departments.sql` ergänzt Abteilung, Custom-Label/-Farbe sowie Onboarding-/Tour-Zeitstempel mit expliziten Spalten-Grants; sie ist live und in der Remote-History synchron. Frischer temporärer Member wurde im Browser vollständig durch Onboarding, Tour, Team-Profil, Member-Marketplace und Restricted-Pod-Erstellung samt Hinzufügen eines Mitglieds geführt; Test-Pod und Testaccount danach gelöscht. Backend-Tests 6/6, JS-Syntax und Diff-Check grün.
 
 ### Session 2026-07-15 — Attio-Kundenidentität pro Pod
 

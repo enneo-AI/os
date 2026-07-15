@@ -109,13 +109,13 @@ async function token() {
 async function showApp() {
   $('login-view').hidden = true
   $('app-view').hidden = false
-  renderFooterProfile()
+  await renderFooterProfile()
   subscribeRealtime()
   await Promise.all([loadConversations(), loadPods(), refreshCosts(), loadConnectorRows(), loadNotifications()])
   await route()
   registerServiceWorker()
   handleOAuthReturn()
-  onboardingNudge()
+  await onboardingNudge()
 }
 
 // ============================================================ Notifications
@@ -349,19 +349,145 @@ $('quiet-toggle').addEventListener('click', async () => {
 })
 for (const id of ['quiet-start', 'quiet-end']) $(id).addEventListener('change', saveNotificationPreferences)
 
-// Onboarding: beim ersten Login (Rolle + Über-mich noch leer) einmalig das Profil öffnen,
-// damit Enni von Anfang an personalisiert. Einmal pro Account, danach nie wieder.
-async function onboardingNudge() {
-  const key = 'onboarded-' + session.user.id
-  if (localStorage.getItem(key)) return
-  const { data: p } = await sb
-    .from('profiles').select('role_title, about').eq('id', session.user.id).maybeSingle()
-  if (p && !p.role_title && !p.about) {
-    await openProfile()
-    $('pf-welcome').hidden = false
-  }
-  localStorage.setItem(key, '1')
+const DEPARTMENTS = {
+  partnerships: { label: 'Partnerships', color: '#B77428' },
+  it_development: { label: 'IT & Development', color: '#6757C7' },
+  sales: { label: 'Sales', color: '#278760' },
+  operations: { label: 'Operation', color: '#347AA5' },
+  custom: { label: 'Custom Tag', color: '#7B5AE2' },
 }
+const departmentInfo = (profile = {}) => {
+  const base = DEPARTMENTS[profile.department] || { label: 'Ohne Abteilung', color: '#77788A' }
+  return profile.department === 'custom'
+    ? { label: profile.department_label || base.label, color: profile.department_color || base.color }
+    : base
+}
+const profileInitials = (profile = {}) => ((profile.display_name || profile.email || '?').trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase())
+let onboardingStep = 1
+let onboardingDepartment = ''
+let onboardingAvatarFile = null
+
+async function uploadAvatar(file) {
+  const { data: old } = await sb.storage.from('avatars').list('', { search: session.user.id })
+  if (old?.length) await sb.storage.from('avatars').remove(old.map((item) => item.name))
+  const ext = file.type.split('/')[1].replace('jpeg', 'jpg')
+  const path = `${session.user.id}-${Date.now()}.${ext}`
+  const { error } = await sb.storage.from('avatars').upload(path, file)
+  if (error) throw error
+  return sb.storage.from('avatars').getPublicUrl(path).data.publicUrl
+}
+
+function showOnboardingStep(step) {
+  onboardingStep = step
+  document.querySelectorAll('[data-onboarding-step]').forEach((el) => { el.hidden = Number(el.dataset.onboardingStep) !== step })
+  $('onboarding-back').hidden = step === 1
+  $('onboarding-next').textContent = step === 3 ? 'Account einrichten' : 'Weiter'
+  $('onboarding-progress-bar').style.width = `${step / 3 * 100}%`
+  $('onboarding-error').textContent = ''
+}
+
+async function onboardingNudge() {
+  const profile = await ownProfile()
+  if (profile.onboarding_completed_at) {
+    if (!profile.tour_completed_at) startProductTour()
+    return
+  }
+  onboardingDepartment = profile.department || ''
+  onboardingAvatarFile = null
+  $('onboarding-name').value = profile.display_name || ''
+  $('onboarding-role').value = profile.role_title || ''
+  $('onboarding-custom-label').value = profile.department_label || ''
+  $('onboarding-custom-color').value = profile.department_color || '#7B5AE2'
+  $('onboarding-avatar').innerHTML = profile.avatar_url ? `<img src="${esc(profile.avatar_url)}" alt="">` : profileInitials(profile)
+  document.querySelectorAll('#onboarding-departments button').forEach((button) => button.classList.toggle('on', button.dataset.department === onboardingDepartment))
+  $('onboarding-custom').hidden = onboardingDepartment !== 'custom'
+  showOnboardingStep(1)
+  $('app-view').inert = true
+  $('onboarding-overlay').classList.add('open')
+  setTimeout(() => $('onboarding-name').focus(), 50)
+}
+
+$('onboarding-avatar-btn').addEventListener('click', () => $('onboarding-avatar-file').click())
+$('onboarding-avatar').addEventListener('click', () => $('onboarding-avatar-file').click())
+$('onboarding-avatar-file').addEventListener('change', () => {
+  const file = $('onboarding-avatar-file').files[0]
+  if (!file) return
+  if (!/^image\/(png|jpeg|webp)$/.test(file.type) || file.size > 3 * 1024 * 1024) { $('onboarding-error').textContent = 'Bitte PNG, JPEG oder WebP bis maximal 3 MB wählen.'; return }
+  onboardingAvatarFile = file
+  $('onboarding-avatar').innerHTML = `<img src="${URL.createObjectURL(file)}" alt="Vorschau">`
+})
+document.querySelectorAll('#onboarding-departments button').forEach((button) => button.addEventListener('click', () => {
+  onboardingDepartment = button.dataset.department
+  document.querySelectorAll('#onboarding-departments button').forEach((item) => item.classList.toggle('on', item === button))
+  $('onboarding-custom').hidden = onboardingDepartment !== 'custom'
+}))
+$('onboarding-back').addEventListener('click', () => showOnboardingStep(Math.max(1, onboardingStep - 1)))
+$('onboarding-next').addEventListener('click', async () => {
+  const error = $('onboarding-error')
+  error.textContent = ''
+  if (onboardingStep === 1 && !$('onboarding-name').value.trim()) { error.textContent = 'Bitte gib deinen Namen ein.'; $('onboarding-name').focus(); return }
+  if (onboardingStep === 2 && !onboardingDepartment) { error.textContent = 'Bitte wähle deine Abteilung.'; document.querySelector('#onboarding-departments button').focus(); return }
+  if (onboardingStep === 2 && onboardingDepartment === 'custom' && !$('onboarding-custom-label').value.trim()) { error.textContent = 'Bitte beschreibe deine Position.'; $('onboarding-custom-label').focus(); return }
+  if (onboardingStep < 3) { showOnboardingStep(onboardingStep + 1); return }
+  const password = $('onboarding-password').value
+  if (password.length < 8) { error.textContent = 'Das Passwort muss mindestens 8 Zeichen haben.'; $('onboarding-password').focus(); return }
+  if (password !== $('onboarding-password-confirm').value) { error.textContent = 'Die Passwörter stimmen nicht überein.'; $('onboarding-password-confirm').focus(); return }
+  $('onboarding-next').disabled = true
+  try {
+    const patch = {
+      display_name: $('onboarding-name').value.trim(),
+      role_title: $('onboarding-role').value.trim() || null,
+      department: onboardingDepartment,
+      department_label: onboardingDepartment === 'custom' ? $('onboarding-custom-label').value.trim() : null,
+      department_color: onboardingDepartment === 'custom' ? $('onboarding-custom-color').value.toUpperCase() : null,
+      onboarding_completed_at: new Date().toISOString(),
+    }
+    if (onboardingAvatarFile) patch.avatar_url = await uploadAvatar(onboardingAvatarFile)
+    const { error: passwordError } = await sb.auth.updateUser({ password })
+    if (passwordError) throw passwordError
+    const { error: profileError } = await sb.from('profiles').update(patch).eq('id', session.user.id)
+    if (profileError) throw profileError
+    myProfile = { ...(myProfile || {}), ...patch }
+    profilesCache = null
+    $('onboarding-overlay').classList.remove('open')
+    $('app-view').inert = false
+    await renderFooterProfile()
+    startProductTour()
+  } catch (err) { error.textContent = `Einrichtung fehlgeschlagen: ${err.message}` }
+  $('onboarding-next').disabled = false
+})
+
+const TOUR_STEPS = [
+  { title: 'Chatte mit Enni', copy: 'Hier startest du neue Chats. Enni nutzt deine verbundenen Quellen und das Wissen aus euren Spaces.', area: 'chat', target: '[data-v="chat"]' },
+  { title: 'Arbeite in Pods', copy: 'Pods bündeln Team-Chats, Aufgaben, Board und Dateien für ein Projekt oder einen Kunden.', area: 'chat', target: '#pod-list' },
+  { title: 'Verbinde Wissen', copy: 'Unter Spaces steuerst du Tools, Skills, Routinen und gemeinsames Wissen – immer mit sichtbarem Zugriff.', area: 'wiki', view: 'marketplace', target: '[data-v="wiki"]' },
+  { title: 'Finde dein Team', copy: 'Im Team-Verzeichnis findest du alle Kolleg:innen, ihre Abteilungen und Profile.', area: 'team', target: '[data-v="team"]' },
+  { title: 'Bleib auf dem Laufenden', copy: 'Die Glocke sammelt Erwähnungen, Aufgaben und Updates. Browser-Benachrichtigungen aktivierst du dort ebenfalls.', area: 'chat', target: '#notification-trigger' },
+]
+let tourIndex = 0
+function paintTour() {
+  document.querySelectorAll('.tour-highlight').forEach((el) => el.classList.remove('tour-highlight'))
+  const step = TOUR_STEPS[tourIndex]
+  activateArea(step.area, step.view || step.area)
+  if (step.area === 'wiki') { loadConnectorRows(); loadSpacesTree() }
+  if (step.area === 'team') loadTeamDirectory()
+  $('tour-step').textContent = `${tourIndex + 1} / ${TOUR_STEPS.length}`
+  $('tour-title').textContent = step.title
+  $('tour-copy').textContent = step.copy
+  $('tour-next').textContent = tourIndex === TOUR_STEPS.length - 1 ? 'Loslegen' : 'Weiter'
+  setTimeout(() => document.querySelector(step.target)?.classList.add('tour-highlight'), 0)
+}
+function startProductTour() { tourIndex = 0; $('app-view').inert = true; $('tour-layer').hidden = false; paintTour() }
+async function finishProductTour() {
+  document.querySelectorAll('.tour-highlight').forEach((el) => el.classList.remove('tour-highlight'))
+  $('tour-layer').hidden = true
+  $('app-view').inert = false
+  await sb.from('profiles').update({ tour_completed_at: new Date().toISOString() }).eq('id', session.user.id)
+  if (myProfile) myProfile.tour_completed_at = new Date().toISOString()
+  activateArea('chat')
+}
+$('tour-next').addEventListener('click', () => { if (tourIndex < TOUR_STEPS.length - 1) { tourIndex += 1; paintTour() } else finishProductTour() })
+$('tour-skip').addEventListener('click', finishProductTour)
 
 let currentFirstName = ''
 
@@ -408,11 +534,15 @@ async function openProfile() {
   $('pf-welcome').hidden = true // nur der Onboarding-Nudge blendet den Willkommens-Hinweis ein
   switchProfileTab('profil')
   const { data: p } = await sb
-    .from('profiles').select('display_name, avatar_url, email, role_title, about').eq('id', session.user.id).maybeSingle()
+    .from('profiles').select('display_name, avatar_url, email, role_title, about, department, department_label, department_color').eq('id', session.user.id).maybeSingle()
   pendingAvatar = null
   $('pf-name').value = p?.display_name || ''
   $('pf-email').value = p?.email || session.user.email
   $('pf-role').value = p?.role_title || ''
+  $('pf-department').value = p?.department || ''
+  $('pf-custom-label').value = p?.department_label || ''
+  $('pf-custom-color').value = p?.department_color || '#7B5AE2'
+  $('pf-custom-row').hidden = p?.department !== 'custom'
   $('pf-about').value = p?.about || ''
   $('pf-pw').value = ''
   $('pf-pw2').value = ''
@@ -465,6 +595,7 @@ $('pf-file').addEventListener('change', () => {
   $('pf-avatar').innerHTML = `<img src="${URL.createObjectURL(f)}" alt="">`
 })
 $('pf-avatar-btn').addEventListener('click', () => $('pf-file').click())
+$('pf-department').addEventListener('change', () => { $('pf-custom-row').hidden = $('pf-department').value !== 'custom' })
 $('pf-save').addEventListener('click', async () => {
   const err = $('pf-err')
   err.textContent = ''
@@ -477,16 +608,12 @@ $('pf-save').addEventListener('click', async () => {
       display_name: $('pf-name').value.trim() || null,
       role_title: $('pf-role').value.trim(),
       about: $('pf-about').value.trim(),
+      department: $('pf-department').value || null,
+      department_label: $('pf-department').value === 'custom' ? $('pf-custom-label').value.trim() || null : null,
+      department_color: $('pf-department').value === 'custom' ? $('pf-custom-color').value.toUpperCase() : null,
     }
     if (pendingAvatar) {
-      // Alte eigenen Avatare aufräumen, dann neuen hochladen (public URL, Cache-Buster im Namen)
-      const { data: old } = await sb.storage.from('avatars').list('', { search: session.user.id })
-      if (old?.length) await sb.storage.from('avatars').remove(old.map((o) => o.name))
-      const ext = pendingAvatar.type.split('/')[1].replace('jpeg', 'jpg')
-      const path = `${session.user.id}-${Date.now()}.${ext}`
-      const { error: upErr } = await sb.storage.from('avatars').upload(path, pendingAvatar)
-      if (upErr) throw upErr
-      patch.avatar_url = sb.storage.from('avatars').getPublicUrl(path).data.publicUrl
+      patch.avatar_url = await uploadAvatar(pendingAvatar)
     }
     const { error: profErr } = await sb.from('profiles').update(patch).eq('id', session.user.id)
     if (profErr) throw profErr
@@ -495,6 +622,7 @@ $('pf-save').addEventListener('click', async () => {
       if (pwErr) throw pwErr
     }
     profilesCache = null
+    myProfile = null
     $('profile-overlay').classList.remove('open')
     renderFooterProfile()
   } catch (e) {
@@ -505,11 +633,11 @@ $('pf-save').addEventListener('click', async () => {
 
 // Rail-Navigation — Sidebar-Inhalt wechselt mit dem Bereich
 const views = {
-  chat: 'v-chat', wiki: 'v-wiki',  admin: 'v-admin', skills: 'v-skills', routines: 'v-routines',
+  chat: 'v-chat', wiki: 'v-wiki', team: 'v-team', admin: 'v-admin', skills: 'v-skills', routines: 'v-routines',
   connected: 'v-connected', pagelist: 'v-pagelist', marketplace: 'v-marketplace', pod: 'v-pod',
   'space-home': 'v-space-home', 'page-edit': 'v-page-edit',
 }
-const sidebars = { chat: 'sb-chat', wiki: 'sb-spaces', admin: 'sb-admin' }
+const sidebars = { chat: 'sb-chat', wiki: 'sb-spaces', team: 'sb-team', admin: 'sb-admin' }
 const SPACE_NAV_VIEWS = new Set(['wiki', 'space-home', 'page-edit', 'connected', 'pagelist'])
 let activeArea = 'chat'
 let activeView = 'chat'
@@ -521,6 +649,7 @@ let mobileNavReturnFocus = null
 function mobileViewTitle(area, view) {
   if (view === 'pod') return activePod?.name || 'Pod'
   if (area === 'admin') return 'Administration'
+  if (area === 'team') return 'Team'
   if (view === 'skills') return 'Skills'
   if (view === 'routines') return 'Routinen'
   if (view === 'marketplace') return 'Marketplace'
@@ -595,6 +724,7 @@ function syncUrl(area, view) {
   if (view === 'pod' && activePod) path = `/pod/${activePod.id}`
   else if (area === 'chat') path = currentConv?.id ? `/chat/${currentConv.id}` : '/chat'
   else if (area === 'wiki') path = view === 'marketplace' ? '/spaces/marketplace' : view === 'skills' ? '/spaces/skills' : view === 'routines' ? '/spaces/routinen' : '/spaces'
+  else if (area === 'team') path = '/team'
   else if (area === 'admin') path = '/admin'
   if (location.pathname !== path) history.pushState({}, '', path)
 }
@@ -639,6 +769,10 @@ async function route() {
     activateArea('admin')
     return loadAdmin()
   }
+  if (p.startsWith('/team')) {
+    activateArea('team')
+    return loadTeamDirectory()
+  }
   newConversation()
 }
 window.addEventListener('popstate', () => route())
@@ -652,6 +786,7 @@ document.querySelectorAll('.rail-btn').forEach((b) =>
       loadSpacesTree()
     }
     if (b.dataset.v === 'admin') loadAdmin()
+    if (b.dataset.v === 'team') loadTeamDirectory()
   })
 )
 
@@ -894,8 +1029,8 @@ async function openConversation(c) {
   for (const m of msgs || []) {
     if (m.role === 'user') {
       if (convPod && m.author_id && m.author_id !== session.user.id)
-        box.appendChild(renderPeer(profName(profs, m.author_id), m.content, m.attachments))
-      else box.appendChild(renderUser(m.content, m.attachments))
+        box.appendChild(renderPeer(profs.find((profile) => profile.id === m.author_id), m.content, m.attachments))
+      else box.appendChild(renderUser(m.content, m.attachments, profs.find((profile) => profile.id === session.user.id)))
     } else if (m.role === 'assistant')
       box.appendChild(renderAgent(m.content, m.thinking, m.tool_calls || [], costByMessage[m.id], m.duration_ms))
     else if (m.role === 'compaction') box.appendChild(renderCompactionMarker(m.content))
@@ -914,7 +1049,21 @@ async function openConversation(c) {
 // @Erwähnungen (Personen, @enni) hervorheben — Text wird vorher escaped
 const mentionize = (t) => esc(t).replace(/@([A-Za-zÀ-ÿ][\w.\-]*)/g, '<span class="mention">@$1</span>')
 
-function renderUser(text, attachments) {
+function wrapPersonMessage(bubble, profile, mine = false) {
+  if (!profile) return bubble
+  const wrap = document.createElement('div')
+  wrap.className = `message-person${mine ? ' mine' : ''}`
+  const avatar = document.createElement('button')
+  avatar.type = 'button'
+  avatar.className = 'message-avatar'
+  avatar.setAttribute('aria-label', `Profil von ${profile.display_name || profile.email} öffnen`)
+  avatar.innerHTML = profile.avatar_url ? `<img src="${esc(profile.avatar_url)}" alt="" width="28" height="28" loading="lazy">` : esc(profileInitials(profile))
+  avatar.addEventListener('click', () => openMemberProfile(profile))
+  wrap.append(bubble, avatar)
+  return wrap
+}
+
+function renderUser(text, attachments, profile = myProfile) {
   const el = document.createElement('div')
   el.className = 'm-user'
   el.innerHTML = mentionize(text)
@@ -929,15 +1078,15 @@ function renderUser(text, attachments) {
     }
     el.appendChild(row)
   }
-  return el
+  return wrapPersonMessage(el, profile, true)
 }
 
-function renderPeer(name, text, attachments) {
+function renderPeer(profile, text, attachments) {
   const el = document.createElement('div')
   el.className = 'm-peer'
   const nameEl = document.createElement('div')
   nameEl.className = 'u-name'
-  nameEl.textContent = name
+  nameEl.textContent = profile?.display_name || profile?.email || 'Teammitglied'
   el.appendChild(nameEl)
   const textEl = document.createElement('span')
   textEl.innerHTML = mentionize(text)
@@ -953,7 +1102,7 @@ function renderPeer(name, text, attachments) {
     }
     el.appendChild(row)
   }
-  return el
+  return wrapPersonMessage(el, profile)
 }
 
 function toolRow(call, idx) {
@@ -1952,7 +2101,7 @@ let profilesCache = null
 
 async function allProfiles() {
   if (!profilesCache) {
-    const { data } = await sb.from('profiles').select('id, display_name, email, avatar_url, account_status')
+    const { data } = await sb.from('profiles').select('id, display_name, email, avatar_url, account_status, is_admin, role_title, about, department, department_label, department_color')
     profilesCache = (data || []).filter((profile) => profile.account_status !== 'disabled')
   }
   return profilesCache
@@ -1964,6 +2113,60 @@ const profName = (list, id) => {
 const profileAvatarInner = (profile, name) => profile?.avatar_url
   ? `<img src="${esc(profile.avatar_url)}" alt="">`
   : esc(podInitials(name))
+
+function profileAvatar(profile, className = 'team-avatar') {
+  return `<span class="${className}">${profile?.avatar_url ? `<img src="${esc(profile.avatar_url)}" alt="" width="52" height="52" loading="lazy">` : esc(profileInitials(profile))}</span>`
+}
+
+async function openMemberProfile(profileOrId) {
+  const profiles = await allProfiles()
+  const profile = typeof profileOrId === 'string' ? profiles.find((item) => item.id === profileOrId) : profileOrId
+  if (!profile) return
+  const department = departmentInfo(profile)
+  $('member-profile-avatar').innerHTML = profile.avatar_url ? `<img src="${esc(profile.avatar_url)}" alt="" width="92" height="92">` : esc(profileInitials(profile))
+  $('member-profile-name').textContent = profile.display_name || profile.email
+  $('member-profile-department').textContent = department.label
+  $('member-profile-department').style.setProperty('--dept-color', department.color)
+  $('member-profile-role').textContent = profile.role_title || ''
+  $('member-profile-role').hidden = !profile.role_title
+  $('member-profile-about').textContent = profile.about || 'Noch keine Beschreibung hinterlegt.'
+  $('member-profile-email').textContent = profile.email || ''
+  $('member-profile-email').href = profile.email ? `mailto:${profile.email}` : ''
+  $('member-profile-overlay').classList.add('open')
+}
+$('member-profile-close').addEventListener('click', () => $('member-profile-overlay').classList.remove('open'))
+$('member-profile-overlay').addEventListener('click', (event) => { if (event.target === $('member-profile-overlay')) $('member-profile-overlay').classList.remove('open') })
+
+async function loadTeamDirectory() {
+  const profiles = await allProfiles()
+  $('team-count').textContent = `${profiles.length} ${profiles.length === 1 ? 'Mitglied' : 'Mitglieder'}`
+  const groups = new Map()
+  for (const profile of profiles) {
+    const department = departmentInfo(profile)
+    const key = `${department.label}|${department.color}`
+    if (!groups.has(key)) groups.set(key, { ...department, profiles: [] })
+    groups.get(key).profiles.push(profile)
+  }
+  const host = $('team-directory')
+  host.innerHTML = ''
+  for (const group of groups.values()) {
+    const section = document.createElement('section')
+    section.className = 'team-group'
+    section.style.setProperty('--dept-color', group.color)
+    section.innerHTML = `<div class="team-group-head"><i></i>${esc(group.label)} · ${group.profiles.length}</div><div class="team-grid"></div>`
+    for (const profile of group.profiles.sort((a, b) => (a.display_name || a.email).localeCompare(b.display_name || b.email))) {
+      const department = departmentInfo(profile)
+      const card = document.createElement('button')
+      card.className = 'team-card'
+      card.type = 'button'
+      card.innerHTML = `${profileAvatar(profile)}<span class="team-card-copy"><span class="team-card-name">${esc(profile.display_name || profile.email)}</span><span class="team-card-role">${esc(profile.role_title || profile.email || '')}</span></span><span class="department-badge" style="--dept-color:${esc(department.color)}">${esc(department.label)}</span>`
+      card.addEventListener('click', () => openMemberProfile(profile))
+      section.querySelector('.team-grid').appendChild(card)
+    }
+    host.appendChild(section)
+  }
+  if (!profiles.length) host.innerHTML = '<div class="empty-plain">Noch keine Mitglieder vorhanden.</div>'
+}
 
 // Welcher Pod ist in der Sidebar markiert? Folgt der offenen Ansicht (Pod-Seite ODER
 // Pod-Konversation) — nicht activePod, das als Seiten-Zustand auch in 1:1-Chats überlebt.
@@ -2900,7 +3103,7 @@ $('pod-file-input').addEventListener('change', async () => {
 let myProfile = null
 async function ownProfile() {
   if (!myProfile) {
-    const { data } = await sb.from('profiles').select('is_admin').eq('id', session.user.id).maybeSingle()
+    const { data } = await sb.from('profiles').select('id, email, display_name, avatar_url, role_title, about, is_admin, department, department_label, department_color, onboarding_completed_at, tour_completed_at').eq('id', session.user.id).maybeSingle()
     myProfile = data || { is_admin: false }
   }
   return myProfile
@@ -2936,7 +3139,51 @@ async function fillPodSettings() {
   const { is_admin } = await ownProfile()
   $('pod-delete').hidden = !(isCreator || is_admin)
   $('pod-leave').hidden = isCreator || !activePod.members.includes(session.user.id)
-  await loadPodAttioSettings()
+  await Promise.all([loadPodAttioSettings(), renderPodTeam()])
+}
+
+async function renderPodTeam() {
+  const profiles = await allProfiles()
+  const { is_admin: isAdmin } = await ownProfile()
+  const canManage = isAdmin || activePod.created_by === session.user.id
+  const memberIds = activePod.open
+    ? profiles.map((profile) => profile.id)
+    : [...new Set([activePod.created_by, ...(activePod.members || [])])]
+  const members = memberIds.map((id) => profiles.find((profile) => profile.id === id)).filter(Boolean)
+  $('pset-team-state').textContent = activePod.open ? 'Teamweit' : `${members.length} ${members.length === 1 ? 'Mitglied' : 'Mitglieder'}`
+  $('pset-team-state').className = `pod-customer-state${activePod.open ? ' on' : ''}`
+  $('pset-team-copy').textContent = activePod.open
+    ? 'Offener Pod: Alle aktiven Mitglieder haben automatisch Zugriff.'
+    : canManage ? 'Nur ausgewählte Mitglieder haben Zugriff. Du kannst sie hier verwalten.' : 'Nur Pod-Besitzer und Admins können Mitglieder verwalten.'
+  const host = $('pset-team-content')
+  host.innerHTML = `<div class="pod-member-list">${members.map((profile) => {
+    const department = departmentInfo(profile)
+    const owner = profile.id === activePod.created_by
+    return `<div class="pod-member"><button class="pod-member-avatar" type="button" data-profile="${esc(profile.id)}" aria-label="Profil von ${esc(profile.display_name || profile.email)} öffnen">${profile.avatar_url ? `<img src="${esc(profile.avatar_url)}" alt="" width="36" height="36" loading="lazy">` : esc(profileInitials(profile))}</button><button class="pod-member-profile" type="button" data-profile="${esc(profile.id)}"><span><span class="pod-member-name">${esc(profile.display_name || profile.email)}${owner ? ' · Besitzer:in' : ''}</span><span class="pod-member-label">${esc(profile.role_title || department.label)}</span></span></button>${canManage && !activePod.open && !owner ? `<button class="pod-member-remove" type="button" data-remove-member="${esc(profile.id)}">Entfernen</button>` : ''}</div>`
+  }).join('')}</div>`
+  if (canManage && !activePod.open) {
+    const eligible = profiles.filter((profile) => !memberIds.includes(profile.id))
+    host.insertAdjacentHTML('beforeend', eligible.length
+      ? `<div class="pod-member-add"><select id="pod-member-select" aria-label="Mitglied auswählen"><option value="">Mitglied auswählen …</option>${eligible.map((profile) => `<option value="${esc(profile.id)}">${esc(profile.display_name || profile.email)}</option>`).join('')}</select><button class="btn quiet" id="pod-member-add" type="button">Hinzufügen</button></div>`
+      : '<div class="pod-team-note">Alle verfügbaren Mitglieder sind bereits im Pod.</div>')
+  }
+  host.querySelectorAll('[data-profile]').forEach((button) => button.addEventListener('click', () => openMemberProfile(button.dataset.profile)))
+  host.querySelectorAll('[data-remove-member]').forEach((button) => button.addEventListener('click', async () => {
+    const profile = profiles.find((item) => item.id === button.dataset.removeMember)
+    if (!window.confirm(`${profile?.display_name || profile?.email || 'Mitglied'} aus diesem Pod entfernen?`)) return
+    const { error } = await sb.from('pod_members').delete().eq('pod_id', activePod.id).eq('user_id', button.dataset.removeMember)
+    if (error) return alert(`Mitglied konnte nicht entfernt werden: ${error.message}`)
+    activePod.members = activePod.members.filter((id) => id !== button.dataset.removeMember)
+    renderPodTeam()
+  }))
+  $('pod-member-add')?.addEventListener('click', async () => {
+    const userId = $('pod-member-select').value
+    if (!userId) return
+    const { error } = await sb.from('pod_members').insert({ pod_id: activePod.id, user_id: userId })
+    if (error) return alert(`Mitglied konnte nicht hinzugefügt werden: ${error.message}`)
+    activePod.members = [...new Set([...(activePod.members || []), userId])]
+    renderPodTeam()
+  })
 }
 
 async function podAttioApi(path = '', options = {}) {
@@ -3763,7 +4010,7 @@ async function send() {
 
   const box = $('msgs')
   box.querySelector('.empty')?.remove()
-  appendBeforePromptQueue(box, renderUser(text || 'Bitte analysiere die angehängten Dateien.', attachMeta))
+  appendBeforePromptQueue(box, renderUser(text || 'Bitte analysiere die angehängten Dateien.', attachMeta, myProfile))
   if (!currentConv) $('chat-title').textContent = (text || attachMeta[0]?.name || '').slice(0, 80)
 
   // Pod-Konversationen sind Team-Chat: Enni antwortet nur bei @enni-Erwähnung.
@@ -5061,8 +5308,8 @@ async function shareConnector(id) {
 }
 
 const connScopeBadge = (c, me) => {
-  if (c.visibility === 'team') return ''
-  if (c.visibility === 'proposed') return '<span class="sk-badge prop">Team-weit vorgeschlagen</span>'
+  if (c.visibility === 'team') return '<span class="sk-badge team">Teamweit</span>'
+  if (c.visibility === 'proposed') return '<span class="sk-badge prop">Freigabe angefragt</span>'
   return c.owner === me ? '<span class="sk-badge">Persönlich</span>' : ''
 }
 
@@ -5271,9 +5518,11 @@ function renderNativeRow(kind, conn, isAdmin, me) {
     status.className = 'c-right off'
     const configured = oauthProviders.get(kind)?.configured
     status.innerHTML = configured
-      ? '<span class="connector-connect"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Verbinden</span>'
-      : '<span class="connector-setup">Einrichten</span>'
-    sub.textContent = configured ? `${cfg.subDefault} · sicherer Anbieter-Login` : `${cfg.subDefault} · einmalige Admin-Einrichtung`
+      ? '<span class="connector-connect"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Persönlich verbinden</span>'
+      : isAdmin ? '<span class="connector-setup">Admin-Einrichtung</span>' : '<span class="connector-setup">Admin erforderlich</span>'
+    sub.textContent = configured
+      ? `${cfg.subDefault} · nur mit deinem Account verbunden`
+      : isAdmin ? `${cfg.subDefault} · Anbieterzugang einmalig fürs Team einrichten` : `${cfg.subDefault} · noch nicht vom Team-Admin bereitgestellt`
   }
 }
 
@@ -5283,7 +5532,11 @@ for (const [kind, cfg] of Object.entries(NATIVE_CONNECTORS)) {
     const { is_admin } = await ownProfile()
     const configured = oauthProviders.get(kind)?.configured
     if (!configured && is_admin) return openOAuthSetup(kind)
-    if (!configured) return showOAuthResult('error', `${cfg.label} ist noch nicht eingerichtet`, 'Bitte einen Admin um die einmalige Einrichtung.')
+    if (!configured) {
+      showOAuthResult('error', `${cfg.label} ist noch nicht verfügbar`, 'Ein Admin muss den Anbieter zuerst einmalig für das Team einrichten. Dein Account ist nicht defekt.')
+      $('oauth-result').scrollIntoView({ behavior: 'smooth', block: 'center' })
+      return
+    }
     startProviderOAuth(kind)
   })
 }
@@ -5395,8 +5648,8 @@ function renderSkillList(filter = '') {
       const vis = s.visibility === 'personal'
         ? '<span class="sk-badge">Persönlich</span>'
         : s.visibility === 'proposed'
-          ? `<span class="sk-badge prop">Vorgeschlagen${skillListAdmin ? ' von ' + esc(profName(skillListProfs, s.created_by)) : ''}</span>`
-          : ''
+          ? `<span class="sk-badge prop">Freigabe angefragt${skillListAdmin ? ' · ' + esc(profName(skillListProfs, s.created_by)) : ''}</span>`
+          : '<span class="sk-badge team">Teamweit</span>'
       row.innerHTML = `<span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:var(--lila-deep);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
         <div><div class="c-name">${esc(s.name)}</div><div class="c-sub">/${esc(s.slug)}${s.tools?.length ? ` · ${s.tools.length} Tools` : ''} · ${esc((s.context || '').split('\n')[0].slice(0, 80))}</div></div>
         ${vis}<span class="c-right ${s.enabled ? 'ok' : 'off'}"><span class="dot-s"></span>${s.enabled ? 'Aktiv' : 'Aus'}</span>`
@@ -5771,6 +6024,7 @@ async function loadRoutines() {
       : audience === 'restricted'
         ? (is_admin ? `${r.routine_accounts?.length || 0} Accounts` : 'Für dich freigegeben')
         : (pod ? `Pod „${pod.name}“` : mine ? 'Nur ich' : `Nur ${profName(profs, r.created_by)}`)
+    const scopeLabel = audience === 'all' ? 'Teamweit' : audience === 'restricted' || pod ? 'Ausgewählt' : 'Persönlich'
     const last = r.last_run_at
       ? ` · zuletzt ${new Date(r.last_run_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}${r.last_result === 'ok' ? '' : ' ⚠'}`
       : ''
@@ -5779,7 +6033,7 @@ async function loadRoutines() {
     row.style.cursor = 'pointer'
     row.innerHTML = `<span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:var(--lila-deep);fill:none;stroke-width:1.7;stroke-linecap:round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg></span>
       <div><div class="c-name">${esc(r.name)}</div><div class="c-sub">${esc(r.schedule_label || r.cron)} · ${esc(audienceLabel)} · erstellt von ${esc(profName(profs, r.created_by))}${last}</div></div>
-      ${r.visibility === 'proposed' ? '<span class="sk-badge prop">Für alle vorgeschlagen</span>' : `<span class="sk-badge${audience === 'all' ? ' prop' : ''}">${esc(audienceLabel)}</span>`}
+      ${r.visibility === 'proposed' ? '<span class="sk-badge prop">Freigabe angefragt</span>' : `<span class="sk-badge${audience === 'all' ? ' team' : audience === 'restricted' || pod ? ' prop' : ''}">${esc(scopeLabel)}</span>`}
       ${mine && r.visibility === 'personal' ? '<button class="btn quiet rt-share" style="padding:4px 12px;font-size:11.5px">Teilen</button>' : ''}
       <span class="c-right ${r.enabled ? 'ok' : 'off'}"><span class="dot-s"></span>${r.enabled ? 'Aktiv' : 'Aus'}</span>
       ${editable ? '<button class="c-del rt-run" title="Jetzt ausführen" style="display:inline-flex"><svg viewBox="0 0 24 24" style="fill:none"><polygon points="6 4 20 12 6 20 6 4"/></svg></button>' : ''}`
@@ -5954,7 +6208,7 @@ function subscribeConvMessages(convId) {
         const box = $('msgs')
         box.querySelector('.empty')?.remove()
         if (m.role === 'user')
-          box.appendChild(renderPeer(profName(profs, m.author_id), m.content, m.attachments))
+          box.appendChild(renderPeer(profs.find((profile) => profile.id === m.author_id), m.content, m.attachments))
         else if (m.role === 'assistant')
           box.appendChild(renderAgent(m.content, m.thinking, m.tool_calls || [], undefined, m.duration_ms))
         window.scrollTo({ top: document.body.scrollHeight })
