@@ -112,7 +112,8 @@ async function showApp() {
   renderFooterProfile()
   subscribeRealtime()
   await Promise.all([loadConversations(), loadPods(), refreshCosts(), loadConnectorRows()])
-  route()
+  await route()
+  handleOAuthReturn()
   onboardingNudge()
 }
 
@@ -900,8 +901,8 @@ async function renderWriteCards(wrap, toolCalls) {
   }
 }
 
-// Tool-Verbindungs-Karte (request_tool_connection): Credentials-Eingabe direkt im Chat.
-// Der Key geht an POST /api/connectors (write-only gespeichert) — Enni sieht ihn nie.
+// Tool-Verbindungs-Karte (request_tool_connection): OAuth bei Slack, sichere
+// Credentials-Eingabe nur noch für Anbieter, die keinen Login-Flow anbieten.
 function renderConnectCards(wrap, toolCalls) {
   const calls = (toolCalls || []).filter((c) => c.name === 'request_tool_connection' && !c.is_error)
   calls.forEach((call, i) => {
@@ -909,6 +910,7 @@ function renderConnectCards(wrap, toolCalls) {
     const key = ('tc-' + (inp.kind || '') + '-' + (inp.name || '') + '-' + i).replace(/[^a-zA-Z0-9-]/g, '_')
     if (wrap.querySelector(`[data-connect-card="${key}"]`)) return
     const isMcp = inp.kind === 'mcp'
+    const isSlack = inp.kind === 'slack'
     const el = document.createElement('div')
     el.className = 'wp-card'
     el.dataset.connectCard = key
@@ -918,14 +920,34 @@ function renderConnectCards(wrap, toolCalls) {
       <div class="tc-form">
         ${isMcp ? `<input type="text" class="tc-name" placeholder="Name" value="${esc(inp.name || '')}">
         <input type="text" class="tc-url" placeholder="https://… (MCP-Server-URL)" value="${esc(inp.url || '')}">` : ''}
-        <input type="password" class="tc-token" placeholder="${inp.kind === 'slack' ? 'Bot-Token (xoxb-…)' : isMcp ? 'Bearer-Token (optional)' : 'API-Key'}" autocomplete="off">
+        ${isSlack ? '<div class="wp-req">Du wirst zu Slack weitergeleitet und wählst dort deinen Workspace aus.</div>' : `<input type="password" class="tc-token" placeholder="${isMcp ? 'Bearer-Token (optional)' : 'API-Key'}" autocomplete="off">`}
       </div>
-      <div class="wp-req">Wird sicher gespeichert — Enni sieht deine Zugangsdaten nie. Erscheint danach als dein persönliches Tool unter Spaces → Tools.</div>
-      <div class="wp-actions"><button class="btn dark tc-save">Verbinden</button></div>
+      <div class="wp-req">${isSlack ? 'Slack zeigt dir vorab alle angefragten Leserechte.' : 'Wird sicher gespeichert — Enni sieht deine Zugangsdaten nie. Erscheint danach als dein persönliches Tool unter Spaces → Tools.'}</div>
+      <div class="wp-actions"><button class="btn dark tc-save">${isSlack ? 'Mit Slack verbinden' : 'Verbinden'}</button></div>
       <div class="wp-result" hidden></div>`
     const saveBtn = el.querySelector('.tc-save')
     const result = el.querySelector('.wp-result')
     saveBtn.addEventListener('click', async () => {
+      if (isSlack) {
+        saveBtn.disabled = true
+        saveBtn.textContent = 'Öffne Slack …'
+        try {
+          const res = await fetch(`${BACKEND_URL}/api/oauth/slack/start`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+            body: JSON.stringify({ scope: 'personal' }),
+          })
+          const data = await res.json()
+          if (!res.ok || !data.url) throw new Error(data.error || 'OAuth-Start fehlgeschlagen')
+          location.assign(data.url)
+        } catch (err) {
+          result.hidden = false
+          result.textContent = 'Fehler: ' + err.message
+          saveBtn.disabled = false
+          saveBtn.textContent = 'Mit Slack verbinden'
+        }
+        return
+      }
       const tokenVal = el.querySelector('.tc-token').value.trim()
       const nameVal = isMcp ? el.querySelector('.tc-name').value.trim() : inp.name
       const urlVal = isMcp ? el.querySelector('.tc-url').value.trim() : undefined
@@ -3525,7 +3547,7 @@ const connScopeBadge = (c, me) => {
 async function loadConnectorRows() {
   const { data } = await sb
     .from('connectors')
-    .select('id, name, url, category, tool_count, kind, owner, visibility')
+    .select('id, name, url, category, tool_count, kind, owner, visibility, auth_type, external_account_name')
     .order('created_at')
   const { is_admin } = await ownProfile()
   const me = session.user.id
@@ -3580,14 +3602,60 @@ const NATIVE_CONNECTORS = {
   },
   slack: {
     row: 'slack-row', status: 'slack-status', sub: 'slack-sub',
-    overlay: 'slack-overlay', input: 'sl-token', err: 'sl-err', save: 'sl-save', cancel: 'sl-cancel',
+    auth: 'oauth',
     subConnected: 'Channels lesen: öffentlich automatisch, privat nach Bot-Einladung',
-    subDefault: 'Channels · read-only',
+    subDefault: 'Channels und Threads · read-only · sicherer Slack-Login',
     confirmMsg: 'Slack trennen? Enni verliert sofort den Lesezugriff.',
-    missingMsg: 'Bot-Token fehlt.',
   },
 }
 const nativeState = {} // kind -> connector-Row oder null
+
+function showOAuthResult(type, title, detail = '') {
+  const box = $('oauth-result')
+  box.hidden = false
+  box.className = `oauth-result${type === 'error' ? ' error' : ''}`
+  const icon = type === 'error'
+    ? '<svg viewBox="0 0 24 24"><path d="M12 8v5"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>'
+    : '<svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg>'
+  box.innerHTML = `<span class="oauth-result-icon">${icon}</span><span><strong>${esc(title)}</strong>${detail ? ` · ${esc(detail)}` : ''}</span>`
+}
+
+function handleOAuthReturn() {
+  const params = new URLSearchParams(location.search)
+  if (params.get('oauth') !== 'slack') return
+  if (params.get('status') === 'connected') {
+    showOAuthResult('success', 'Slack ist verbunden', params.get('workspace') || 'Enni kann jetzt Channels und Threads lesen.')
+  } else {
+    const detail = params.get('reason') === 'cancelled'
+      ? 'Die Verbindung wurde abgebrochen.'
+      : 'Bitte versuche die Verbindung erneut.'
+    showOAuthResult('error', 'Slack konnte nicht verbunden werden', detail)
+  }
+  const clean = new URL(location.href)
+  for (const key of ['oauth', 'status', 'workspace', 'reason']) clean.searchParams.delete(key)
+  history.replaceState({}, '', clean)
+}
+
+async function startSlackOAuth() {
+  const status = $('slack-status')
+  const previous = status.innerHTML
+  status.className = 'c-right off'
+  status.innerHTML = '<span class="connector-connect">Öffne Slack …</span>'
+  try {
+    const { is_admin } = await ownProfile()
+    const res = await fetch(`${BACKEND_URL}/api/oauth/slack/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ scope: is_admin ? 'team' : 'personal' }),
+    })
+    const data = await res.json()
+    if (!res.ok || !data.url) throw new Error(data.error || 'OAuth-Start fehlgeschlagen')
+    location.assign(data.url)
+  } catch (err) {
+    status.innerHTML = previous
+    showOAuthResult('error', 'Slack ist noch nicht bereit', err.message)
+  }
+}
 
 function renderNativeRow(kind, conn, isAdmin, me) {
   const cfg = NATIVE_CONNECTORS[kind]
@@ -3602,7 +3670,9 @@ function renderNativeRow(kind, conn, isAdmin, me) {
     status.innerHTML = `<span class="dot-s"></span>${scope}` +
       (mine && conn.visibility === 'personal' ? `<button class="btn quiet" data-native-share="${kind}" style="padding:3px 10px;font-size:11px;margin-left:8px" title="Team-weite Nutzung beantragen">Teilen</button>` : '') +
       (isAdmin || mine ? `<button class="c-del" data-native-del="${kind}" title="Trennen" style="display:inline-flex;margin-left:8px"><svg viewBox="0 0 24 24"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg></button>` : '')
-    sub.textContent = cfg.subConnected
+    sub.textContent = kind === 'slack' && conn.external_account_name
+      ? `${conn.external_account_name} · ${cfg.subConnected}`
+      : cfg.subConnected
     status.querySelector('[data-native-share]')?.addEventListener('click', (e) => {
       e.stopPropagation()
       shareConnector(conn.id)
@@ -3620,12 +3690,20 @@ function renderNativeRow(kind, conn, isAdmin, me) {
     })
   } else {
     status.className = 'c-right off'
-    status.innerHTML = '<span class="dot-s"></span>Verbinden'
-    sub.textContent = `${cfg.subDefault} · Klick zum Verbinden (persönlich; Admin: team-weit)`
+    status.innerHTML = cfg.auth === 'oauth'
+      ? '<span class="connector-connect"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Verbinden</span>'
+      : '<span class="dot-s"></span>Verbinden'
+    sub.textContent = cfg.auth === 'oauth' ? cfg.subDefault : `${cfg.subDefault} · Klick zum Verbinden (persönlich; Admin: team-weit)`
   }
 }
 
 for (const [kind, cfg] of Object.entries(NATIVE_CONNECTORS)) {
+  if (cfg.auth === 'oauth') {
+    $(cfg.row).addEventListener('click', () => {
+      if (!nativeState[kind]) startSlackOAuth()
+    })
+    continue
+  }
   $(cfg.row).addEventListener('click', async () => {
     if (nativeState[kind]) return // verbunden — Trennen läuft über das ✕ (jeder darf verbinden)
     $(cfg.input).value = ''

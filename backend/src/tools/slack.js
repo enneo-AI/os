@@ -1,10 +1,10 @@
 import { db } from '../db.js'
+import { decryptSecret } from '../crypto.js'
 
 // ============================================================ Slack (nativ, read-only)
-// Per Knopfdruck verbunden: Admin hinterlegt einen Slack-Bot-Token (xoxb-…) —
-// gespeichert write-only in `connectors` (kind='slack'). Bewusst NUR Lese-Tools.
-// Öffentliche Channels liest der Bot selbstständig (Auto-Join bei not_in_channel);
-// private Channels nur, wenn er dort manuell eingeladen wurde.
+// Per OAuth verbunden und verschlüsselt in `connectors` gespeichert. Bewusst nur
+// Lese-Tools; öffentliche Channels kann die App selbstständig betreten,
+// private Channels nur, wenn sie dort manuell eingeladen wurde.
 
 const BASE = 'https://slack.com/api'
 const CACHE_TTL_MS = 60_000
@@ -20,7 +20,7 @@ async function slackToken(userId) {
   const rows = data || []
   const own = userId ? rows.find((r) => r.owner === userId && r.visibility !== 'team') : null
   const team = rows.find((r) => r.visibility === 'team')
-  const token = (own || team)?.token || null
+  const token = decryptSecret((own || team)?.token || null)
   cache.set(key, { at: Date.now(), token })
   return token
 }
@@ -45,6 +45,11 @@ async function slackCall(token, method, params = {}) {
 export async function probeSlack(token) {
   const auth = await slackCall(token, 'auth.test')
   return { team: auth.team, bot: auth.user }
+}
+
+export async function revokeSlackToken(token) {
+  if (!token) return
+  await slackCall(decryptSecret(token), 'auth.revoke')
 }
 
 // User-IDs zu Namen auflösen (<@U123> in Messages), Team-weit gecacht (10 Min)

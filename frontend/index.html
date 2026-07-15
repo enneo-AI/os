@@ -683,6 +683,12 @@
   .crow .c-right .dot-s{width:7px;height:7px;border-radius:50%;flex:none}
   .crow .c-right.ok{color:var(--good)}.crow .c-right.ok .dot-s{background:var(--good)}
   .crow .c-right.off{color:var(--ink-3)}.crow .c-right.off .dot-s{background:rgba(128,128,150,.35)}
+  .connector-connect{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 13px;border:1px solid var(--glass-outline);border-radius:10px;background:linear-gradient(145deg,var(--key-hi),var(--surface-2));color:var(--ink);font-size:11.5px;font-weight:650;box-shadow:inset 0 1px 0 var(--glass-highlight),0 8px 18px -16px rgba(68,45,135,.7);transition:transform .18s ease,border-color .18s ease,background .18s ease}
+  button.crow:hover .connector-connect{transform:translateY(-1px);border-color:rgba(123,90,226,.28);background:var(--glass-strong)}
+  .connector-connect svg{width:13px;height:13px;stroke:var(--lila-deep);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .oauth-result{display:flex;align-items:center;gap:11px;margin:0 auto 18px;max-width:980px;padding:11px 13px;border:1px solid var(--glass-outline);border-radius:13px;background:linear-gradient(145deg,var(--key-hi),var(--surface-2));box-shadow:inset 0 1px 0 var(--glass-highlight),0 14px 30px -26px rgba(62,44,112,.7);font-size:12.5px;color:var(--ink-2)}
+  .oauth-result[hidden]{display:none}.oauth-result strong{color:var(--ink);font-weight:650}.oauth-result-icon{width:27px;height:27px;display:inline-flex;align-items:center;justify-content:center;flex:none;border-radius:9px;background:rgba(46,158,107,.11);color:var(--good)}.oauth-result.error .oauth-result-icon{background:rgba(200,86,78,.11);color:var(--high)}
+  .oauth-result-icon svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
   button.crow{width:100%;text-align:left;background:none;border-left:0;border-right:0;border-top:0}
   .crow-add{cursor:pointer}
   .crow-add:hover .c-name{color:var(--ink)!important}
@@ -1303,6 +1309,7 @@
         <p>Read-only liest nur. Read &amp; Write führt Aktionen aus — Schreiben läuft immer über eine Freigabe-Karte.</p>
         <div class="page-actions"><button class="btn dark" data-category="tool">＋ Tool verknüpfen</button></div>
       </div>
+      <div class="oauth-result" id="oauth-result" hidden></div>
       <div class="cost-shell">
         <div class="list-panel">
           <h3>Read &amp; Write</h3>
@@ -1595,21 +1602,6 @@
     <div class="m-actions">
       <button class="btn quiet" id="iu-cancel">Abbrechen</button>
       <button class="btn dark" id="iu-save">Importieren</button>
-    </div>
-  </div>
-</div>
-
-<!-- ================= SLACK MODAL ================= -->
-<div class="overlay" id="slack-overlay">
-  <div class="modal" role="dialog" aria-modal="true">
-    <h3>Slack verbinden</h3>
-    <label for="sl-token">Bot-Token</label>
-    <input type="password" id="sl-token" autocomplete="off" placeholder="xoxb-…">
-    <p class="pf-hint">Einmalig unter api.slack.com/apps eine App im Workspace anlegen → OAuth &amp; Permissions → Bot Token Scopes: <code>channels:read</code>, <code>channels:history</code>, <code>channels:join</code>, <code>groups:read</code>, <code>groups:history</code>, <code>users:read</code> → Install to Workspace → den xoxb-Token hier einfügen. Enni liest nur — öffentliche Channels automatisch, private nur nach Einladung des Bots. Der Token ist nach dem Speichern aus der App nicht mehr auslesbar.</p>
-    <div class="err" id="sl-err"></div>
-    <div class="m-actions">
-      <button class="btn quiet" id="sl-cancel">Abbrechen</button>
-      <button class="btn dark" id="sl-save">Verbinden</button>
     </div>
   </div>
 </div>

@@ -539,11 +539,14 @@ app.post('/api/connectors', async (req, res) => {
   const owner = personal ? user.id : null
   const visibility = personal ? 'personal' : 'team'
 
-  // Nativer Slack-Connector: Bot-Token (xoxb-…), Verbindungstest via auth.test
+  // Legacy-Fallback für bestehende Clients; die sichtbare UI nutzt ausschließlich OAuth.
   if (kind === 'slack') {
     if (!token?.trim()) return res.status(400).json({ error: 'Bot-Token ist Pflicht' })
     try {
-      const { probeSlack, invalidateSlackCache } = await import('./tools/slack.js')
+      const [{ probeSlack, invalidateSlackCache }, { encryptSecret }] = await Promise.all([
+        import('./tools/slack.js'),
+        import('./crypto.js'),
+      ])
       const info = await probeSlack(token.trim())
       // Re-Connect ersetzt den Token — im jeweiligen Scope (persoenlich vs. team)
       let delQ = db.from('connectors').delete().eq('kind', 'slack')
@@ -554,7 +557,7 @@ app.post('/api/connectors', async (req, res) => {
         .insert({
           name: 'Slack',
           url: 'https://slack.com',
-          token: token.trim(),
+          token: encryptSecret(token.trim()),
           category: 'connection',
           kind: 'slack',
           tool_count: 3,
@@ -615,6 +618,39 @@ app.post('/api/connectors', async (req, res) => {
   }
 })
 
+// Slack OAuth: Der eingeloggte Nutzer startet den Flow per API-Call, Slack selbst
+// leitet anschließend ohne Supabase-JWT auf den einmaligen Callback zurück.
+app.post('/api/oauth/slack/start', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const { data: profile } = await db.from('profiles').select('is_admin').eq('id', user.id).maybeSingle()
+  const requestedTeam = req.body?.scope === 'team'
+  if (requestedTeam && !profile?.is_admin) return res.status(403).json({ error: 'Nur Admins können Slack teamweit verbinden.' })
+  try {
+    const { createSlackInstallUrl } = await import('./slack-oauth.js')
+    const url = await createSlackInstallUrl({ userId: user.id, visibility: requestedTeam ? 'team' : 'personal' })
+    res.json({ url })
+  } catch (err) {
+    res.status(503).json({ error: err.message })
+  }
+})
+
+app.get('/api/oauth/slack/callback', async (req, res) => {
+  try {
+    const { completeSlackOAuth } = await import('./slack-oauth.js')
+    const url = await completeSlackOAuth({
+      code: String(req.query.code || ''),
+      state: String(req.query.state || ''),
+      deniedError: String(req.query.error || ''),
+    })
+    res.redirect(303, url)
+  } catch (err) {
+    console.error('Slack OAuth Callback:', err.message)
+    const { slackOAuthErrorUrl } = await import('./slack-oauth.js')
+    res.redirect(303, slackOAuthErrorUrl('callback_failed'))
+  }
+})
+
 // Tool fuers Unternehmen beantragen (Owner) bzw. freigeben/ablehnen (Admin).
 // approve macht die hinterlegten Credentials fuer ALLE Accounts nutzbar ('team');
 // reject stuft zurueck auf 'personal' (bleibt beim Owner nutzbar).
@@ -657,10 +693,14 @@ app.delete('/api/connectors/:id', async (req, res) => {
   const user = await getUserFromRequest(req)
   if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
   const { data: prof } = await db.from('profiles').select('is_admin').eq('id', user.id).maybeSingle()
-  const { data: conn } = await db.from('connectors').select('id, owner').eq('id', req.params.id).maybeSingle()
+  const { data: conn } = await db.from('connectors').select('id, owner, kind, token, auth_type').eq('id', req.params.id).maybeSingle()
   if (!conn) return res.status(404).json({ error: 'Tool nicht gefunden' })
   if (!prof?.is_admin && conn.owner !== user.id) return res.status(403).json({ error: 'Nur eigene Tools oder Admin' })
   try {
+    if (conn.kind === 'slack' && conn.auth_type === 'oauth') {
+      const { revokeSlackToken } = await import('./tools/slack.js')
+      await revokeSlackToken(conn.token).catch((err) => console.warn('Slack-Token konnte nicht widerrufen werden:', err.message))
+    }
     const { removeConnector } = await import('./tools/mcp.js')
     await removeConnector(req.params.id)
     const { invalidateAttioCache } = await import('./tools/attio.js')
