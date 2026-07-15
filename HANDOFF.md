@@ -1,6 +1,12 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-15 (Rollenbasierter UX/UI-Engineering-Skill live und produktiv verifiziert)
+**Zuletzt aktualisiert:** 2026-07-15 (Private Developer-Workspace-Plugins im Marketplace vorgemerkt)
+
+### Session 2026-07-15 — Developer Workspace als Coming-soon-Bereich
+
+- **Zukunft sichtbar, Zugriff noch geschlossen:** Der Marketplace zeigt jetzt eine eigene Kategorie „Developer Workspace“ mit Claude Code und Codex als „Coming soon“. Beide Einträge beschreiben Code-, Test- und Deployment-Zugriff über ein künftiges privates Enneo-Admin-Plugin.
+- **Klare Produktgrenze:** Der Bereich ist ausdrücklich mit „Nur Admins“ und „Private Zugänge für die interne Weiterentwicklung von enneo OS“ gekennzeichnet. Damit bleibt er visuell und konzeptionell vom bestehenden Kunden-/Partner-Plugin für Enneo-Instanzen getrennt.
+- **Nur Visualisierung:** Die Zeilen sind bewusst nicht interaktiv; es wurden noch keine Credentials, Repository-Rechte oder internen Plugin-Endpunkte freigeschaltet. Desktop und 390-px-Mobile sind ohne horizontalen Overflow geprüft.
 
 ### Session 2026-07-15 — Rollenbasierter UX/UI-Engineering-Skill
 

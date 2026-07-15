@@ -741,6 +741,15 @@
   .crow .c-right .dot-s{width:7px;height:7px;border-radius:50%;flex:none}
   .crow .c-right.ok{color:var(--good)}.crow .c-right.ok .dot-s{background:var(--good)}
   .crow .c-right.off{color:var(--ink-3)}.crow .c-right.off .dot-s{background:rgba(128,128,150,.35)}
+  .marketplace-section-head{display:flex;align-items:center;gap:8px;margin:22px 0 1px}
+  .list-panel .marketplace-section-head h3{margin:0}
+  .marketplace-admin-badge{display:inline-flex;align-items:center;height:20px;padding:0 8px;border:1px solid rgba(123,90,226,.16);border-radius:999px;background:rgba(123,90,226,.065);color:var(--lila-deep);font-size:9px;font-weight:720;letter-spacing:.07em;text-transform:uppercase}
+  .marketplace-section-copy{margin:0 0 5px;color:var(--ink-3);font-size:11px}
+  .developer-row{position:relative}
+  .developer-logo{font-family:var(--mono);font-size:10px;font-weight:750;letter-spacing:-.08em}
+  .developer-logo.claude{border-color:rgba(202,112,73,.18);background:#F4E6DC;color:#9C4F2E}
+  .developer-logo.codex{border-color:rgba(29,30,44,.16);background:#1D1E2C;color:#F7F7FA}
+  .developer-logo svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
   .connector-connect{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 13px;border:1px solid var(--glass-outline);border-radius:10px;background:linear-gradient(145deg,var(--key-hi),var(--surface-2));color:var(--ink);font-size:11.5px;font-weight:650;box-shadow:inset 0 1px 0 var(--glass-highlight),0 8px 18px -16px rgba(68,45,135,.7);transition:transform .18s ease,border-color .18s ease,background .18s ease}
   button.crow:hover .connector-connect{transform:translateY(-1px);border-color:rgba(123,90,226,.28);background:var(--glass-strong)}
   .connector-connect svg{width:13px;height:13px;stroke:var(--lila-deep);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
@@ -1502,6 +1511,11 @@
           <h3 style="margin-top:22px">Remote Control</h3>
           <div class="crow"><span class="c-logo"><img src="/icons/whatsapp.svg" alt=""></span><div><div class="c-name">WhatsApp</div><div class="c-sub">Enni mobil steuern — chatten &amp; Routinen-Ergebnisse aufs Handy</div></div><span class="c-right off"><span class="dot-s"></span>Coming soon</span></div>
           <div class="crow"><span class="c-logo"><img src="/icons/telegram.svg" alt=""></span><div><div class="c-name">Telegram</div><div class="c-sub">Enni mobil steuern — Bot-Chat von unterwegs</div></div><span class="c-right off"><span class="dot-s"></span>Coming soon</span></div>
+
+          <div class="marketplace-section-head"><h3>Developer Workspace</h3><span class="marketplace-admin-badge">Nur Admins</span></div>
+          <p class="marketplace-section-copy">Private Zugänge für die interne Weiterentwicklung von enneo OS.</p>
+          <div class="crow developer-row"><span class="c-logo developer-logo claude" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m8 7-5 5 5 5M13 17h8M14 7h7"/></svg></span><div><div class="c-name">Claude Code</div><div class="c-sub">Code, Tests und Deployments · privates Enneo-Admin-Plugin</div></div><span class="c-right off"><span class="dot-s"></span>Coming soon</span></div>
+          <div class="crow developer-row"><span class="c-logo developer-logo codex" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5H5v14h3M16 5h3v14h-3M10 9h4M10 15h4"/></svg></span><div><div class="c-name">Codex</div><div class="c-sub">Code, Browser-Tests und Deployments · privates Enneo-Admin-Plugin</div></div><span class="c-right off"><span class="dot-s"></span>Coming soon</span></div>
 
           <h3 style="margin-top:22px">Read-only</h3>
           <div class="crow"><span class="c-logo"><img src="/icons/gitlab.svg" alt=""></span><div><div class="c-name">GitLab</div><div class="c-sub">Code, Projekte, Merge Requests</div></div><span class="c-right ok"><span class="dot-s"></span>Aktiv</span></div>
