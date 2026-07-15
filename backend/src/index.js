@@ -673,8 +673,7 @@ app.delete('/api/connectors/:id', async (req, res) => {
   }
 })
 
-// "Lernen & Schließen": Haiku destilliert Learnings aus der Konversation —
-// sofort persönlich aktiv, Admin bekommt Learning-Card für Team-weite Freigabe
+// "Lernen & Schließen": Haiku destilliert rein persönliche Account-Learnings.
 app.post('/api/conversations/:id/learn', async (req, res) => {
   const user = await getUserFromRequest(req)
   if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })

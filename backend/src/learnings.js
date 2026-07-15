@@ -4,7 +4,7 @@ import { logUsage } from './usage.js'
 
 // ============================================================ Learnings-Layer
 // Persönliche Learnings (Feedback + "Lernen & Schließen") wirken sofort für den
-// eigenen Account; Team-weit erst nach Admin-Freigabe. Injection als System-Block.
+// eigenen Account. Nur explizit vorgeschlagene Feedback-Learnings gehen ins Admin-Review.
 
 const anthropic = new Anthropic()
 const MAX_BLOCK_CHARS = 2500 // pro Sektion — neueste zuerst, Rest fällt raus
@@ -52,7 +52,7 @@ export async function learningsPromptBlock(userId) {
 }
 
 // "Lernen & Schließen": Haiku destilliert 1-3 dauerhafte Learnings aus der Konversation.
-// Sofort persönlich aktiv + share_status='proposed' → Learning-Card beim Admin.
+// Diese bleiben bewusst rein persönlich auf Account-Ebene.
 export async function learnFromConversation(conversationId, userId) {
   const { data: msgs } = await db
     .from('messages')
@@ -96,7 +96,7 @@ export async function learnFromConversation(conversationId, userId) {
     content: content.trim(),
     source: 'conversation',
     source_conversation_id: conversationId,
-    share_status: 'proposed', // sofort persönlich aktiv, Admin entscheidet über Team-weit
+    share_status: 'none',
   }))
   const { error } = await db.from('learnings').insert(rows)
   if (error) throw new Error(error.message)

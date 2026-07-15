@@ -14,6 +14,7 @@ const esc = (s) =>
 
 let session = null
 let currentConv = null // {id, title} oder null = neue Konversation
+let closeTargetConv = null // Chat, der im Schließen-Modal bestätigt wird
 let costByMessage = {}
 
 // Multi-Sessions: Streams laufen pro Konversation weiter, auch wenn man wegnavigiert.
@@ -430,12 +431,7 @@ function convItem(c) {
     openConversation(c)
   })
   btn.querySelector('.rename').addEventListener('click', () => renameConv(btn, c))
-  btn.querySelector('.delete').addEventListener('click', async () => {
-    if (!window.confirm(`Konversation "${c.title || 'Ohne Titel'}" löschen?`)) return
-    await sb.from('conversations').delete().eq('id', c.id)
-    if (currentConv?.id === c.id) newConversation()
-    loadConversations()
-  })
+  btn.querySelector('.delete').addEventListener('click', () => openCloseConversation(c))
   return btn
 }
 
@@ -687,37 +683,87 @@ $('fb-save').addEventListener('click', async () => {
   $('fb-overlay').classList.remove('open')
 })
 
-// ============================================================ Chat schließen (mit Lern-Option)
-$('chat-close').addEventListener('click', () => {
-  if (!currentConv) return
+// ============================================================ Chat schließen (mit persönlicher Lern-Option)
+function openCloseConversation(conv) {
+  if (!conv) return
+  closeTargetConv = { ...conv }
   $('cl-err').textContent = ''
+  $('cl-chat-name').textContent = conv.title || 'Ohne Titel'
   $('cl-learn').disabled = false
+  $('cl-close').disabled = false
+  $('cl-cancel').disabled = false
   $('cl-learn').textContent = 'Lernen & Schließen'
+  $('cl-close').textContent = 'Chat schließen'
   $('cl-title').textContent = 'Chat schließen'
   $('cl-choose').hidden = false
   $('cl-result').hidden = true
   $('close-overlay').classList.add('open')
-})
+}
+
+async function deleteConversation(conv) {
+  if (!conv?.id) throw new Error('Konversation nicht gefunden')
+  const { data, error } = await sb
+    .from('conversations')
+    .delete()
+    .eq('id', conv.id)
+    .eq('user_id', session.user.id)
+    .select('id')
+    .maybeSingle()
+  if (error) throw error
+  if (!data) throw new Error('Der Chat konnte nicht geschlossen werden.')
+
+  activeStreams.delete(conv.id)
+  promptQueues.delete(conv.id)
+  if (currentConv?.id === conv.id) newConversation()
+  await loadConversations()
+}
+
+function setCloseBusy(busy, action = '') {
+  $('cl-learn').disabled = busy
+  $('cl-close').disabled = busy
+  $('cl-cancel').disabled = busy
+  if (action === 'learn') $('cl-learn').textContent = busy ? 'Enni lernt …' : 'Lernen & Schließen'
+  if (action === 'close') $('cl-close').textContent = busy ? 'Chat wird geschlossen …' : 'Chat schließen'
+}
+
+$('chat-close').addEventListener('click', () => openCloseConversation(currentConv))
 $('cl-done').addEventListener('click', () => {
   $('close-overlay').classList.remove('open')
-  newConversation()
+  closeTargetConv = null
 })
-$('cl-cancel').addEventListener('click', () => $('close-overlay').classList.remove('open'))
-$('cl-close').addEventListener('click', () => {
+$('cl-cancel').addEventListener('click', () => {
   $('close-overlay').classList.remove('open')
-  newConversation()
+  closeTargetConv = null
+})
+$('cl-close').addEventListener('click', async () => {
+  const target = closeTargetConv
+  if (!target) return
+  $('cl-err').textContent = ''
+  setCloseBusy(true, 'close')
+  try {
+    await deleteConversation(target)
+    $('close-overlay').classList.remove('open')
+    closeTargetConv = null
+  } catch (err) {
+    $('cl-err').textContent = 'Fehler: ' + err.message
+    setCloseBusy(false, 'close')
+  }
 })
 $('cl-learn').addEventListener('click', async () => {
-  if (!currentConv) return
-  $('cl-learn').disabled = true
-  $('cl-learn').textContent = 'Enni lernt …'
+  const target = closeTargetConv
+  if (!target) return
+  $('cl-err').textContent = ''
+  setCloseBusy(true, 'learn')
   try {
-    const res = await fetch(`${BACKEND_URL}/api/conversations/${currentConv.id}/learn`, {
+    const res = await fetch(`${BACKEND_URL}/api/conversations/${target.id}/learn`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${await token()}` },
     })
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+    // Erst nach erfolgreicher Extraktion löschen. Der FK setzt die Learning-Quelle
+    // dabei auf null; das persönliche Learning selbst bleibt dauerhaft erhalten.
+    await deleteConversation(target)
     // Ergebnis im Modal zeigen (keine Browser-Alerts)
     $('cl-choose').hidden = true
     $('cl-result').hidden = false
@@ -727,16 +773,16 @@ $('cl-learn').addEventListener('click', async () => {
         .map((l) => `<div class="cl-li">${CHECK_SVG}<span>${esc(l)}</span></div>`)
         .join('')
       $('cl-result-hint').textContent =
-        'Gespeichert unter Profil → Meine Learnings. Wirkt ab sofort in deinen Konversationen — der Admin entscheidet, ob es team-weit (für alle Accounts) übernommen wird.'
+        'Gespeichert unter Profil → Meine Learnings. Wirkt ab sofort ausschließlich in deinen Konversationen.'
     } else {
       $('cl-title').textContent = 'Nichts zu lernen'
       $('cl-learned').innerHTML = ''
       $('cl-result-hint').textContent = data.hinweis || 'Nichts dauerhaft Lernbares in dieser Konversation — der Chat wird geschlossen.'
     }
+    closeTargetConv = null
   } catch (err) {
     $('cl-err').textContent = 'Fehler: ' + err.message
-    $('cl-learn').disabled = false
-    $('cl-learn').textContent = 'Lernen & Schließen'
+    setCloseBusy(false, 'learn')
   }
 })
 
