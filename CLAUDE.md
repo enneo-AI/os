@@ -29,7 +29,7 @@
 
 ## Datenmodell (Migrations 0001–0006)
 
-`profiles` (is_admin) · `conversations` (user_id, pod_id) · `messages` (role inkl. compaction, thinking, tool_calls, attachments, author_id) · `llm_usage` · `wiki_pages` (space_id) · `wiki_chunks` (pgvector 384, RPC `match_wiki_chunks`) · `knowledge_updates` · `ui_change_requests` (Member-eigene UX/UI-Anfragen, Admin-Review/Umsetzung) · `spaces`/`space_members`/`space_connections` (Dust-Spaces) · `pods`/`pod_members`/`pod_tasks`/`pod_files` (+ Storage-Bucket `pod-files`) · Helper `is_pod_visible()` SECURITY DEFINER.
+`profiles` (is_admin) · `conversations` (user_id, pod_id) · `messages` (role inkl. compaction, thinking, tool_calls, attachments, author_id) · `llm_usage` · `wiki_pages` (space_id) · `wiki_chunks` (pgvector 384, RPC `match_wiki_chunks`) · `knowledge_updates` · `ui_change_requests` (Member-eigene UX/UI-Anfragen, Admin-Review/Umsetzung) · `spaces`/`space_members`/`space_connections` (Dust-Spaces) · `pods` (Project Pulse: project_status/current_focus/target_date) · `pod_members` · `pod_tasks` (Beschreibung, Priorität, offen/in Arbeit/blockiert/erledigt) · `pod_task_comments` · `pod_files` (+ Storage-Bucket `pod-files`) · Helper `is_pod_visible()` SECURITY DEFINER. Pod-Mitgliedschafts-Mutationen nutzen `private.can_manage_pod_members()` zur rekursionsfreien Owner/Admin-Prüfung.
 
 **RLS-Falle (2× gestolpert):** Neue Tabellen brauchen GRANTs (`grant … to authenticated/service_role`). Und: SELECT-Policies dürfen für die eigene Tabelle KEINE Security-Definer-Selbst-Requery-Funktion nutzen (INSERT..RETURNING sieht die Zeile sonst nicht) — inline schreiben.
 
@@ -37,8 +37,8 @@
 
 1. **Wissens-Update-Loop** (Enni schlägt Wiki-Diffs vor, Mensch gibt frei) — Kern-Differenzierer, Tabelle existiert, Flow fehlt. **Wichtigster nächster Schritt vor der Demo.**
 2. Enni respektiert Space-Rechte noch nicht im Tool-Layer (Restricted-Space-Wissen wäre für alle abfragbar, aktuell liegt aber alles in Company Data = open).
-3. Pod-Dateien sind Ablage — Enni liest sie noch nicht als Tool.
-4. Kein Realtime (Pod-Messages erst nach Reload sichtbar).
+3. Pod-Dateien sind über Pod-Tools lesbar; echte Datei-Versionierung und Task-Dateiverknüpfung fehlen noch.
+4. Project Pulse ist live; Kanban/Meilensteine und strukturierte Projektentscheidungen sind bewusst spätere Ausbaustufen.
 5. RAG-Re-Index nach Wiki-Änderungen manuell (Script-Pattern in HANDOFF §6; Embed-Function-Limit: max. 2 lange Texte pro Call).
 6. Crawl-Qualität mancher Doku-Seiten (Navigations-Reste) — Re-Crawl irgendwann.
 

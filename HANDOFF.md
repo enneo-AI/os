@@ -1,6 +1,15 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-15 (Private Developer-Workspace-Plugins im Marketplace vorgemerkt)
+**Zuletzt aktualisiert:** 2026-07-15 (Project Pulse und interaktive Task-Details für Pods live)
+
+### Session 2026-07-15 — Pods als interaktives Team-Projektmanagement
+
+- **Project Pulse als neue Startansicht:** Jeder Pod öffnet mit aktuellem Fokus, Projektstatus, Zieltermin, Kennzahlen für offen/in Arbeit/blockiert/überfällig, automatisch priorisierter „Benötigt Aufmerksamkeit“-Liste und einer kombinierten Aktivität aus Aufgaben, Konversationen und Dateien. Die bestehenden Bereiche bleiben als ruhige, URL-deeplinkbare Tabs erhalten (`?tab=overview|convs|tasks|files|settings`).
+- **Aufgaben sind jetzt echte Arbeitsobjekte:** Migration `20260715155329_pod_project_pulse.sql` ergänzt Beschreibung, Priorität (`low/normal/high/urgent`) und Status `blocked`. Ein zugängliches Desktop-Sidepanel bzw. Mobile-Bottom-Sheet bietet Titel, Status, Priorität, Verantwortlichen, Termin, Abschnitt, Beschreibung, Konversationslink und Team-Kommentare. Fokus-Trap, Rücksprungfokus, Unsaved-Changes-Warnung, Reduced Motion und 44-px-Mobile-Ziele sind abgedeckt.
+- **Team-Kommentare mit harter RLS:** Neue Tabelle `pod_task_comments`; sichtbare Pod-Mitglieder dürfen lesen, nur als eigene Identität schreiben, nur eigene Kommentare ändern/löschen (Admins dürfen löschen). Realtime hält geöffnete Pulse-/Task-Ansichten aktuell. Migration `20260715160158_pod_project_pulse_advisor_indexes.sql` ergänzt die vom Supabase Advisor geforderten FK-Indizes.
+- **Bestehenden RLS-Fehler behoben:** Der echte 3-Account-Test fand eine Rekursion in `pod_members` beim Hinzufügen zu Restricted Pods. Migration `20260715160310_fix_pod_member_rls_recursion.sql` verschiebt die Owner/Admin-Prüfung in `private.can_manage_pod_members()`; der reproduzierbare Test bestätigt Owner-Erstellung, Teamzugriff, Outsider-Isolation, Anti-Spoofing, Kommentare und Status-Updates (7 Checks).
+- **Enni als Projektmanager:** „Enni · Projektstand analysieren“ startet aus dem Pod eine kontextgebundene Analyse von Fortschritt, Blockern, Verantwortlichkeiten und nächsten Schritten, ohne ungefragt Änderungen vorzunehmen.
+- **Verifiziert:** Backend-Tests 4/4, JS-Syntax und Diff sauber, Supabase Remote-Lint ohne Schemafehler, Migration History synchron. Desktop-Abnahme bei 1280 px und Mobile bei 390×844 ohne horizontalen Overflow; Task-Kommentar und Statuswechsel real gespeichert, Realtime aktualisierte die Kennzahlen, Browser-Konsole ohne Fehler. Evals: `backend/evals/run-pod-project-pulse.js` und `backend/evals/run-pod-pulse-visual-fixture.js`.
 
 ### Session 2026-07-15 — Developer Workspace als Coming-soon-Bereich
 

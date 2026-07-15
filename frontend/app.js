@@ -372,7 +372,9 @@ async function route() {
   const p = location.pathname
   if (p.startsWith('/pod/')) {
     const pod = podsList.find((x) => x.id === p.slice(5))
-    if (pod) return openPod(pod)
+    const requestedTab = new URLSearchParams(location.search).get('tab')
+    const tab = ['overview', 'convs', 'tasks', 'files', 'settings'].includes(requestedTab) ? requestedTab : 'overview'
+    if (pod) return openPod(pod, tab)
   }
   if (p.startsWith('/chat/')) {
     const { data: c } = await sb.from('conversations').select('*').eq('id', p.slice(6)).maybeSingle()
@@ -1724,7 +1726,7 @@ async function loadPods() {
     list.innerHTML = '<div class="sb-item" style="cursor:default;color:var(--ink-3)"><span class="txt">Noch keine Pods — leg einen an (＋)</span></div>'
 }
 
-async function openPod(pod, tab = 'convs') {
+async function openPod(pod, tab = 'overview') {
   activePod = pod
   convPod = null
   $('pod-title').textContent = pod.name
@@ -1736,8 +1738,8 @@ async function openPod(pod, tab = 'convs') {
   paintPodHighlight()
   document.querySelectorAll('#conv-list .sb-item').forEach((x) => x.classList.remove('on'))
   refreshPodCounts(pod.id)
-  switchPodTab(tab)
   activateArea('chat', 'pod')
+  switchPodTab(tab)
 }
 
 async function refreshPodCounts(podId) {
@@ -1753,14 +1755,116 @@ async function refreshPodCounts(podId) {
 }
 
 function switchPodTab(tab) {
-  document.querySelectorAll('.pt-btn').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab))
-  for (const t of ['convs', 'tasks', 'files', 'settings']) $('ptab-' + t).hidden = t !== tab
+  document.querySelectorAll('.pt-btn').forEach((b) => {
+    const selected = b.dataset.tab === tab
+    b.classList.toggle('on', selected)
+    b.setAttribute('aria-selected', String(selected))
+  })
+  for (const t of ['overview', 'convs', 'tasks', 'files', 'settings']) $('ptab-' + t).hidden = t !== tab
+  if (tab === 'overview') loadPodOverview()
   if (tab === 'convs') loadPodConvs()
   if (tab === 'tasks') loadPodTasks()
   if (tab === 'files') loadPodFiles()
   if (tab === 'settings') fillPodSettings()
+  if (activeView === 'pod' && activePod) history.replaceState({}, '', `/pod/${activePod.id}?tab=${tab}`)
 }
 document.querySelectorAll('.pt-btn').forEach((b) => b.addEventListener('click', () => switchPodTab(b.dataset.tab)))
+
+const POD_STATUS_LABELS = { on_track: 'Im Plan', at_risk: 'Gefährdet', blocked: 'Blockiert', complete: 'Abgeschlossen' }
+const TASK_STATUS_LABELS = { open: 'Offen', in_progress: 'In Arbeit', blocked: 'Blockiert', done: 'Erledigt' }
+const TASK_PRIORITY_LABELS = { low: 'Niedrig', normal: 'Normal', high: 'Hoch', urgent: 'Dringend' }
+let podTasksCache = []
+
+function relativePulseTime(value) {
+  const date = new Date(value)
+  const diff = Date.now() - date.getTime()
+  if (diff < 60_000) return 'gerade eben'
+  if (diff < 3_600_000) return `vor ${Math.max(1, Math.floor(diff / 60_000))} Min.`
+  if (diff < 86_400_000) return `vor ${Math.floor(diff / 3_600_000)} Std.`
+  return compactPodDate(value)
+}
+
+function attentionReason(task) {
+  if (task.status === 'blocked') return 'Blockiert'
+  if (isOverdue(task)) return 'Überfällig'
+  if (!task.assignee && ['high', 'urgent'].includes(task.priority)) return 'Ohne Verantwortlichen'
+  return TASK_PRIORITY_LABELS[task.priority] || 'Offen'
+}
+
+async function loadPodOverview() {
+  if (!activePod) return
+  const podId = activePod.id
+  const [{ data: tasks }, { data: convs }, { data: files }, profs] = await Promise.all([
+    sb.from('pod_tasks').select('*').eq('pod_id', podId).order('updated_at', { ascending: false }),
+    sb.from('conversations').select('id, title, updated_at, user_id').eq('pod_id', podId).order('updated_at', { ascending: false }).limit(8),
+    sb.from('pod_files').select('id, name, created_at, uploaded_by').eq('pod_id', podId).order('created_at', { ascending: false }).limit(8),
+    allProfiles(),
+  ])
+  if (activePod?.id !== podId) return
+  podTasksCache = tasks || []
+  $('pod-task-count').textContent = podTasksCache.length
+  const status = activePod.project_status || 'on_track'
+  $('pulse-health').dataset.state = status
+  $('pulse-health').textContent = POD_STATUS_LABELS[status] || 'Im Plan'
+  $('pulse-focus').textContent = activePod.current_focus || 'Noch kein Fokus gesetzt.'
+  $('pulse-focus').classList.toggle('muted', !activePod.current_focus)
+  $('pulse-target').textContent = activePod.target_date
+    ? new Date(activePod.target_date + 'T00:00').toLocaleDateString('de-DE', { day: 'numeric', month: 'long', year: 'numeric' })
+    : 'Nicht festgelegt'
+  const open = podTasksCache.filter((t) => t.status === 'open').length
+  const progress = podTasksCache.filter((t) => t.status === 'in_progress').length
+  const blocked = podTasksCache.filter((t) => t.status === 'blocked').length
+  const overdue = podTasksCache.filter(isOverdue).length
+  $('pulse-open-count').textContent = open
+  $('pulse-progress-count').textContent = progress
+  $('pulse-blocked-count').textContent = blocked
+  $('pulse-overdue-count').textContent = overdue
+  $('pulse-overdue-metric').classList.toggle('alert', overdue > 0)
+  const attention = podTasksCache
+    .filter((t) => t.status === 'blocked' || isOverdue(t) || (!t.assignee && ['high', 'urgent'].includes(t.priority)))
+    .sort((a, b) => Number(b.status === 'blocked') - Number(a.status === 'blocked') || Number(isOverdue(b)) - Number(isOverdue(a)))
+    .slice(0, 6)
+  $('pulse-attention-count').textContent = String(attention.length)
+  const attentionList = $('pulse-attention-list')
+  attentionList.innerHTML = ''
+  for (const task of attention) {
+    const row = document.createElement('button')
+    row.className = 'pulse-row'
+    const kind = task.status === 'blocked' ? 'blocked' : isOverdue(task) ? 'overdue' : 'high'
+    const assignee = task.assignee ? profs.find((p) => p.id === task.assignee) : null
+    row.innerHTML = `<span class="pulse-row-dot ${kind}" aria-hidden="true"></span><span class="pulse-row-copy"><span class="pulse-row-title">${esc(task.title)}</span><span class="pulse-row-sub">${esc(attentionReason(task))}${assignee ? ` · ${esc(assignee.display_name || assignee.email)}` : ''}</span></span><span class="pulse-row-date">${task.due_date ? fmtDue(task.due_date) : '—'}</span>`
+    row.addEventListener('click', () => openTaskDetail(task))
+    attentionList.appendChild(row)
+  }
+  if (!attention.length) attentionList.innerHTML = '<div class="pulse-empty">Alles ruhig: keine blockierten, überfälligen oder dringenden unzugewiesenen Aufgaben.</div>'
+  const activity = [
+    ...podTasksCache.slice(0, 8).map((t) => ({ type: 'task', label: t.status === 'done' ? 'Aufgabe erledigt' : 'Aufgabe aktualisiert', title: t.title, at: t.updated_at, user: t.assignee || t.created_by })),
+    ...(convs || []).map((c) => ({ type: 'chat', label: 'Konversation', title: c.title || 'Ohne Titel', at: c.updated_at, user: c.user_id })),
+    ...(files || []).map((f) => ({ type: 'file', label: 'Datei hochgeladen', title: f.name, at: f.created_at, user: f.uploaded_by })),
+  ].sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 6)
+  const activityList = $('pulse-activity-list')
+  activityList.innerHTML = ''
+  const marks = { task: '✓', chat: '↗', file: '□' }
+  for (const event of activity) {
+    const who = event.user ? profName(profs, event.user) : 'Team'
+    const el = document.createElement('div')
+    el.className = 'pulse-event'
+    el.innerHTML = `<span class="pulse-event-mark" aria-hidden="true">${marks[event.type]}</span><div class="pulse-event-copy"><strong>${esc(event.title)}</strong><span>${esc(event.label)} · ${esc(who)} · ${esc(relativePulseTime(event.at))}</span></div>`
+    activityList.appendChild(el)
+  }
+  if (!activity.length) activityList.innerHTML = '<div class="pulse-empty">Die ersten Team-Aktivitäten erscheinen hier automatisch.</div>'
+}
+
+$('pulse-add-task').addEventListener('click', () => { taskAdding = ''; switchPodTab('tasks') })
+$('pulse-new-conv').addEventListener('click', () => { switchPodTab('convs'); $('pod-quick-input').focus() })
+$('pulse-ask-enni').addEventListener('click', () => {
+  convPod = activePod
+  newConversation()
+  $('chat-title').textContent = `Projektstand · ${activePod.name}`
+  $('composer-input').value = `Analysiere den aktuellen Projektstand dieses Pods. Fasse Fortschritt, blockierte oder überfällige Aufgaben, fehlende Verantwortlichkeiten und die drei sinnvollsten nächsten Schritte knapp zusammen. Ändere noch nichts ohne Rückfrage.`
+  autosize()
+  send()
+})
 
 // --- Tab: Konversationen (Dust-Muster: Direkt-Input + Suche + Liste)
 let podConvsCache = []
@@ -1897,6 +2001,7 @@ async function loadPodTasks() {
     allProfiles(),
   ])
   const tasks = data || []
+  podTasksCache = tasks
   $('pod-task-count').textContent = tasks.length
   // Gruppen: "Allgemein" ('') zuerst, dann Abschnitte in Reihenfolge der ersten Verwendung, dann leere Entwürfe
   const groups = new Map([['', []]])
@@ -1987,7 +2092,7 @@ function renderTaskRow(t, profs) {
   const row = document.createElement('div')
   row.className = 'trow'
   const done = t.status === 'done'
-  const ind = t.status === 'in_progress' ? '<span class="c-ind work" title="Enni arbeitet …"></span>' : ''
+  const ind = t.status === 'in_progress' ? '<span class="c-ind work" aria-hidden="true"></span>' : t.status === 'blocked' ? '<span class="pulse-row-dot blocked" aria-hidden="true"></span>' : ''
   const assigneeProfile = t.assignee ? profs.find((p) => p.id === t.assignee) : null
   const assignee = assigneeProfile ? assigneeProfile.display_name || assigneeProfile.email : null
   row.innerHTML = `
@@ -1995,8 +2100,8 @@ function renderTaskRow(t, profs) {
       <input type="checkbox" class="task-check" ${done ? 'checked' : ''}>
       <span class="task-check-ui"><svg viewBox="0 0 24 24"><path d="m6 12 4 4 8-9"/></svg></span>
     </label>
-    <div class="t-main"><div class="r-name task-title${done ? ' done' : ''}">${ind}${esc(t.title)}</div>
-      <div class="r-sub">von ${esc(profName(profs, t.created_by))}</div></div>
+    <div class="t-main"><button type="button" class="task-open"><div class="r-name task-title${done ? ' done' : ''}">${ind}${esc(t.title)}</div>
+      <div class="r-sub">von ${esc(profName(profs, t.created_by))}${!['open', 'done'].includes(t.status) ? ` · ${esc(TASK_STATUS_LABELS[t.status])}` : ''}${t.priority && t.priority !== 'normal' ? ` · <span class="task-priority ${esc(t.priority)}">${esc(TASK_PRIORITY_LABELS[t.priority])}</span>` : ''}</div></button></div>
     <span class="t-meta">
       <span class="t-acts">
         <button type="button" class="sb-act t-assign" title="Person zuweisen …" aria-label="Person zuweisen">${PERSON_SVG}</button>
@@ -2013,6 +2118,7 @@ function renderTaskRow(t, profs) {
     await sb.from('pod_tasks').update({ status: e.target.checked ? 'done' : 'open' }).eq('id', t.id)
     loadPodTasks()
   })
+  row.querySelector('.task-open').addEventListener('click', () => openTaskDetail(t, profs))
   row.querySelector('.task-run').addEventListener('click', () => openTaskModal(t))
   row.querySelector('.task-conv')?.addEventListener('click', async (e) => {
     e.preventDefault()
@@ -2037,6 +2143,147 @@ function renderTaskRow(t, profs) {
   row.querySelector('.t-av-btn')?.addEventListener('click', (e) => openAssignMenu(e.currentTarget, t, profs))
   return row
 }
+
+let taskDetailTask = null
+let taskDetailProfiles = []
+let taskDetailDirty = false
+let taskDetailReturnFocus = null
+
+async function loadTaskComments() {
+  if (!taskDetailTask) return
+  const taskId = taskDetailTask.id
+  const { data, error } = await sb.from('pod_task_comments').select('*').eq('task_id', taskId).order('created_at')
+  if (taskDetailTask?.id !== taskId) return
+  const list = $('task-comment-list')
+  list.innerHTML = ''
+  if (error) {
+    list.innerHTML = '<div class="task-comment-empty">Kommentare konnten nicht geladen werden.</div>'
+    return
+  }
+  for (const comment of data || []) {
+    const profile = taskDetailProfiles.find((p) => p.id === comment.author_id)
+    const name = profile?.display_name || profile?.email || 'Teammitglied'
+    const el = document.createElement('article')
+    el.className = 'task-comment'
+    el.innerHTML = `<span class="avatar">${profileAvatarInner(profile, name)}</span><div class="task-comment-body"><div class="task-comment-meta">${esc(name)}<span>${esc(relativePulseTime(comment.created_at))}</span></div><div class="task-comment-text">${esc(comment.body)}</div></div>`
+    list.appendChild(el)
+  }
+  if (!(data || []).length) list.innerHTML = '<div class="task-comment-empty">Noch keine Kommentare. Das erste Update schafft gemeinsamen Kontext.</div>'
+}
+
+async function openTaskDetail(task, profiles = null) {
+  taskDetailTask = task
+  taskDetailDirty = false
+  taskDetailReturnFocus = document.activeElement
+  taskDetailProfiles = profiles || await allProfiles()
+  $('task-detail-title').value = task.title || ''
+  $('task-detail-status').value = task.status || 'open'
+  $('task-detail-priority').value = task.priority || 'normal'
+  $('task-detail-due').value = task.due_date || ''
+  $('task-detail-section').value = task.section || ''
+  $('task-detail-description').value = task.description || ''
+  const assignee = $('task-detail-assignee')
+  const candidates = activePod.open
+    ? taskDetailProfiles
+    : taskDetailProfiles.filter((p) => activePod.members.includes(p.id) || p.id === activePod.created_by)
+  assignee.innerHTML = '<option value="">Niemand</option>' + candidates.map((p) => `<option value="${esc(p.id)}">${esc(p.display_name || p.email)}</option>`).join('')
+  assignee.value = task.assignee || ''
+  $('task-detail-conversation').hidden = !task.conversation_id
+  $('task-comment-input').value = ''
+  $('task-detail-backdrop').classList.add('open')
+  $('task-detail-panel').classList.add('open')
+  $('task-detail-panel').inert = false
+  $('task-detail-panel').setAttribute('aria-hidden', 'false')
+  document.body.style.overflow = 'hidden'
+  await loadTaskComments()
+  $('task-detail-title').focus()
+}
+
+function closeTaskDetail(force = false) {
+  if (taskDetailDirty && !force && !window.confirm('Ungespeicherte Änderungen verwerfen?')) return false
+  taskDetailTask = null
+  taskDetailDirty = false
+  $('task-detail-backdrop').classList.remove('open')
+  $('task-detail-panel').classList.remove('open')
+  $('task-detail-panel').setAttribute('aria-hidden', 'true')
+  $('task-detail-panel').inert = true
+  document.body.style.overflow = ''
+  taskDetailReturnFocus?.focus?.()
+  taskDetailReturnFocus = null
+  return true
+}
+
+$('task-detail-close').addEventListener('click', () => closeTaskDetail())
+$('task-detail-backdrop').addEventListener('click', () => closeTaskDetail())
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && taskDetailTask) closeTaskDetail() })
+for (const id of ['task-detail-title', 'task-detail-status', 'task-detail-priority', 'task-detail-assignee', 'task-detail-due', 'task-detail-section', 'task-detail-description']) {
+  $(id).addEventListener('input', () => { if (taskDetailTask) taskDetailDirty = true })
+  $(id).addEventListener('change', () => { if (taskDetailTask) taskDetailDirty = true })
+}
+$('task-detail-panel').addEventListener('keydown', (e) => {
+  if (e.key !== 'Tab') return
+  const focusable = [...$('task-detail-panel').querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled)')]
+  if (!focusable.length) return
+  const first = focusable[0]
+  const last = focusable[focusable.length - 1]
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus() }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus() }
+})
+
+$('task-detail-save').addEventListener('click', async () => {
+  if (!taskDetailTask) return
+  const patch = {
+    title: $('task-detail-title').value.trim() || taskDetailTask.title,
+    status: $('task-detail-status').value,
+    priority: $('task-detail-priority').value,
+    assignee: $('task-detail-assignee').value || null,
+    due_date: $('task-detail-due').value || null,
+    section: $('task-detail-section').value.trim(),
+    description: $('task-detail-description').value.trim(),
+  }
+  const button = $('task-detail-save')
+  button.disabled = true
+  button.textContent = 'Speichert …'
+  const { error } = await sb.from('pod_tasks').update(patch).eq('id', taskDetailTask.id)
+  button.disabled = false
+  button.textContent = 'Änderungen speichern'
+  if (error) { window.alert('Aufgabe konnte nicht gespeichert werden: ' + error.message); return }
+  Object.assign(taskDetailTask, patch, { updated_at: new Date().toISOString() })
+  closeTaskDetail(true)
+  if (!$('ptab-overview').hidden) loadPodOverview()
+  else loadPodTasks()
+})
+
+$('task-detail-delete').addEventListener('click', async () => {
+  if (!taskDetailTask || !window.confirm(`Aufgabe "${taskDetailTask.title}" löschen?`)) return
+  const { error } = await sb.from('pod_tasks').delete().eq('id', taskDetailTask.id)
+  if (error) { window.alert('Aufgabe konnte nicht gelöscht werden: ' + error.message); return }
+  closeTaskDetail(true)
+  if (!$('ptab-overview').hidden) loadPodOverview()
+  else loadPodTasks()
+})
+
+$('task-detail-conversation').addEventListener('click', async () => {
+  if (!taskDetailTask?.conversation_id) return
+  const { data: c } = await sb.from('conversations').select('*').eq('id', taskDetailTask.conversation_id).maybeSingle()
+  if (c && closeTaskDetail()) { convPod = activePod; openConversation(c) }
+})
+
+async function submitTaskComment() {
+  if (!taskDetailTask) return
+  const input = $('task-comment-input')
+  const body = input.value.trim()
+  if (!body) return
+  const button = $('task-comment-send')
+  button.disabled = true
+  const { error } = await sb.from('pod_task_comments').insert({ task_id: taskDetailTask.id, pod_id: taskDetailTask.pod_id, author_id: session.user.id, body })
+  button.disabled = false
+  if (error) { window.alert('Kommentar konnte nicht gespeichert werden: ' + error.message); return }
+  input.value = ''
+  loadTaskComments()
+}
+$('task-comment-send').addEventListener('click', submitTaskComment)
+$('task-comment-input').addEventListener('keydown', (e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); submitTaskComment() } })
 
 function taskGhostRow(section) {
   const btn = document.createElement('button')
@@ -2276,6 +2523,9 @@ function paintPodLogoTile() {
 async function fillPodSettings() {
   $('pset-name').value = activePod.name
   $('pset-desc').value = activePod.description || ''
+  $('pset-status').value = activePod.project_status || 'on_track'
+  $('pset-target').value = activePod.target_date || ''
+  $('pset-focus').value = activePod.current_focus || ''
   $('pset-instructions').value = activePod.instructions || ''
   $('pset-open').checked = activePod.open
   pendingPodLogo = null
@@ -2325,6 +2575,9 @@ $('pset-save').addEventListener('click', async () => {
   const patch = {
     name: $('pset-name').value.trim() || activePod.name,
     description: $('pset-desc').value.trim(),
+    project_status: $('pset-status').value,
+    target_date: $('pset-target').value || null,
+    current_focus: $('pset-focus').value.trim(),
     instructions: $('pset-instructions').value.trim(),
     open: $('pset-open').checked,
   }
@@ -5121,10 +5374,24 @@ function onConvChange(c) {
   }
 }
 
+let podWorkDebounceTimer = null
+function onPodWorkChange(row) {
+  if (!row?.pod_id || activePod?.id !== row.pod_id) return
+  clearTimeout(podWorkDebounceTimer)
+  podWorkDebounceTimer = setTimeout(() => {
+    refreshPodCounts(row.pod_id)
+    if (!$('ptab-overview').hidden) loadPodOverview()
+    if (!$('ptab-tasks').hidden) loadPodTasks()
+    if (taskDetailTask?.id && row.task_id === taskDetailTask.id) loadTaskComments()
+  }, 180)
+}
+
 function subscribeRealtime() {
   sb.channel('conv-status')
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversations' }, (p) => onConvChange(p.new))
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'conversations' }, (p) => onConvChange(p.new))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'pod_tasks' }, (p) => onPodWorkChange(p.new?.pod_id ? p.new : p.old))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'pod_task_comments' }, (p) => onPodWorkChange(p.new?.pod_id ? p.new : p.old))
     .subscribe()
 }
 
