@@ -281,6 +281,57 @@ const sidebars = { chat: 'sb-chat', wiki: 'sb-spaces', admin: 'sb-admin' }
 const SPACE_NAV_VIEWS = new Set(['wiki', 'space-home', 'page-edit', 'connected', 'pagelist'])
 let activeArea = 'chat'
 let activeView = 'chat'
+const mobileNavMq = window.matchMedia('(max-width: 900px)')
+const mobileNavTrigger = $('mobile-nav-trigger')
+const mobileSidebar = $('primary-sidebar')
+let mobileNavReturnFocus = null
+
+function mobileViewTitle(area, view) {
+  if (view === 'pod') return activePod?.name || 'Pod'
+  if (area === 'admin') return 'Administration'
+  if (view === 'skills') return 'Skills'
+  if (view === 'routines') return 'Routinen'
+  if (view === 'marketplace') return 'Marketplace'
+  if (SPACE_NAV_VIEWS.has(view)) return currentSpace?.name || 'Spaces'
+  return $('chat-title')?.textContent?.trim() || currentConv?.title || 'Chat'
+}
+
+function updateMobileTitle(area = activeArea, view = activeView) {
+  $('mobile-page-title').textContent = mobileViewTitle(area, view)
+}
+
+function openMobileNav() {
+  if (!mobileNavMq.matches) return
+  mobileNavReturnFocus = document.activeElement
+  $('app-view').classList.add('mobile-nav-open')
+  document.body.classList.add('mobile-nav-open')
+  mobileNavTrigger.setAttribute('aria-expanded', 'true')
+  $('main-content').inert = true
+  $('mobile-nav-close').focus()
+}
+
+function closeMobileNav(restoreFocus = true) {
+  const wasOpen = $('app-view').classList.contains('mobile-nav-open')
+  $('app-view').classList.remove('mobile-nav-open')
+  document.body.classList.remove('mobile-nav-open')
+  mobileNavTrigger.setAttribute('aria-expanded', 'false')
+  $('main-content').inert = false
+  if (wasOpen && restoreFocus) (mobileNavReturnFocus || mobileNavTrigger).focus()
+}
+
+mobileNavTrigger.addEventListener('click', openMobileNav)
+$('mobile-nav-close').addEventListener('click', () => closeMobileNav())
+$('mobile-sidebar-backdrop').addEventListener('click', () => closeMobileNav())
+$('mobile-search').addEventListener('click', () => $('global-search-btn').click())
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMobileNav() })
+mobileNavMq.addEventListener('change', (e) => { if (!e.matches) closeMobileNav(false) })
+let mobileDrawerTouchX = null
+mobileSidebar.addEventListener('touchstart', (e) => { mobileDrawerTouchX = e.touches[0]?.clientX ?? null }, { passive: true })
+mobileSidebar.addEventListener('touchend', (e) => {
+  const endX = e.changedTouches[0]?.clientX
+  if (mobileDrawerTouchX != null && endX != null && endX - mobileDrawerTouchX < -55) closeMobileNav()
+  mobileDrawerTouchX = null
+}, { passive: true })
 
 function paintSidebarSelection(area, view) {
   document.querySelectorAll('.admin-area').forEach((item) =>
@@ -299,6 +350,8 @@ function activateArea(area, view = area) {
   Object.entries(views).forEach(([k, id]) => $(id).classList.toggle('active', k === view))
   Object.entries(sidebars).forEach(([k, id]) => ($(id).hidden = k !== area))
   paintSidebarSelection(area, view)
+  updateMobileTitle(area, view)
+  closeMobileNav(false)
   closePanel()
   window.scrollTo({ top: 0 })
   syncUrl(area, view)
@@ -470,7 +523,10 @@ function renameConv(btn, c) {
     if (commit && title && title !== c.title) {
       await sb.from('conversations').update({ title }).eq('id', c.id)
       c.title = title
-      if (currentConv?.id === c.id) $('chat-title').textContent = title
+      if (currentConv?.id === c.id) {
+        $('chat-title').textContent = title
+        updateMobileTitle()
+      }
     }
     loadConversations()
   }
@@ -492,6 +548,7 @@ function newConversation() {
   setModel('claude-sonnet-5')
   $('composer-input').placeholder = convPod ? 'Nachricht ans Team — @enni ruft Enni …' : 'Frag Enni …'
   $('chat-title').textContent = 'Neue Konversation'
+  updateMobileTitle()
   renderNewConversationEmpty()
   document.querySelectorAll('#conv-list .sb-item').forEach((x) => x.classList.remove('on'))
   sidebarPodId = convPod?.id || null
@@ -522,6 +579,7 @@ async function openConversation(c) {
   convPod = c.pod_id ? podsList.find((p) => p.id === c.pod_id) || convPod : null
   $('composer-input').placeholder = convPod ? 'Nachricht ans Team — @enni ruft Enni …' : 'Frag Enni …'
   $('chat-title').textContent = (convPod ? `${convPod.name} · ` : '') + (c.title || 'Ohne Titel')
+  updateMobileTitle()
   activateChatView()
   $('msgs').innerHTML =
     '<div class="skel" style="align-self:flex-end;width:45%;height:44px"></div>' +
@@ -1826,9 +1884,9 @@ function renderTaskRow(t, profs) {
       <div class="r-sub">von ${esc(profName(profs, t.created_by))}</div></div>
     <span class="t-meta">
       <span class="t-acts">
-        <span class="sb-act t-assign" title="Person zuweisen …">${PERSON_SVG}</span>
-        <span class="sb-act t-date" title="Fällig am …">${CAL_SVG}</span>
-        <span class="sb-act t-del" title="Löschen">${X_SVG}</span>
+        <button type="button" class="sb-act t-assign" title="Person zuweisen …" aria-label="Person zuweisen">${PERSON_SVG}</button>
+        <button type="button" class="sb-act t-date" title="Fällig am …" aria-label="Fälligkeitsdatum ändern">${CAL_SVG}</button>
+        <button type="button" class="sb-act t-del" title="Löschen" aria-label="Aufgabe löschen">${X_SVG}</button>
       </span>
       ${t.due_date ? `<span class="t-due${isOverdue(t) ? ' over' : ''}" title="Fällig">${fmtDue(t.due_date)}</span>` : ''}
       ${t.conversation_id ? `<button class="glass-icon task-conv" title="Konversation öffnen" aria-label="Konversation öffnen"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H5l-2 2V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8z"/></svg></button>` : ''}
@@ -2515,6 +2573,9 @@ function updateMentionBacks() {
 // pro Konversation gequeued und nach Abschluss des laufenden Turns automatisch gesendet.
 const promptQueues = new Map() // convId -> [{ text, files }]
 let draggedPrompt = null
+let touchDraggedPrompt = null
+let touchDropTarget = null
+let touchDropAfter = false
 
 function removeQueuedPrompt(convId, item) {
   const list = promptQueues.get(convId) || []
@@ -2580,6 +2641,8 @@ function renderQueuedPrompt(convId, item, index, list) {
           <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
         </button>
         <div class="queue-menu" hidden>
+          <button type="button" data-action="up" ${index === 0 ? 'disabled' : ''}>Nach oben</button>
+          <button type="button" data-action="down" ${index === list.length - 1 ? 'disabled' : ''}>Nach unten</button>
           <button type="button" data-action="edit">Bearbeiten</button>
           <button type="button" data-action="duplicate">Duplizieren</button>
           <button type="button" data-action="last">Ans Ende</button>
@@ -2597,8 +2660,41 @@ function renderQueuedPrompt(convId, item, index, list) {
   }
 
   const drag = row.querySelector('.queue-drag')
-  drag.addEventListener('pointerdown', () => { row.draggable = true })
-  drag.addEventListener('pointerup', () => { row.draggable = false })
+  const clearDropState = () => {
+    touchDraggedPrompt = null
+    touchDropTarget = null
+    document.querySelectorAll('.queue-row').forEach((el) => el.classList.remove('dragging', 'drop-before', 'drop-after'))
+  }
+  drag.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'touch') { row.draggable = true; return }
+    e.preventDefault()
+    touchDraggedPrompt = item
+    touchDropTarget = null
+    row.classList.add('dragging')
+    drag.setPointerCapture?.(e.pointerId)
+  })
+  drag.addEventListener('pointermove', (e) => {
+    if (touchDraggedPrompt !== item) return
+    const targetRow = document.elementFromPoint(e.clientX, e.clientY)?.closest('.queue-row')
+    document.querySelectorAll('.queue-row').forEach((el) => el.classList.remove('drop-before', 'drop-after'))
+    if (!targetRow || targetRow === row) { touchDropTarget = null; return }
+    touchDropTarget = list[Number(targetRow.dataset.queueIndex)]
+    touchDropAfter = e.clientY > targetRow.getBoundingClientRect().top + targetRow.offsetHeight / 2
+    targetRow.classList.add(touchDropAfter ? 'drop-after' : 'drop-before')
+  })
+  drag.addEventListener('pointerup', () => {
+    row.draggable = false
+    if (touchDraggedPrompt === item && touchDropTarget) {
+      const remaining = list.filter((entry) => entry !== item)
+      const target = remaining.indexOf(touchDropTarget)
+      const destination = target + (touchDropAfter ? 1 : 0)
+      clearDropState()
+      reorderQueuedPrompt(convId, item, destination)
+      return
+    }
+    clearDropState()
+  })
+  drag.addEventListener('pointercancel', clearDropState)
   drag.addEventListener('keydown', (e) => {
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
     e.preventDefault()
@@ -2655,6 +2751,8 @@ function renderQueuedPrompt(convId, item, index, list) {
   })
   menu.addEventListener('click', (e) => {
     const action = e.target.closest('button')?.dataset.action
+    if (action === 'up') reorderQueuedPrompt(convId, item, index - 1)
+    if (action === 'down') reorderQueuedPrompt(convId, item, index + 1)
     if (action === 'edit') editQueuedPrompt(convId, item, row)
     if (action === 'duplicate') {
       list.splice(index + 1, 0, { text: item.text, files: [...(item.files || [])] })
@@ -2944,7 +3042,10 @@ async function send() {
           }
         } else if (ev.type === 'title') {
           if (currentConv?.id === streamConvId) currentConv.title = ev.title
-          if (inView() && !convPod) $('chat-title').textContent = ev.title
+          if (inView() && !convPod) {
+            $('chat-title').textContent = ev.title
+            updateMobileTitle()
+          }
           loadConversations()
         } else if (ev.type === 'error') {
           runIndicator?.remove()

@@ -2,6 +2,13 @@
 
 **Zuletzt aktualisiert:** 2026-07-15 (Account Governance + Knowledge-/Release-Sync; live auf https://os.enneo.ai)
 
+### Session 2026-07-15 — Vollständige Smartphone-Optimierung
+
+- **Mobile App-Shell:** Unter 900 px ersetzt eine kompakte Glass-Topbar die Desktop-Navigation. Die komplette Sidebar öffnet als zugänglicher Off-Canvas-Drawer mit Backdrop, Fokusführung, Escape-/Swipe-Schließen und dynamischem Seitentitel. Safe-Area-Insets decken iPhone-Notch und Home-Indikator ab.
+- **Alle Kernbereiche responsive:** Chat, Marketplace, Spaces/Wiki, Pods (Konversationen, Aufgaben, Dateien, Einstellungen), Skills, Routinen, Admin und Kostenansichten wurden auf einspaltige, platzsparende Smartphone-Layouts umgestellt. Tabs scrollen horizontal; Tabellen und Code bleiben innerhalb ihres Bereichs scrollbar; Modals und Tool-Details erscheinen als bedienbare Bottom Sheets.
+- **Chat für Touch:** Composer bleibt oberhalb der Safe Area, Modellwahl öffnet viewport-sicher, Textfelder nutzen 16 px gegen iOS-Autozoom. Prompt Queue sitzt kompakt am Composer und lässt sich jetzt auch per Touch-Drag umsortieren; zusätzlich gibt es „Nach oben“/„Nach unten“ als robuste Alternative.
+- **Bedienbarkeit & Accessibility:** Primäre Touch-Ziele sind mindestens 44 px groß, Icon-Aktionen haben zugängliche Namen, Fokuszustände sind global sichtbar, Task-Aktionen verwenden echte Buttons und Reduced Motion wird respektiert. Light/Dark wurden auf 390×844 sowie 430×932 geprüft; Chat, Marketplace, Pod und Admin haben keinen horizontalen Seitenüberlauf.
+
 ### Session 2026-07-15 — Live-Diktat mit präziser Finalisierung
 
 - **Text erscheint schon beim Sprechen:** MediaRecorder zeichnet weiterhin die hochwertige Audiospur für ElevenLabs Scribe auf; parallel schreibt die Browser-Spracherkennung Interim-Ergebnisse live in den aktiven Chat- oder Pod-Composer.
