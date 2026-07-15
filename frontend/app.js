@@ -1076,6 +1076,7 @@ async function openConversation(c) {
     sb.from('messages').select('*').eq('conversation_id', c.id).order('created_at'),
     sb.from('llm_usage').select('message_id, cost_eur').eq('conversation_id', c.id),
     allProfiles(),
+    allSkills(),
   ])
   costByMessage = Object.fromEntries((usage || []).map((u) => [u.message_id, Number(u.cost_eur)]))
   const box = $('msgs')
@@ -1100,8 +1101,21 @@ async function openConversation(c) {
 }
 
 // ============================================================ Rendering
-// @Erwähnungen (Personen, @enni) hervorheben — Text wird vorher escaped
-const mentionize = (t) => esc(t).replace(/@([A-Za-zÀ-ÿ][\w.\-]*)/g, '<span class="mention">@$1</span>')
+// @Erwähnungen und bekannte /Skills bleiben auch in gesendeten Nachrichten
+// semantisch sichtbar. Der Text wird vor allen Ersetzungen escaped.
+function messageize(text) {
+  let html = esc(text)
+  const skillSlugs = (skillsCache || []).map((skill) => skill.slug).filter(Boolean).sort((a, b) => b.length - a.length)
+  if (skillSlugs.length) {
+    const skillRe = new RegExp(`(^|\\s)/(${skillSlugs.map(escRe).join('|')})(?=\\s|[.,!?;:]|$)`, 'gi')
+    html = html.replace(skillRe, '$1<span class="message-skill-tag">/$2</span>')
+  }
+  return html.replace(/@([A-Za-zÀ-ÿ][\w.\-]*)/g, '<span class="mention">@$1</span>')
+}
+
+function hasSlashSkill(text) {
+  return /(?:^|\s)\/[a-z0-9][a-z0-9-]*\b/i.test(text || '')
+}
 
 function wrapPersonMessage(bubble, profile, mine = false) {
   if (!profile) return bubble
@@ -1120,7 +1134,7 @@ function wrapPersonMessage(bubble, profile, mine = false) {
 function renderUser(text, attachments, profile = myProfile) {
   const el = document.createElement('div')
   el.className = 'm-user'
-  el.innerHTML = mentionize(text)
+  el.innerHTML = messageize(text)
   if (attachments?.length) {
     const row = document.createElement('div')
     row.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin-top:8px'
@@ -1143,7 +1157,7 @@ function renderPeer(profile, text, attachments) {
   nameEl.textContent = profile?.display_name || profile?.email || 'Teammitglied'
   el.appendChild(nameEl)
   const textEl = document.createElement('span')
-  textEl.innerHTML = mentionize(text)
+  textEl.innerHTML = messageize(text)
   el.appendChild(textEl)
   if (attachments?.length) {
     const row = document.createElement('div')
@@ -3759,8 +3773,8 @@ function renderMentionBack(textarea, back) {
   const skillSlugs = (skillsCache || []).map((skill) => skill.slug).filter(Boolean).sort((a, b) => b.length - a.length)
   let highlighted = esc(val)
   if (skillSlugs.length) {
-    const skillRe = new RegExp(`^/(${skillSlugs.map(escRe).join('|')})(?=\\s|$)`, 'i')
-    highlighted = highlighted.replace(skillRe, '<span class="mtag skill-tag">$&</span>')
+    const skillRe = new RegExp(`(^|\\s)/(${skillSlugs.map(escRe).join('|')})(?=\\s|[.,!?;:]|$)`, 'gi')
+    highlighted = highlighted.replace(skillRe, '$1<span class="mtag skill-tag">/$2</span>')
   }
   back.innerHTML = highlighted.replace(mentionRe, '<span class="mtag">$&</span>')
   back.scrollTop = textarea.scrollTop
@@ -4069,7 +4083,7 @@ async function send() {
 
   // Pod-Konversationen sind Team-Chat: Enni antwortet nur bei @enni-Erwähnung.
   // Ohne Erwähnung wird die Nachricht nur gespeichert — kein Agent-Container nötig.
-  const isTeamMsg = !!convPod && !/@enni\b/i.test(text)
+  const isTeamMsg = !!convPod && !/@enni\b/i.test(text) && !hasSlashSkill(text)
 
   // Live-Agent-Container (nur wenn Enni antworten wird)
   let wrap = null
@@ -4369,7 +4383,7 @@ async function mentionCheck(input, pod) {
   renderMentionMenu()
 }
 
-// Slash-Autocomplete: "/" am Nachrichtenanfang schlägt Skills vor
+// Slash-Autocomplete: "/" an jeder neuen Wortposition schlägt Skills vor
 let skillsCache = null
 async function allSkills() {
   if (!skillsCache) {
@@ -4384,7 +4398,7 @@ async function allSkills() {
 async function slashCheck(input) {
   const pos = input.selectionStart
   const before = input.value.slice(0, pos)
-  const m = before.match(/^\/([a-z0-9-]*)$/i)
+  const m = before.match(/(?:^|\s)\/([a-z0-9-]*)$/i)
   if (!m) return false
   const q = m[1].toLowerCase()
   const skills = (await allSkills()).filter(
@@ -4395,7 +4409,7 @@ async function slashCheck(input) {
     input,
     items: skills.map((s) => ({ insert: '/' + s.slug, name: s.name })),
     sel: 0,
-    start: 0,
+    start: pos - q.length - 1,
   }
   renderMentionMenu()
   return true

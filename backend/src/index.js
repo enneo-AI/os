@@ -467,8 +467,9 @@ app.post('/api/chat', async (req, res) => {
   try {
     // Pod-Konversationen sind Team-Chat: Enni antwortet NUR, wenn er mit @enni erwähnt wird.
     // Ohne Erwähnung wird die Nachricht nur persistiert (Team-Nachricht, kein LLM-Call).
-    // Ausnahme: ein Slash-Skill-Aufruf (/health-check …) richtet sich immer an Enni.
-    const slashMatch = (message || '').match(/^\/([a-z0-9-]+)/i)
+    // Ausnahme: ein Slash-Skill-Aufruf (/health-check …) richtet sich immer an Enni —
+    // unabhängig davon, ob er am Satzanfang oder mitten in der Nachricht steht.
+    const slashMatch = (message || '').match(/(?:^|\s)\/([a-z0-9][a-z0-9-]*)\b/i)
     const enniMentioned = /@enni\b/i.test(message || '') || !!slashMatch
     if (pod && !enniMentioned) {
       if (titlePromise) {
@@ -498,7 +499,7 @@ app.post('/api/chat', async (req, res) => {
         (pod.instructions ? `\n\nInstructions for Agents (gelten in diesem Pod):\n${pod.instructions}` : '')
       extraSystem += await podAttioPrompt(pod.id)
     }
-    // Slash-Command: /slug am Nachrichtenanfang ruft einen Skill explizit auf —
+    // Slash-Command: /slug an einer beliebigen Wortposition ruft einen Skill explizit auf —
     // voller Skill geht als System-Block mit, Enni startet mit einem Workflow-Overview.
     if (slashMatch) {
       const { data: skill } = await db

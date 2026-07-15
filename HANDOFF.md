@@ -1,6 +1,13 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-15 (Browser-Benachrichtigungen und synchroner Lesestatus)
+**Zuletzt aktualisiert:** 2026-07-15 (Slash-Skills im ganzen Satz und persistente Labels)
+
+### Session 2026-07-15 — Slash-Skills sind keine Anfangskommandos mehr
+
+- **Autocomplete an jeder Wortposition:** Ein `/` nach Leerraum öffnet die Skill-Auswahl nun auch mitten in einer bereits formulierten Nachricht. Auswahl und Einfügen ersetzen ausschließlich das aktuelle Slash-Fragment; der Text davor und danach bleibt erhalten.
+- **Auswahl bleibt nach dem Senden sichtbar:** Bekannte, für den Nutzer verfügbare `/skill-slugs` werden in eigenen und fremden Team-Nachrichten als kompakte violette Skill-Labels gerendert. Alte Nachrichten erhalten die Darstellung beim erneuten Öffnen ebenfalls.
+- **Echte Ausführung passend zur UI:** Backend und Pod-Frontend erkennen explizite Slash-Skills jetzt an jeder Wortposition. Dadurch ruft beispielsweise „Erstelle mit /dokument …“ Enni auch in einem Pod wirklich auf und lädt den gewählten Skill – nicht nur das Dropdown.
+- **Verifiziert:** Backend-Tests 7/7, JavaScript-Syntax und Diff-Check grün. Die Regression prüft Autocomplete-Muster, Pod-Routing und persistente Skill-Labels gemeinsam.
 
 ### Session 2026-07-15 — Benachrichtigungen folgen dem echten Lesestatus
 

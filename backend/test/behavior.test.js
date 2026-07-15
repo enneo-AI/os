@@ -116,3 +116,13 @@ test('notifications are user-scoped, admin-published and push-capable', () => {
   assert.match(serviceWorker, /showNotification/)
   assert.match(serviceWorker, /notificationclick/)
 })
+
+test('slash skills work and stay visible inside complete sentences', () => {
+  const indexSource = readFileSync(join(here, '../src/index.js'), 'utf8')
+  const frontendSource = readFileSync(join(here, '../../frontend/app.js'), 'utf8')
+
+  assert.match(indexSource, /slashMatch = .*\(\?:\^\|\\s\)/)
+  assert.match(frontendSource, /before\.match\(\/\(\?:\^\|\\s\)/)
+  assert.match(frontendSource, /message-skill-tag/)
+  assert.match(frontendSource, /!hasSlashSkill\(text\)/)
+})
