@@ -7,7 +7,7 @@
 - **Autocomplete an jeder Wortposition:** Ein `/` nach Leerraum öffnet die Skill-Auswahl nun auch mitten in einer bereits formulierten Nachricht. Auswahl und Einfügen ersetzen ausschließlich das aktuelle Slash-Fragment; der Text davor und danach bleibt erhalten.
 - **Auswahl bleibt nach dem Senden sichtbar:** Bekannte, für den Nutzer verfügbare `/skill-slugs` werden in eigenen und fremden Team-Nachrichten als kompakte violette Skill-Labels gerendert. Alte Nachrichten erhalten die Darstellung beim erneuten Öffnen ebenfalls.
 - **Echte Ausführung passend zur UI:** Backend und Pod-Frontend erkennen explizite Slash-Skills jetzt an jeder Wortposition. Dadurch ruft beispielsweise „Erstelle mit /dokument …“ Enni auch in einem Pod wirklich auf und lädt den gewählten Skill – nicht nur das Dropdown.
-- **Verifiziert:** Backend-Tests 7/7, JavaScript-Syntax und Diff-Check grün. Die Regression prüft Autocomplete-Muster, Pod-Routing und persistente Skill-Labels gemeinsam.
+- **Verifiziert und live:** Backend-Tests 7/7, JavaScript-Syntax und Diff-Check grün. Der echte Browser-Test mit temporärem Account öffnete nach „Erstelle mit dem /“ mitten im Satz 26 Vorschläge, setzte `/dokument` als Composer-Label und behielt es nach dem Senden als violette Message-Pill (`rgba(149,116,255,.28)`, 7 px Radius). Railway-Deployment `d5b7aba4-d4c4-4924-a73d-e91504993392` ist erfolgreich; Netlify liefert Commit `dccf28b`. Testaccount und Testkonversation wurden anschließend vollständig entfernt.
 
 ### Session 2026-07-15 — Benachrichtigungen folgen dem echten Lesestatus
 
