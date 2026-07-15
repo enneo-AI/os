@@ -277,11 +277,27 @@ const views = {
   'space-home': 'v-space-home', 'page-edit': 'v-page-edit',
 }
 const sidebars = { chat: 'sb-chat', wiki: 'sb-spaces', admin: 'sb-admin' }
+const SPACE_NAV_VIEWS = new Set(['wiki', 'space-home', 'page-edit', 'connected', 'pagelist'])
+let activeArea = 'chat'
+let activeView = 'chat'
+
+function paintSidebarSelection(area, view) {
+  document.querySelectorAll('.admin-area').forEach((item) =>
+    item.classList.toggle('on', area === 'wiki' && item.dataset.view === view)
+  )
+  const spaceSelected = area === 'wiki' && SPACE_NAV_VIEWS.has(view)
+  document.querySelectorAll('#space-tree [data-space]').forEach((item) =>
+    item.classList.toggle('on', spaceSelected && item.dataset.space === currentSpace?.id)
+  )
+}
 
 function activateArea(area, view = area) {
+  activeArea = area
+  activeView = view
   document.querySelectorAll('.rail-btn').forEach((x) => x.classList.toggle('active', x.dataset.v === area))
   Object.entries(views).forEach(([k, id]) => $(id).classList.toggle('active', k === view))
   Object.entries(sidebars).forEach(([k, id]) => ($(id).hidden = k !== area))
+  paintSidebarSelection(area, view)
   closePanel()
   window.scrollTo({ top: 0 })
   syncUrl(area, view)
@@ -2947,7 +2963,7 @@ function renderSpaceTree() {
     const isOpen = expanded.has(s.id)
     const row = treeItem({ chev: true, label: s.name, lock: s.restricted })
     row.dataset.space = s.id
-    row.classList.toggle('on', currentSpace?.id === s.id)
+    row.classList.toggle('on', activeArea === 'wiki' && SPACE_NAV_VIEWS.has(activeView) && currentSpace?.id === s.id)
     if (isOpen) row.classList.add('open')
     row.addEventListener('click', () => {
       expanded.add(s.id)
