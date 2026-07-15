@@ -6,7 +6,7 @@ self.addEventListener('push', (event) => {
     icon: data.icon || '/icons/enni.png',
     tag: data.tag || 'enneo-notification',
     data: { url: data.url || '/chat' },
-    renotify: true,
+    renotify: false,
   }))
 })
 

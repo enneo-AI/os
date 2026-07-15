@@ -20,12 +20,13 @@
 ## Architektur (Kurzform)
 
 - **Frontend** `frontend/`: Vanilla HTML+JS ohne Build (esm.sh für supabase-js/marked/DOMPurify). Konfiguration in `config.js` (Anon-Key ist public). SPA-Routing über History API: `/chat`, `/chat/:id`, `/spaces`, `/spaces/tools`, `/spaces/connections`, `/admin`, `/pod/:id`.
-- **Backend** `backend/`: Node 22 + Express + `@anthropic-ai/sdk` (manueller Tool-Loop, KEIN Agent-SDK — Begründung in `backend/README.md`). SSE-Streaming. Endpoints: `POST /api/chat` (message, conversation_id?, model?, attachments?, pod_id?), `POST /api/compact`, `GET /health`.
+- **Backend** `backend/`: Node 22 + Express + `@anthropic-ai/sdk` (manueller Tool-Loop, KEIN Agent-SDK — Begründung in `backend/README.md`). SSE-Streaming. Endpoints: `POST /api/chat` (message, conversation_id?, model?, attachments?, pod_id?), `POST /api/compact`, `POST /api/conversations/:id/read`, `GET /health`.
 - **Enni-Tools:** `wiki_semantic_search` (RAG, pgvector Top-8-Chunks — IMMER zuerst), `wiki_search`/`wiki_list_pages`/`wiki_read_page`, GitLab read-only (`gitlab_search_projects/_search_code/_read_file/_list_merge_requests`). Der teamweite Skill `/ux-ui-engineering` hat zwei serverseitig getrennte Modi: Members nur eigene `ui_change_requests`; aktive Admins zusätzlich Request-Management und GitLab-Writes ausschließlich auf freigegebenen `enni/ui-*`-Branches im `enneo`-Namespace. Kein Default-Branch-Write, Merge oder Auto-Merge.
 - **Modelle:** User wählt im Chat-Dropdown (Opus 4.8 Default / Sonnet 5 / Haiku 4.5). Haiku kann KEIN adaptive thinking — Parameter wird modellabhängig gesetzt. Kosten pro Antwort in `llm_usage` (cost_eur), Preise in `backend/src/usage.js`.
 - **Kontext:** Prompt-Caching (wandernder Breakpoint im Tool-Loop, alte Marker löschen — max. 4!). Compaction nach Dust: Ring im Composer, 33/70/80-Schwellen, `role='compaction'`-Anker, Haiku fasst zusammen.
 - **Anhänge:** Excel/CSV/JPEG/PNG/PDF (max 4×10MB); Excel→CSV via `xlsx` in `backend/src/attachments.js`; Inhalt geht NUR im Upload-Turn ans Modell (Kosten!), Verlauf behält Marker + `messages.attachments`-Metadaten.
 - **Diktat:** Web Speech API (Chrome/Edge/Safari), DE/EN-Umschalter unterm Composer.
+- **Notifications:** Inbox, Conversation-Unread-State und Browser-Push werden über `POST /api/conversations/:id/read` gemeinsam quittiert. Ein sichtbar geöffneter Chat gilt sofort als gelesen; ein versteckter Tab erhält beim SSE-Abschluss eine lokale Service-Worker-Notification als Fallback. Der Dokumenttitel zeigt die Zahl offener Meldungen.
 
 ## Datenmodell (Migrations 0001–0006)
 

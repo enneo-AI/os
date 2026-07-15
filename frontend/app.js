@@ -162,6 +162,36 @@ function paintNotificationBadges() {
     if (unread) navigator.setAppBadge(unread).catch(() => {})
     else navigator.clearAppBadge?.().catch(() => {})
   }
+  document.title = unread ? `(${unread > 99 ? '99+' : unread}) enneo OS` : 'enneo OS'
+}
+
+const conversationReadRequests = new Set()
+function isReadingConversation(conversationId) {
+  return !!conversationId && !document.hidden && activeArea === 'chat' && activeView === 'chat' && currentConv?.id === conversationId
+}
+
+async function markConversationRead(conversationId) {
+  if (!conversationId) return
+  const now = new Date().toISOString()
+  if (currentConv?.id === conversationId) currentConv.unread = false
+  statusSnapshot.set(conversationId, { ...(statusSnapshot.get(conversationId) || {}), unread: false })
+  let changed = false
+  for (const item of notificationItems) {
+    if (item.conversation_id === conversationId && !item.read_at) {
+      item.read_at = now
+      changed = true
+    }
+  }
+  if (changed) renderNotifications()
+  if (conversationReadRequests.has(conversationId)) return
+  conversationReadRequests.add(conversationId)
+  try {
+    await notificationApi(`/conversations/${conversationId}/read`, { method: 'POST' })
+  } catch (error) {
+    console.error('Conversation gelesen:', error.message)
+  } finally {
+    conversationReadRequests.delete(conversationId)
+  }
 }
 
 function renderNotifications() {
@@ -183,7 +213,9 @@ async function loadNotifications() {
   try {
     const data = await notificationApi('/notifications?limit=100')
     notificationItems = data.notifications || []
-    renderNotifications()
+    const activeUnread = notificationItems.some((item) => !item.read_at && isReadingConversation(item.conversation_id))
+    if (activeUnread) await markConversationRead(currentConv.id)
+    else renderNotifications()
   } catch (error) {
     console.error('Notifications:', error.message)
   }
@@ -300,8 +332,26 @@ function urlBase64ToUint8Array(value) {
 
 async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return null
-  try { return await navigator.serviceWorker.register('/sw.js') }
+  try {
+    const registration = await navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
+    await registration.update().catch(() => {})
+    return registration
+  }
   catch (error) { console.error('Service Worker:', error.message); return null }
+}
+
+async function showLocalCompletionNotification({ conversationId, messageId, body, podId }) {
+  if (!document.hidden || window.Notification?.permission !== 'granted') return
+  const registration = await registerServiceWorker()
+  if (!registration) return
+  const url = podId ? `/pod/${podId}?tab=convs&conversation=${conversationId}` : `/chat/${conversationId}`
+  await registration.showNotification('Enni ist fertig', {
+    body: String(body || '').replace(/\s+/g, ' ').trim().slice(0, 240),
+    icon: '/icons/enni.png',
+    tag: `enneo-agent_complete-${messageId || conversationId}`,
+    data: { url },
+    renotify: false,
+  })
 }
 
 async function enablePush() {
@@ -999,20 +1049,18 @@ async function openConversation(c) {
   currentConv = c
   viewSeq++
   updateComposerState()
-  // Grüner "fertig"-Punkt erlischt beim Öffnen
-  if (c.unread) {
-    c.unread = false
-    sb.from('conversations').update({ unread: false }).eq('id', c.id).then(() => {
-      loadConversations()
-      if (c.pod_id) loadPods() // grüner Punkt am Pod erlischt mit
-    })
-  }
+  // Chat und zugehörige Inbox-Notification werden gemeinsam gelesen.
+  c.unread = false
   $('chat-close').hidden = false
   convPod = c.pod_id ? podsList.find((p) => p.id === c.pod_id) || convPod : null
   $('composer-input').placeholder = convPod ? 'Nachricht ans Team — @enni ruft Enni …' : 'Frag Enni …'
   $('chat-title').textContent = (convPod ? `${convPod.name} · ` : '') + (c.title || 'Ohne Titel')
   updateMobileTitle()
   activateChatView()
+  markConversationRead(c.id).then(() => {
+    loadConversations()
+    if (c.pod_id) loadPods()
+  })
   $('msgs').innerHTML =
     '<div class="skel" style="align-self:flex-end;width:45%;height:44px"></div>' +
     '<div class="skel" style="width:70%;height:76px"></div>' +
@@ -4058,6 +4106,7 @@ async function send() {
 
   let thinkingText = ''
   let answerText = ''
+  let completionEvent = null
   let thinkPara = null
   let toolCount = 0
   const pendingTools = {}
@@ -4182,6 +4231,7 @@ async function send() {
           setStatus('Schreibt …')
           follow()
         } else if (ev.type === 'done') {
+          completionEvent = ev
           if (!isTeamMsg) {
             body.innerHTML = md(answerText) // Cursor entfernen — Antwort ist final
             if (ev.stopped && !answerText.trim()) body.innerHTML = '<p><em>Gestoppt.</em></p>'
@@ -4226,12 +4276,21 @@ async function send() {
     renderCtx()
     $('composer-input').focus()
   }
-  // Nutzer schaut gerade auf diese Konversation → "fertig"-Punkt direkt löschen;
-  // kam er mittendrin zurück (andere Ansicht, gleiche Konv), Ansicht mit finaler Antwort neu laden
-  if (streamConvId) statusSnapshot.set(streamConvId, { working: false, unread: false })
+  // Nur eine wirklich sichtbare Konversation gilt als gelesen. Ein ausgeblendeter
+  // Tab bleibt ungelesen und zeigt zusätzlich lokal eine Browser-Benachrichtigung.
+  const readingCompletedConversation = isReadingConversation(streamConvId)
+  if (streamConvId) statusSnapshot.set(streamConvId, { working: false, unread: !readingCompletedConversation })
   if (streamConvId && currentConv?.id === streamConvId) {
     currentConv.working = false // sonst baut der Reload einen Geister-Live-Container
-    sb.from('conversations').update({ unread: false }).eq('id', streamConvId).then(() => {})
+    if (readingCompletedConversation) markConversationRead(streamConvId)
+    else if (completionEvent && !completionEvent.stopped) {
+      showLocalCompletionNotification({
+        conversationId: streamConvId,
+        messageId: completionEvent.message_id,
+        body: answerText,
+        podId: convPod?.id || null,
+      }).catch((error) => console.error('Lokale Browser-Benachrichtigung:', error.message))
+    }
     if (!inView()) openConversation(currentConv)
   }
   loadConversations()
@@ -6157,6 +6216,10 @@ function onConvChange(c) {
   if (!c?.id) return
   const prev = statusSnapshot.get(c.id)
   statusSnapshot.set(c.id, { working: c.working, unread: c.unread })
+  if (!c.working && c.unread && isReadingConversation(c.id)) {
+    markConversationRead(c.id)
+    return
+  }
   // Offene Konversation wurde außerhalb dieses Tabs fertig (Routine, anderes Gerät) → neu laden
   if (prev?.working && !c.working && currentConv?.id === c.id && !activeStreams.has(c.id) && !sendingViews.size) {
     openConversation(currentConv)
@@ -6189,9 +6252,21 @@ function subscribeRealtime() {
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'conversations' }, (p) => onConvChange(p.new))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'pod_tasks' }, (p) => onPodWorkChange(p.new?.pod_id ? p.new : p.old))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'pod_task_comments' }, (p) => onPodWorkChange(p.new?.pod_id ? p.new : p.old))
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${session.user.id}` }, () => loadNotifications())
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${session.user.id}` }, async (payload) => {
+      const item = payload.new
+      if (item?.conversation_id && !item.read_at && isReadingConversation(item.conversation_id)) {
+        await markConversationRead(item.conversation_id)
+      }
+      await loadNotifications()
+    })
     .subscribe()
 }
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && currentConv?.id && activeArea === 'chat' && activeView === 'chat') {
+    markConversationRead(currentConv.id).then(() => loadConversations())
+  }
+})
 
 // Live-Nachrichten der gerade offenen Konversation (Pod-Team-Chat ohne Reload).
 // Eigene Nachrichten + eigene Streams rendern lokal — nur Fremdes wird angehängt.

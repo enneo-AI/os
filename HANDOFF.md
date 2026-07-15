@@ -1,6 +1,14 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-15 (Restricted-Pod-Isolation und zentrierte Produkttour)
+**Zuletzt aktualisiert:** 2026-07-15 (Browser-Benachrichtigungen und synchroner Lesestatus)
+
+### Session 2026-07-15 — Benachrichtigungen folgen dem echten Lesestatus
+
+- **Sichtbarer Chat ist sofort gelesen:** Der neue autorisierte Endpunkt `POST /api/conversations/:id/read` löscht den Conversation-Unread-State und markiert passende Inbox-Benachrichtigungen gemeinsam als gelesen. Noch nicht versendete Pushes werden atomar übersprungen; fremde Nutzer erhalten für dieselbe Conversation einen 404.
+- **Versteckter Tab meldet Ennis Antwort:** Bei einem SSE-Abschluss in einem nicht sichtbaren Tab erzeugt das Frontend zusätzlich eine lokale Service-Worker-Benachrichtigung. Sie verwendet denselben Message-basierten Tag wie der serverseitige Web Push, damit Browser keine doppelten Hinweise zeigen.
+- **Browser-Tab zeigt offene Hinweise:** Der Dokumenttitel trägt bei offenen Meldungen jetzt z. B. `(2) enneo OS`; App-Badge und Titel werden aus demselben Unread-Zähler gespeist. Beim Zurückkehren in den bereits offenen Chat wird dessen Notification automatisch gelesen.
+- **Push-Race geschlossen:** Der Push-Ticker lädt nur ungelesene Pending-Einträge und prüft direkt vor dem Versand nochmals den aktuellen `read_at`-/`push_state`-Stand. So löst eine inzwischen gelesene Antwort keinen verspäteten Push aus.
+- **Verifiziert und live:** Backend-Tests 6/6, Syntax und Diff-Check grün. Lokaler und produktiver 2-Account-Eval bestehen jeweils alle 5 Checks (Outsider blockiert, Owner akzeptiert, Conversation gelesen, Notification gelesen, Pending Push übersprungen). Railway-Deployment `555ca078-93d7-41f1-95e4-906ba7feec98` ist erfolgreich; temporäre Accounts und Daten wurden entfernt.
 
 ### Session 2026-07-15 — Restricted heißt wirklich eingeladen
 

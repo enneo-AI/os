@@ -299,20 +299,22 @@ async function buildHistory(convId, isPod = false) {
 // Ein Prozess pro Railway-Service, daher reicht eine In-Memory-Map.
 const activeTurns = new Map() // convId -> AbortController
 
+async function conversationIfVisible(conversationId, userId) {
+  const { data: conversation } = await db
+    .from('conversations')
+    .select('id, user_id, pod_id')
+    .eq('id', conversationId)
+    .maybeSingle()
+  if (!conversation) return null
+  if (conversation.pod_id) return (await podIfVisible(conversation.pod_id, userId)) ? conversation : null
+  return conversation.user_id === userId ? conversation : null
+}
+
 app.post('/api/conversations/:id/stop', async (req, res) => {
   const user = await getUserFromRequest(req)
   if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
-  const { data: c } = await db
-    .from('conversations')
-    .select('id, user_id, pod_id')
-    .eq('id', req.params.id)
-    .maybeSingle()
+  const c = await conversationIfVisible(req.params.id, user.id)
   if (!c) return res.status(404).json({ error: 'Conversation nicht gefunden' })
-  if (c.pod_id) {
-    if (!(await podIfVisible(c.pod_id, user.id))) return res.status(404).json({ error: 'Kein Zugriff' })
-  } else if (c.user_id !== user.id) {
-    return res.status(404).json({ error: 'Conversation nicht gefunden' })
-  }
   const ctl = activeTurns.get(c.id)
   if (!ctl) {
     // Kein laufender Turn in diesem Prozess (z.B. nach Restart hängengebliebenes Flag) → aufräumen
@@ -321,6 +323,40 @@ app.post('/api/conversations/:id/stop', async (req, res) => {
   }
   ctl.abort()
   res.json({ ok: true, running: true })
+})
+
+app.post('/api/conversations/:id/read', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const conversation = await conversationIfVisible(req.params.id, user.id)
+  if (!conversation) return res.status(404).json({ error: 'Conversation nicht gefunden' })
+
+  const now = new Date().toISOString()
+  const { error: conversationError } = await db
+    .from('conversations')
+    .update({ unread: false })
+    .eq('id', conversation.id)
+  if (conversationError) return res.status(400).json({ error: conversationError.message })
+
+  // Eine aktive Ansicht gewinnt gegen den Push-Ticker: noch nicht versendete
+  // Benachrichtigungen werden gelesen + übersprungen, bereits versendete nur gelesen.
+  const { error: pendingError } = await db
+    .from('notifications')
+    .update({ read_at: now, push_state: 'skipped', push_attempted_at: now })
+    .eq('user_id', user.id)
+    .eq('conversation_id', conversation.id)
+    .is('read_at', null)
+    .eq('push_state', 'pending')
+  if (pendingError) return res.status(400).json({ error: pendingError.message })
+  const { error: readError } = await db
+    .from('notifications')
+    .update({ read_at: now })
+    .eq('user_id', user.id)
+    .eq('conversation_id', conversation.id)
+    .is('read_at', null)
+  if (readError) return res.status(400).json({ error: readError.message })
+
+  res.json({ ok: true, read_at: now })
 })
 
 app.post('/api/chat', async (req, res) => {

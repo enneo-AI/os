@@ -97,6 +97,17 @@ function isQuiet(preference) {
 }
 
 async function deliverPush(notification) {
+  const { data: fresh } = await db
+    .from('notifications')
+    .select('read_at, push_state')
+    .eq('id', notification.id)
+    .maybeSingle()
+  if (!fresh || fresh.read_at || fresh.push_state !== 'pending') {
+    if (fresh?.push_state === 'pending') {
+      await db.from('notifications').update({ push_state: 'skipped', push_attempted_at: new Date().toISOString() }).eq('id', notification.id)
+    }
+    return
+  }
   const [{ data: preference }, { data: subscriptions }] = await Promise.all([
     db.from('notification_preferences').select('*').eq('user_id', notification.user_id).maybeSingle(),
     db.from('push_subscriptions').select('*').eq('user_id', notification.user_id).eq('enabled', true),
@@ -111,7 +122,7 @@ async function deliverPush(notification) {
     title: notification.title,
     body: notification.body,
     url: notification.action_url || '/chat',
-    tag: `enneo-${notification.type}-${notification.id}`,
+    tag: `enneo-${notification.type}-${notification.message_id || notification.id}`,
     icon: '/icons/enni.png',
   })
   let delivered = false
@@ -145,7 +156,7 @@ async function pushTick() {
   if (tickerRunning) return
   tickerRunning = true
   try {
-    const { data, error } = await db.from('notifications').select('*').eq('push_state', 'pending').order('created_at').limit(50)
+    const { data, error } = await db.from('notifications').select('*').eq('push_state', 'pending').is('read_at', null).order('created_at').limit(50)
     if (error) throw error
     for (const notification of data || []) await deliverPush(notification)
   } catch (error) {
