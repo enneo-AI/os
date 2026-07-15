@@ -2,6 +2,13 @@
 
 **Zuletzt aktualisiert:** 2026-07-15 (Account Governance + Knowledge-/Release-Sync; live auf https://os.enneo.ai)
 
+### Session 2026-07-15 — Live-Diktat mit präziser Finalisierung
+
+- **Text erscheint schon beim Sprechen:** MediaRecorder zeichnet weiterhin die hochwertige Audiospur für ElevenLabs Scribe auf; parallel schreibt die Browser-Spracherkennung Interim-Ergebnisse live in den aktiven Chat- oder Pod-Composer.
+- **Hybrid statt Qualitätsverlust:** Nach dem Stop bleibt die Live-Vorschau sichtbar und der Status wechselt zu „Transkript wird präzisiert …“. Anschließend ersetzt das gemischte Deutsch-/Englisch-fähige Scribe-Ergebnis nur den diktierten Abschnitt; vorhandener Text vor dem Diktat bleibt erhalten. Bei einem Serverfehler bleibt die Live-Fassung stehen.
+- **Klarer Aufnahmezustand:** kompakter LIVE-Status mit animierter Audio-Welle in der Input-Bar, roter Composer-Fokus und Stop-Quadrat im Mikrofon-Button; während der kurzen Finalisierung wird das Feld gegen versehentliche Änderungen gesperrt. Light/Dark, Reduced Motion und schmale Viewports sind abgedeckt.
+- **Sicheres Senden:** Enter oder Senden während der Aufnahme stoppt zuerst das Diktat und wartet auf den Finaltext. Erst die nächste Send-Aktion verschickt die Nachricht; eine unfertige Interim-Fassung kann dadurch nicht versehentlich gesendet werden.
+
 ### Session 2026-07-15 — Prompt Queue als Composer-Shelf
 
 - **Queue aus dem Chat-Verlauf gelöst:** Wartende Prompts erscheinen nicht mehr als gedimmte Chat-Bubbles, sondern in einem kompakten, an die Input-Bar angedockten Glass-Shelf. Dadurch bleibt der aktive Turn visuell oben und die Ausführungsreihenfolge direkt am Eingabepunkt verständlich.

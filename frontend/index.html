@@ -521,7 +521,19 @@
     box-shadow:inset 0 1px 0 rgba(255,255,255,.35), 0 3px 10px -2px rgba(200,86,78,.5);
     animation:recpulse 1.4s ease-in-out infinite;
   }
+  .ckey.recording svg{display:none}.ckey.recording::before{content:"";width:9px;height:9px;border-radius:2px;background:currentColor;box-shadow:0 1px 2px rgba(90,25,25,.18)}
   @keyframes recpulse{0%,100%{box-shadow:inset 0 1px 0 rgba(255,255,255,.35), 0 0 0 0 rgba(200,86,78,.35)}50%{box-shadow:inset 0 1px 0 rgba(255,255,255,.35), 0 0 0 8px rgba(200,86,78,0)}}
+  .ctrack.dictating-active{border-color:rgba(200,86,78,.28);box-shadow:var(--composer-shadow),inset 0 1px 0 var(--glass-highlight),0 0 0 3px rgba(200,86,78,.055)}
+  .dictation-status{display:inline-flex;align-items:center;gap:7px;min-width:0;height:28px;padding:0 9px;border:1px solid rgba(200,86,78,.15);border-radius:999px;background:rgba(200,86,78,.07);color:var(--ink-2);font-size:10.5px;font-weight:620;white-space:nowrap;animation:dictation-in .18s ease-out}
+  .dictation-status.finalizing{border-color:var(--hair);background:var(--press);color:var(--ink-3)}
+  @keyframes dictation-in{from{opacity:0;transform:translateX(-4px)}to{opacity:1;transform:none}}
+  .dictation-wave{height:12px;display:inline-flex;align-items:center;gap:2px;color:var(--high)}
+  .dictation-wave i{display:block;width:2px;height:4px;border-radius:99px;background:currentColor;animation:dict-wave .75s ease-in-out infinite}
+  .dictation-wave i:nth-child(2){height:9px;animation-delay:-.34s}.dictation-wave i:nth-child(3){height:6px;animation-delay:-.16s}
+  @keyframes dict-wave{0%,100%{transform:scaleY(.45);opacity:.48}50%{transform:scaleY(1);opacity:1}}
+  .dictation-status.finalizing .dictation-wave i{animation:none;height:3px;opacity:.45}
+  .dictation-badge{font-family:var(--mono);font-size:8px;font-weight:750;letter-spacing:.08em;color:var(--high)}
+  .dictation-status.finalizing .dictation-badge{color:var(--ink-3)}
   .chips{display:flex;flex-wrap:wrap;gap:8px;padding:0 4px 10px}
   .chip{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--ink-2);
     background:linear-gradient(180deg, rgba(255,255,255,.75), rgba(255,255,255,.45));
@@ -540,6 +552,8 @@
   .ctx-hint{text-align:center;font-size:12px;color:var(--ink-3);margin-top:8px}
   .ctx-hint b{color:var(--warn)}
   .ctx-hint.blocked b{color:var(--high)}
+  @media(max-width:620px){.dictation-label{max-width:94px;overflow:hidden;text-overflow:ellipsis}.dictation-status{padding:0 7px;gap:5px}.dictation-badge{display:none}}
+  @media(prefers-reduced-motion:reduce){.dictation-status,.dictation-wave i{animation:none}}
   .compact-marker{align-self:center;max-width:80%;text-align:center;margin:4px 0}
   .compact-marker .cm-pill{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;color:var(--good);background:rgba(46,158,107,.08);border:1px solid rgba(46,158,107,.2);border-radius:999px;padding:5px 14px;cursor:pointer}
   .compact-marker .cm-sum{display:none;margin-top:10px;text-align:left;font-size:12.5px;color:var(--ink-2);background:var(--surface-2);border:1px solid var(--hair);border-radius:14px;padding:12px 16px;white-space:pre-wrap}

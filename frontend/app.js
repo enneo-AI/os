@@ -1671,6 +1671,7 @@ $('pod-file-attach').addEventListener('change', () => {
 })
 
 function podQuickStart() {
+  if (finishDictationBeforeSubmit()) return
   const text = $('pod-quick-input').value.trim()
   if (!text && !podPendingFiles.length) return
   $('pod-quick-input').value = ''
@@ -2279,8 +2280,86 @@ const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition
 let recognition = null
 let dictating = false
 let dictBase = ''
+let dictLiveBase = ''
+let dictLiveCommitted = ''
+let dictLiveSession = ''
+let dictLiveTextarea = null
 
 function sttLang() { return localStorage.getItem('enni-stt-lang') || 'de-DE' }
+
+function setDictationUi(btn, textarea, state, label) {
+  const track = textarea.closest('.ctrack')
+  const bar = track?.querySelector('.cbar')
+  let status = track?.querySelector('.dictation-status')
+  const active = state === 'live' || state === 'finalizing'
+  track?.classList.toggle('dictating-active', active)
+  textarea.readOnly = state === 'finalizing'
+  btn.classList.toggle('recording', state === 'live')
+  btn.title = state === 'live' ? 'Diktat stoppen' : 'Diktieren (Deutsch/Englisch)'
+  btn.setAttribute('aria-label', state === 'live' ? 'Diktat stoppen' : 'Diktat starten')
+  if (!active) { status?.remove(); return }
+  if (!status) {
+    status = document.createElement('span')
+    status.className = 'dictation-status'
+    status.setAttribute('role', 'status')
+    status.setAttribute('aria-live', 'polite')
+    status.innerHTML = '<span class="dictation-wave" aria-hidden="true"><i></i><i></i><i></i></span><span class="dictation-label"></span><span class="dictation-badge"></span>'
+    bar?.insertBefore(status, bar.querySelector('.cbar-spacer'))
+  }
+  status.classList.toggle('finalizing', state === 'finalizing')
+  status.querySelector('.dictation-label').textContent = label
+  status.querySelector('.dictation-badge').textContent = state === 'live' ? 'LIVE' : 'FINAL'
+}
+
+function liveDictationText() {
+  return `${dictLiveCommitted}${dictLiveSession}`.replace(/\s+/g, ' ').trim()
+}
+
+function paintLiveDictation() {
+  if (!dictLiveTextarea) return
+  const live = liveDictationText()
+  dictLiveTextarea.value = dictLiveBase + live
+  autosizeEl(dictLiveTextarea)
+  updateMentionBacks()
+}
+
+// Parallel zur hochwertigen Server-Aufnahme liefert die Browser-Erkennung sofortige
+// Interim-Ergebnisse. Scribe ersetzt diese Vorschau nach dem Stop durch den Finaltext.
+function startLiveDictationPreview(textarea) {
+  if (!SpeechRec) return false
+  dictLiveTextarea = textarea
+  dictLiveCommitted = ''
+  dictLiveSession = ''
+  let previewBlocked = false
+  const startSession = () => {
+    const rec = new SpeechRec()
+    recognition = rec
+    rec.lang = sttLang()
+    rec.continuous = true
+    rec.interimResults = true
+    rec.onresult = (e) => {
+      dictLiveSession = Array.from(e.results).map((result) => result[0].transcript).join(' ')
+      paintLiveDictation()
+    }
+    rec.onerror = (e) => {
+      if (['not-allowed', 'service-not-allowed', 'audio-capture'].includes(e.error)) previewBlocked = true
+      if (!['aborted', 'no-speech'].includes(e.error)) console.warn('Live-Diktat:', e.error)
+    }
+    rec.onend = () => {
+      if (recognition === rec) recognition = null
+      // Chrome beendet lange/silent Sessions gelegentlich selbst. Während die
+      // MediaRecorder-Aufnahme weiterläuft, übernehmen wir den Text und starten neu.
+      if (!previewBlocked && mediaRec?.state === 'recording') {
+        const segment = dictLiveSession.trim()
+        if (segment) dictLiveCommitted += segment + ' '
+        dictLiveSession = ''
+        setTimeout(() => { if (mediaRec?.state === 'recording') startSession() }, 120)
+      }
+    }
+    try { rec.start(); return true } catch { if (recognition === rec) recognition = null; return false }
+  }
+  return startSession()
+}
 
 // Diktat v2: Aufnahme via MediaRecorder → serverseitige Transkription (ElevenLabs Scribe,
 // versteht Deutsch + Englisch GEMISCHT in derselben Aufnahme). Fällt automatisch auf die
@@ -2293,6 +2372,7 @@ localStorage.removeItem('sttFallback') // Altlast aus der Zeit vor dem ELEVENLAB
 async function startDictation(btn, textarea, withLangHint = false) {
   if (sttFallback || !navigator.mediaDevices?.getUserMedia || !window.MediaRecorder)
     return startDictationWebSpeech(btn, textarea, withLangHint)
+  if (dictLiveTextarea && !mediaRec) return // Finaltranskript läuft noch
   if (mediaRec) { mediaRec.stop(); return } // läuft → Klick stoppt
   let stream
   try {
@@ -2302,17 +2382,25 @@ async function startDictation(btn, textarea, withLangHint = false) {
     return
   }
   const chunks = []
+  dictLiveBase = textarea.value ? textarea.value.trim() + ' ' : ''
+  dictLiveTextarea = textarea
+  const hasLivePreview = startLiveDictationPreview(textarea)
   const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : ''
   mediaRec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
   mediaRec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data) }
   mediaRec.onstop = async () => {
     stream.getTracks().forEach((t) => t.stop())
-    btn.classList.remove('recording')
-    const blob = new Blob(chunks, { type: mediaRec?.mimeType || 'audio/webm' })
+    const recorder = mediaRec
     mediaRec = null
-    if (blob.size < 1500) return // zu kurz, nichts gesagt
+    try { recognition?.stop() } catch { /* Live-Vorschau war bereits beendet */ }
+    const blob = new Blob(chunks, { type: recorder?.mimeType || 'audio/webm' })
+    if (blob.size < 1500) {
+      setDictationUi(btn, textarea, null)
+      dictLiveTextarea = null
+      return // zu kurz, nichts gesagt
+    }
+    setDictationUi(btn, textarea, 'finalizing', 'Transkript wird präzisiert …')
     btn.disabled = true
-    btn.style.opacity = '.45'
     try {
       const res = await fetch(`${BACKEND_URL}/api/transcribe`, {
         method: 'POST',
@@ -2321,13 +2409,13 @@ async function startDictation(btn, textarea, withLangHint = false) {
       })
       if (res.status === 503) {
         sttFallback = true // nur für diese Sitzung — Reload versucht Server-STT erneut
-        showHint('Server-Diktat noch nicht konfiguriert — Browser-Erkennung übernimmt, bitte nochmal aufs Mikro klicken.')
+        showHint('Live-Transkript übernommen — die präzise Server-Korrektur ist gerade nicht verfügbar.')
         return
       }
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
-      const base = textarea.value ? textarea.value.trim() + ' ' : ''
-      textarea.value = base + (data.text || '').trim()
+      const finalText = (data.text || '').trim()
+      textarea.value = dictLiveBase + (finalText || liveDictationText())
       autosizeEl(textarea)
       updateMentionBacks()
       textarea.focus()
@@ -2335,11 +2423,12 @@ async function startDictation(btn, textarea, withLangHint = false) {
       showHint('Diktat-Fehler: ' + err.message)
     } finally {
       btn.disabled = false
-      btn.style.opacity = ''
+      setDictationUi(btn, textarea, null)
+      dictLiveTextarea = null
     }
   }
-  mediaRec.start()
-  btn.classList.add('recording')
+  mediaRec.start(250)
+  setDictationUi(btn, textarea, 'live', hasLivePreview ? 'Sprich — Text erscheint live' : 'Aufnahme läuft …')
 }
 
 function startDictationWebSpeech(btn, textarea, withLangHint = false) {
@@ -2359,13 +2448,13 @@ function startDictationWebSpeech(btn, textarea, withLangHint = false) {
   }
   recognition.onend = () => {
     dictating = false
-    btn.classList.remove('recording')
+    setDictationUi(btn, textarea, null)
     if (withLangHint) renderCtx()
   }
   recognition.onerror = (e) => { if (e.error !== 'aborted') showHint('Diktat-Fehler: ' + e.error) }
   recognition.start()
   dictating = true
-  btn.classList.add('recording')
+  setDictationUi(btn, textarea, 'live', 'Sprich — Text erscheint live')
   if (!withLangHint) return
   const other = sttLang() === 'de-DE' ? 'en-US' : 'de-DE'
   const hint = $('ctx-hint')
@@ -2380,6 +2469,14 @@ function startDictationWebSpeech(btn, textarea, withLangHint = false) {
   })
 }
 $('mic-btn').addEventListener('click', () => startDictation($('mic-btn'), $('composer-input'), true))
+
+// Enter/Senden beendet zuerst sauber das Diktat. Der zweite Klick sendet dann das
+// von Scribe finalisierte Transkript; so kann keine halbfertige Live-Vorschau rausgehen.
+function finishDictationBeforeSubmit() {
+  if (mediaRec?.state === 'recording') { mediaRec.stop(); return true }
+  if (dictating) { recognition?.stop(); return true }
+  return !!dictLiveTextarea // kurze Finalisierungsphase noch abwarten
+}
 
 // ============================================================ Composer-Autosize
 function autosizeEl(t) {
@@ -2632,6 +2729,7 @@ document.addEventListener('click', (e) => {
 })
 
 async function send() {
+  if (finishDictationBeforeSubmit()) return
   const input = $('composer-input')
   const text = input.value.trim()
   if (!text && !pendingFiles.length) return
@@ -2641,7 +2739,6 @@ async function send() {
   if (busyHere && currentConv) { enqueuePrompt(currentConv.id, text); return }
   if (busyHere) return
   if (ctxPct() >= 80) { renderCtx(); return } // Pflicht-Kompaktierung (Dust: 80%)
-  if (dictating) recognition?.stop()
   input.value = ''
   autosize()
   // Multi-Session: dieser Stream gehört zu DIESER Ansicht — wechselt der Nutzer weg,
