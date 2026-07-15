@@ -38,7 +38,7 @@
 1. **Wissens-Update-Loop** (Enni schlägt Wiki-Diffs vor, Mensch gibt frei) — Kern-Differenzierer, Tabelle existiert, Flow fehlt. **Wichtigster nächster Schritt vor der Demo.**
 2. Enni respektiert Space-Rechte noch nicht im Tool-Layer (Restricted-Space-Wissen wäre für alle abfragbar, aktuell liegt aber alles in Company Data = open).
 3. Pod-Dateien sind über Pod-Tools lesbar; echte Datei-Versionierung und Task-Dateiverknüpfung fehlen noch.
-4. Project Pulse ist live; Kanban/Meilensteine und strukturierte Projektentscheidungen sind bewusst spätere Ausbaustufen.
+4. Project Pulse, Aufgabenliste und das alternative Kanban-Board sind live; Meilensteine und strukturierte Projektentscheidungen sind bewusst spätere Ausbaustufen.
 5. RAG-Re-Index nach Wiki-Änderungen manuell (Script-Pattern in HANDOFF §6; Embed-Function-Limit: max. 2 lange Texte pro Call).
 6. Crawl-Qualität mancher Doku-Seiten (Navigations-Reste) — Re-Crawl irgendwann.
 

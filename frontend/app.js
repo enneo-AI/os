@@ -373,7 +373,7 @@ async function route() {
   if (p.startsWith('/pod/')) {
     const pod = podsList.find((x) => x.id === p.slice(5))
     const requestedTab = new URLSearchParams(location.search).get('tab')
-    const tab = ['overview', 'convs', 'tasks', 'files', 'settings'].includes(requestedTab) ? requestedTab : 'overview'
+    const tab = ['overview', 'convs', 'tasks', 'board', 'files', 'settings'].includes(requestedTab) ? requestedTab : 'overview'
     if (pod) return openPod(pod, tab)
   }
   if (p.startsWith('/chat/')) {
@@ -1755,25 +1755,33 @@ async function refreshPodCounts(podId) {
 }
 
 function switchPodTab(tab) {
+  let selectedTab = null
   document.querySelectorAll('.pt-btn').forEach((b) => {
     const selected = b.dataset.tab === tab
     b.classList.toggle('on', selected)
     b.setAttribute('aria-selected', String(selected))
+    if (selected) selectedTab = b
   })
-  for (const t of ['overview', 'convs', 'tasks', 'files', 'settings']) $('ptab-' + t).hidden = t !== tab
+  if (selectedTab && window.matchMedia('(max-width: 900px)').matches) {
+    selectedTab.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'nearest', inline: 'center' })
+  }
+  for (const t of ['overview', 'convs', 'tasks', 'board', 'files', 'settings']) $('ptab-' + t).hidden = t !== tab
   if (tab === 'overview') loadPodOverview()
   if (tab === 'convs') loadPodConvs()
   if (tab === 'tasks') loadPodTasks()
+  if (tab === 'board') loadPodBoard()
   if (tab === 'files') loadPodFiles()
   if (tab === 'settings') fillPodSettings()
   if (activeView === 'pod' && activePod) history.replaceState({}, '', `/pod/${activePod.id}?tab=${tab}`)
 }
 document.querySelectorAll('.pt-btn').forEach((b) => b.addEventListener('click', () => switchPodTab(b.dataset.tab)))
 
-const POD_STATUS_LABELS = { on_track: 'Im Plan', at_risk: 'Gefährdet', blocked: 'Blockiert', complete: 'Abgeschlossen' }
 const TASK_STATUS_LABELS = { open: 'Offen', in_progress: 'In Arbeit', blocked: 'Blockiert', done: 'Erledigt' }
 const TASK_PRIORITY_LABELS = { low: 'Niedrig', normal: 'Normal', high: 'Hoch', urgent: 'Dringend' }
+const BOARD_STATUSES = ['open', 'in_progress', 'blocked', 'done']
 let podTasksCache = []
+let boardProfilesCache = []
+let boardDragTaskId = null
 
 function relativePulseTime(value) {
   const date = new Date(value)
@@ -1803,14 +1811,6 @@ async function loadPodOverview() {
   if (activePod?.id !== podId) return
   podTasksCache = tasks || []
   $('pod-task-count').textContent = podTasksCache.length
-  const status = activePod.project_status || 'on_track'
-  $('pulse-health').dataset.state = status
-  $('pulse-health').textContent = POD_STATUS_LABELS[status] || 'Im Plan'
-  $('pulse-focus').textContent = activePod.current_focus || 'Noch kein Fokus gesetzt.'
-  $('pulse-focus').classList.toggle('muted', !activePod.current_focus)
-  $('pulse-target').textContent = activePod.target_date
-    ? new Date(activePod.target_date + 'T00:00').toLocaleDateString('de-DE', { day: 'numeric', month: 'long', year: 'numeric' })
-    : 'Nicht festgelegt'
   const open = podTasksCache.filter((t) => t.status === 'open').length
   const progress = podTasksCache.filter((t) => t.status === 'in_progress').length
   const blocked = podTasksCache.filter((t) => t.status === 'blocked').length
@@ -2018,6 +2018,114 @@ async function loadPodTasks() {
   }
   // Offene Inline-Eingabe fokussieren (nach Re-Render, z.B. direkt nach dem Speichern)
   list.querySelector('.t-inline')?.focus()
+}
+
+async function loadPodBoard() {
+  if (!activePod) return
+  const podId = activePod.id
+  const [{ data }, profs] = await Promise.all([
+    sb.from('pod_tasks').select('*').eq('pod_id', podId).order('created_at'),
+    allProfiles(),
+  ])
+  if (activePod?.id !== podId) return
+  podTasksCache = data || []
+  boardProfilesCache = profs
+  $('pod-task-count').textContent = podTasksCache.length
+  renderPodBoard()
+}
+
+function renderPodBoard() {
+  const board = $('pod-board')
+  board.innerHTML = ''
+  for (const status of BOARD_STATUSES) {
+    const tasks = podTasksCache.filter((task) => task.status === status)
+    const lane = document.createElement('section')
+    lane.className = 'kanban-lane'
+    lane.dataset.status = status
+    lane.setAttribute('aria-label', `${TASK_STATUS_LABELS[status]}, ${tasks.length} Aufgaben`)
+    lane.innerHTML = `<div class="kanban-lane-head"><span>${esc(TASK_STATUS_LABELS[status])}</span><span class="kanban-count">${tasks.length}</span></div><div class="kanban-stack"></div>`
+    const stack = lane.querySelector('.kanban-stack')
+    for (const task of tasks) stack.appendChild(renderBoardCard(task))
+    if (!tasks.length) stack.innerHTML = '<div class="kanban-empty">Keine Aufgaben</div>'
+    lane.addEventListener('dragover', (event) => {
+      event.preventDefault()
+      event.dataTransfer.dropEffect = 'move'
+      lane.classList.add('drop-target')
+    })
+    lane.addEventListener('dragleave', (event) => {
+      if (!lane.contains(event.relatedTarget)) lane.classList.remove('drop-target')
+    })
+    lane.addEventListener('drop', (event) => {
+      event.preventDefault()
+      lane.classList.remove('drop-target')
+      const taskId = event.dataTransfer.getData('text/plain') || boardDragTaskId
+      const task = podTasksCache.find((item) => item.id === taskId)
+      if (task) moveBoardTask(task, status)
+    })
+    board.appendChild(lane)
+  }
+}
+
+function renderBoardCard(task) {
+  const card = document.createElement('article')
+  card.className = 'kanban-card'
+  card.draggable = true
+  card.dataset.taskId = task.id
+  const assigneeProfile = task.assignee ? boardProfilesCache.find((profile) => profile.id === task.assignee) : null
+  const assigneeName = assigneeProfile ? assigneeProfile.display_name || assigneeProfile.email : ''
+  const priority = task.priority && task.priority !== 'normal'
+    ? `<span class="task-priority ${esc(task.priority)}">${esc(TASK_PRIORITY_LABELS[task.priority])}</span>`
+    : ''
+  const due = task.due_date
+    ? `<span class="kanban-due${isOverdue(task) ? ' over' : ''}">${isOverdue(task) ? 'Überfällig · ' : ''}${esc(fmtDue(task.due_date))}</span>`
+    : ''
+  card.innerHTML = `
+    <button type="button" class="kanban-card-main" aria-label="Aufgabe öffnen: ${esc(task.title)}">
+      <span class="kanban-title">${esc(task.title)}</span>
+      ${task.section ? `<span class="kanban-section">${esc(task.section)}</span>` : ''}
+    </button>
+    <div class="kanban-card-foot">
+      ${priority}${due}
+      ${assigneeProfile ? `<span class="avatar kanban-assignee" title="${esc(assigneeName)}">${profileAvatarInner(assigneeProfile, assigneeName)}</span>` : '<span class="kanban-assignee" aria-hidden="true"></span>'}
+      <select class="kanban-status" aria-label="Status von ${esc(task.title)} ändern" title="Status ändern">
+        ${BOARD_STATUSES.map((status) => `<option value="${status}"${status === task.status ? ' selected' : ''}>${esc(TASK_STATUS_LABELS[status])}</option>`).join('')}
+      </select>
+    </div>`
+  card.querySelector('.kanban-card-main').addEventListener('click', () => openTaskDetail(task, boardProfilesCache))
+  card.querySelector('.kanban-status').addEventListener('change', (event) => moveBoardTask(task, event.target.value))
+  card.addEventListener('dragstart', (event) => {
+    boardDragTaskId = task.id
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', task.id)
+    requestAnimationFrame(() => {
+      card.classList.add('dragging')
+      card.inert = true
+    })
+  })
+  card.addEventListener('dragend', () => {
+    boardDragTaskId = null
+    card.inert = false
+    card.classList.remove('dragging')
+    document.querySelectorAll('.kanban-lane.drop-target').forEach((lane) => lane.classList.remove('drop-target'))
+  })
+  return card
+}
+
+async function moveBoardTask(task, status) {
+  if (!BOARD_STATUSES.includes(status) || task.status === status) return
+  const previousStatus = task.status
+  task.status = status
+  renderPodBoard()
+  const { error } = await sb.from('pod_tasks').update({ status }).eq('id', task.id)
+  if (error) {
+    task.status = previousStatus
+    renderPodBoard()
+    $('pod-board-status').textContent = `Status von ${task.title} konnte nicht geändert werden.`
+    window.alert('Der Aufgabenstatus konnte nicht geändert werden. Bitte versuche es erneut.')
+    return
+  }
+  $('pod-board-status').textContent = `${task.title} ist jetzt ${TASK_STATUS_LABELS[status]}.`
+  if (taskDetailTask?.id === task.id) taskDetailTask.status = status
 }
 
 function renderTaskSection(section, items, profs) {
@@ -5382,6 +5490,7 @@ function onPodWorkChange(row) {
     refreshPodCounts(row.pod_id)
     if (!$('ptab-overview').hidden) loadPodOverview()
     if (!$('ptab-tasks').hidden) loadPodTasks()
+    if (!$('ptab-board').hidden) loadPodBoard()
     if (taskDetailTask?.id && row.task_id === taskDetailTask.id) loadTaskComments()
   }, 180)
 }

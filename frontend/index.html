@@ -922,16 +922,6 @@
   .pod-soft-action:hover{color:var(--ink);border-color:rgba(123,90,226,.24);background:var(--glass-strong)}
   /* Project Pulse — calm control room, not a dashboard wall */
   .pulse-shell{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(260px,.75fr);gap:10px;padding:1px 0 26px}
-  .pulse-brief{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:start;padding:20px 22px;border:1px solid var(--glass-outline);border-radius:18px;background:linear-gradient(135deg,var(--glass-strong),var(--surface-2));box-shadow:inset 0 1px 0 var(--glass-highlight),0 22px 44px -38px rgba(29,30,44,.5)}
-  .pulse-kicker{display:flex;align-items:center;gap:8px;margin-bottom:7px;font-size:10px;font-weight:720;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3)}
-  .pulse-health{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border:1px solid var(--hair);border-radius:999px;background:var(--surface);font-size:10.5px;font-weight:680;color:var(--ink-2);white-space:nowrap}
-  .pulse-health::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--good);box-shadow:0 0 0 3px rgba(49,164,116,.1)}
-  .pulse-health[data-state="at_risk"]::before{background:#D49A32;box-shadow:0 0 0 3px rgba(212,154,50,.12)}
-  .pulse-health[data-state="blocked"]::before{background:var(--high);box-shadow:0 0 0 3px rgba(200,86,78,.12)}
-  .pulse-health[data-state="complete"]::before{background:var(--lila);box-shadow:0 0 0 3px rgba(123,90,226,.12)}
-  .pulse-focus{font-size:19px;font-weight:640;letter-spacing:-.018em;line-height:1.35;text-wrap:balance;max-width:620px}
-  .pulse-focus.muted{color:var(--ink-3);font-weight:560}
-  .pulse-target{text-align:right;color:var(--ink-3);font-size:11px;white-space:nowrap}.pulse-target strong{display:block;margin-top:3px;color:var(--ink);font-family:var(--mono);font-size:13px;font-weight:620;font-variant-numeric:tabular-nums}
   .pulse-metrics{grid-column:1/-1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--hair);border-radius:15px;overflow:hidden;background:rgba(255,255,255,.025)}
   .pulse-metric{min-width:0;padding:13px 15px;border-right:1px solid var(--hair)}.pulse-metric:last-child{border-right:0}
   .pulse-metric strong{display:block;font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:19px;font-weight:650;line-height:1}.pulse-metric span{display:block;margin-top:5px;color:var(--ink-3);font-size:10.5px}
@@ -948,6 +938,19 @@
   .pulse-actions{grid-column:1/-1;display:flex;align-items:center;gap:8px;padding:3px 1px}.pulse-action{height:36px;padding:0 13px;border:1px solid var(--glass-outline);border-radius:11px;background:linear-gradient(145deg,var(--key-hi),var(--surface-2));color:var(--ink-2);font-size:11.5px;font-weight:630;box-shadow:inset 0 1px 0 var(--glass-highlight)}.pulse-action:hover{color:var(--ink);border-color:rgba(123,90,226,.26);background:var(--glass-strong)}.pulse-action.enni{margin-left:auto;color:var(--lila-deep)}
   .task-open{display:block;width:100%;padding:0;border:0;background:none;color:inherit;text-align:left}.task-open:hover .task-title{color:var(--lila-deep)}
   .task-priority{display:inline-flex;align-items:center;height:19px;padding:0 7px;border:1px solid var(--hair);border-radius:999px;color:var(--ink-3);font-size:9px;font-weight:680;text-transform:uppercase;letter-spacing:.045em}.task-priority.high{color:#A56A12;border-color:rgba(212,154,50,.22);background:rgba(212,154,50,.07)}.task-priority.urgent{color:var(--high);border-color:rgba(200,86,78,.22);background:rgba(200,86,78,.07)}
+  .kanban-scroll{width:100%;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin;padding:2px 1px 18px}.kanban-scroll:focus-visible{outline:2px solid var(--focus-edge);outline-offset:3px;border-radius:4px}
+  .kanban-board{display:grid;grid-template-columns:repeat(4,minmax(230px,1fr));gap:10px;min-width:940px;align-items:start}
+  .kanban-lane{min-width:0;border-top:2px solid var(--hair);padding:10px 8px 12px;transition:border-color .16s ease,background .16s ease}
+  .kanban-lane[data-status="open"]{border-top-color:var(--ink-3)}.kanban-lane[data-status="in_progress"]{border-top-color:var(--lila)}.kanban-lane[data-status="blocked"]{border-top-color:var(--high)}.kanban-lane[data-status="done"]{border-top-color:var(--good)}
+  .kanban-lane.drop-target{background:rgba(123,90,226,.055);border-radius:0 0 13px 13px}
+  .kanban-lane-head{display:flex;align-items:center;gap:8px;min-height:32px;padding:0 2px 8px;font-size:11.5px;font-weight:680}.kanban-count{margin-left:auto;min-width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;background:var(--press);color:var(--ink-3);font-family:var(--mono);font-size:9.5px}
+  .kanban-stack{display:flex;flex-direction:column;gap:8px;min-height:80px}
+  .kanban-card{border:1px solid var(--hair);border-radius:13px;background:var(--surface);box-shadow:0 9px 24px -23px rgba(29,30,44,.48);cursor:grab;transition:border-color .16s ease,box-shadow .16s ease,opacity .16s ease,transform .16s ease}.kanban-card:hover{border-color:var(--glass-outline);box-shadow:0 14px 30px -24px rgba(68,45,135,.5);transform:translateY(-1px)}.kanban-card:active{cursor:grabbing}.kanban-card.dragging{opacity:.42;transform:scale(.985);user-select:none}
+  .kanban-card-main{display:block;width:100%;min-height:74px;padding:12px 12px 8px;border:0;background:transparent;color:var(--ink);text-align:left}.kanban-card-main:focus-visible{outline:2px solid var(--focus-edge);outline-offset:-2px;border-radius:12px}
+  .kanban-title{display:block;font-size:12.5px;font-weight:620;line-height:1.4;overflow-wrap:anywhere}.kanban-section{display:block;margin-top:5px;color:var(--ink-3);font-size:9.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .kanban-card-foot{display:flex;align-items:center;gap:7px;min-height:38px;padding:7px 8px 8px 12px;border-top:1px solid var(--hair)}.kanban-due{font-family:var(--mono);font-size:9.5px;color:var(--ink-3);white-space:nowrap}.kanban-due.over{color:var(--high);font-weight:650}.kanban-card-foot .task-priority{flex:none}.kanban-assignee{width:25px;height:25px;margin-left:auto;font-size:8px;flex:none}
+  .kanban-status{width:30px;height:30px;padding:0;border:1px solid var(--hair);border-radius:9px;-webkit-appearance:none;appearance:none;background-color:var(--surface-2);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='m3 4.5 3 3 3-3' fill='none' stroke='%2378768a' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:center;color:transparent;font:inherit;font-size:0;cursor:pointer}.kanban-status:focus-visible{border-color:var(--focus-edge);box-shadow:0 0 0 3px var(--focus-ring)}.kanban-status option{font-size:13px;color:var(--ink);background:var(--surface)}
+  .kanban-empty{padding:13px 3px;color:var(--ink-3);font-size:11px;line-height:1.45}
   .task-detail-backdrop{position:fixed;inset:0;z-index:119;background:rgba(29,30,44,.18);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);opacity:0;pointer-events:none;transition:opacity .22s ease}.task-detail-backdrop.open{opacity:1;pointer-events:auto}
   .task-detail-panel{position:fixed;inset:0 0 0 auto;z-index:120;width:min(510px,94vw);display:flex;flex-direction:column;padding:22px 25px calc(22px + env(safe-area-inset-bottom));border-left:1px solid var(--edge);background:var(--glass-strong);-webkit-backdrop-filter:blur(32px) saturate(1.55);backdrop-filter:blur(32px) saturate(1.55);box-shadow:-32px 0 72px -34px rgba(29,30,44,.4);transform:translateX(105%);transition:transform .28s cubic-bezier(.2,.75,.25,1);overflow-y:auto;overscroll-behavior:contain}.task-detail-panel.open{transform:none}
   .task-detail-head{display:flex;align-items:center;gap:10px;margin-bottom:18px}.task-detail-eyebrow{font-size:10px;font-weight:720;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3)}.task-detail-close{margin-left:auto;width:38px;height:38px;border:0;border-radius:11px;background:transparent;color:var(--ink-3);font-size:18px}.task-detail-close:hover{background:var(--hover);color:var(--ink)}
@@ -1130,7 +1133,8 @@
     .space-head,.pod-head{align-items:flex-start;padding:18px 2px 13px;gap:10px}.space-identity,.pod-identity{min-width:0;flex:1}.space-head-copy p,.pod-head-copy .sub{max-width:62vw}.space-actions{gap:5px}.space-action{width:44px;height:44px;padding:0;justify-content:center}.space-action span{display:block;position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}.space-back{width:44px}.space-tabs,.pod-tabs{overflow-x:auto;scrollbar-width:none;overscroll-behavior-x:contain;scroll-snap-type:x proximity;padding-bottom:8px;margin-bottom:13px}.space-tabs::-webkit-scrollbar,.pod-tabs::-webkit-scrollbar{display:none}.space-tab,.pt-btn{min-height:44px;white-space:nowrap;scroll-snap-align:start;padding:8px 11px}
     .space-folder-grid{grid-template-columns:1fr}.space-folder,.space-page-row,.pod-conv-row{min-height:60px}.space-page-row .space-page-arrow,.pod-conv-arrow{opacity:.55;transform:none}.space-section{margin-top:15px}.space-empty{padding:20px 3px}
     .pod-toolbar{grid-template-columns:1fr;margin-bottom:10px}.pod-new-conv{width:100%;height:44px}.pod-conv-date{display:none}#ptab-convs{min-height:calc(100dvh - 190px - env(safe-area-inset-top))}
-    .pulse-shell{grid-template-columns:1fr;gap:8px;padding-bottom:22px}.pulse-brief{grid-template-columns:1fr;padding:17px 16px;gap:14px}.pulse-target{text-align:left}.pulse-target strong{display:inline;margin-left:7px}.pulse-focus{font-size:17px}.pulse-metrics{grid-template-columns:1fr 1fr}.pulse-metric:nth-child(2){border-right:0}.pulse-metric:nth-child(-n+2){border-bottom:1px solid var(--hair)}.pulse-panel.main,.pulse-panel.side{grid-column:1;padding:15px 14px 10px}.pulse-actions{flex-wrap:wrap}.pulse-action{min-height:44px;flex:1}.pulse-action.enni{margin-left:0;flex-basis:100%}.pulse-row{min-height:58px}.pulse-row-title{font-size:13px}
+    .pulse-shell{grid-template-columns:1fr;gap:8px;padding-bottom:22px}.pulse-metrics{grid-template-columns:1fr 1fr}.pulse-metric:nth-child(2){border-right:0}.pulse-metric:nth-child(-n+2){border-bottom:1px solid var(--hair)}.pulse-panel.main,.pulse-panel.side{grid-column:1;padding:15px 14px 10px}.pulse-actions{flex-wrap:wrap}.pulse-action{min-height:44px;flex:1}.pulse-action.enni{margin-left:0;flex-basis:100%}.pulse-row{min-height:58px}.pulse-row-title{font-size:13px}
+    .kanban-scroll{margin-right:-12px;padding-right:12px;scroll-snap-type:x proximity}.kanban-board{grid-template-columns:repeat(4,280px);min-width:max-content}.kanban-lane{scroll-snap-align:start;padding-left:6px;padding-right:6px}.kanban-card-main{min-height:78px}.kanban-status{width:44px;height:44px}.kanban-card-foot{min-height:52px}.kanban-assignee{width:30px;height:30px}
     .tasks-head{gap:8px;align-items:center}.show-done{min-height:44px}.pod-soft-action{min-height:44px}.tsec-head{min-height:48px;padding:11px 2px}.tsec-head .sb-acts{display:inline-flex}.trow{align-items:flex-start;gap:9px;padding:11px 2px 11px 4px;flex-wrap:wrap}.task-check-wrap{width:44px;height:44px;padding:11px}.trow .t-main{flex:1;padding-top:5px}.trow .t-meta{width:calc(100% - 53px);margin-left:53px;justify-content:flex-end;gap:8px}.trow .t-acts{display:inline-flex}.trow .t-meta .glass-icon,.task-run{width:44px;height:44px}.t-av{width:34px;height:34px}.t-due{margin-right:auto}.t-ghost{min-height:46px;padding-left:54px}
     .file-toolbar{justify-content:stretch}.file-upload{width:100%;height:44px;justify-content:center}.file-row{grid-template-columns:40px minmax(0,1fr);gap:10px;padding:10px 2px}.file-actions{grid-column:2;justify-content:flex-end}.glass-icon{width:44px;height:44px}.file-sub{white-space:normal}.pod-danger{gap:10px;flex-direction:column}.danger-link{min-height:44px;text-align:left}
     .doc{width:100%;padding:20px 2px 40px}.doc h1{font-size:24px;margin-bottom:18px}.doc>div:has(>h1){flex-wrap:wrap;gap:8px!important}.doc .btn.quiet{min-height:42px}.doc-body{min-width:0;overflow-wrap:anywhere}.doc-body table{display:block;width:100%;overflow-x:auto;white-space:nowrap}.doc-body img{height:auto}.doc-nav{margin-bottom:14px}
@@ -1142,7 +1146,7 @@
     .task-detail-panel{inset:auto 0 0;width:100%;height:min(88dvh,760px);padding:19px 17px calc(18px + env(safe-area-inset-bottom));border-left:0;border-top:1px solid var(--edge);border-radius:24px 24px 0 0;transform:translateY(105%)}.task-detail-grid{grid-template-columns:1fr 1fr;gap:10px}.task-detail-close{width:44px;height:44px}.task-detail-title{font-size:18px}.task-comment-form{grid-template-columns:1fr}.task-comment-send{min-height:44px}.task-detail-actions{position:sticky;bottom:calc(-18px - env(safe-area-inset-bottom));margin-left:-17px;margin-right:-17px;padding:12px 17px calc(12px + env(safe-area-inset-bottom));background:var(--modal-footer-glass);-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px)}.task-detail-delete,.task-detail-save{min-height:44px}
   }
   @media(max-width:390px){.main{padding-left:9px;padding-right:9px}.model-trigger{max-width:94px}.model-trigger #model-current{overflow:hidden;text-overflow:ellipsis}.queue-text{max-width:47vw}.prompt-queue-title{font-size:9.5px}.prompt-queue-clear{font-size:9.5px}.page-head h2{font-size:23px}.space-head-copy p,.pod-head-copy .sub{max-width:54vw}.invite-compact{grid-template-columns:1fr}.invite-role{width:100%}.invite-compact .btn{width:100%}.modal .m-actions{flex-wrap:wrap}.task-detail-grid{grid-template-columns:1fr}}
-  @media(prefers-reduced-motion:reduce){.sidebar,.mobile-sidebar-backdrop,.skip-link,.task-detail-panel,.task-detail-backdrop{transition:none}}
+  @media(prefers-reduced-motion:reduce){.sidebar,.mobile-sidebar-backdrop,.skip-link,.task-detail-panel,.task-detail-backdrop,.kanban-lane,.kanban-card{transition:none}.kanban-card:hover{transform:none}}
 </style>
 </head>
 <body>
@@ -1342,19 +1346,13 @@
           <button class="pt-btn on" data-tab="overview" role="tab" aria-selected="true">Übersicht</button>
           <button class="pt-btn" data-tab="convs" role="tab" aria-selected="false">Konversationen <span class="pt-count" id="pod-conv-count">0</span></button>
           <button class="pt-btn" data-tab="tasks" role="tab" aria-selected="false">Aufgaben <span class="pt-count" id="pod-task-count">0</span></button>
+          <button class="pt-btn" data-tab="board" role="tab" aria-selected="false">Board</button>
           <button class="pt-btn" data-tab="files" role="tab" aria-selected="false">Dateien <span class="pt-count" id="pod-file-count">0</span></button>
           <button class="pt-btn" data-tab="settings" role="tab" aria-selected="false">Einstellungen</button>
         </div>
 
         <div class="pod-tab" id="ptab-overview" role="tabpanel">
           <div class="pulse-shell">
-            <section class="pulse-brief" aria-labelledby="pulse-focus-label">
-              <div>
-                <div class="pulse-kicker" id="pulse-focus-label">Aktueller Fokus <span class="pulse-health" id="pulse-health" data-state="on_track">Im Plan</span></div>
-                <div class="pulse-focus muted" id="pulse-focus">Noch kein Fokus gesetzt.</div>
-              </div>
-              <div class="pulse-target">Zieltermin<strong id="pulse-target">Nicht festgelegt</strong></div>
-            </section>
             <div class="pulse-metrics" aria-label="Projektkennzahlen">
               <div class="pulse-metric"><strong id="pulse-open-count">0</strong><span>Offen</span></div>
               <div class="pulse-metric"><strong id="pulse-progress-count">0</strong><span>In Arbeit</span></div>
@@ -1415,6 +1413,13 @@
             <button class="btn pod-soft-action" id="section-add-btn">＋ Neuer Abschnitt</button>
           </div>
           <div class="list-panel"><div id="pod-task-list"></div></div>
+        </div>
+
+        <div class="pod-tab" id="ptab-board" role="tabpanel" hidden>
+          <div class="kanban-scroll" tabindex="0" aria-label="Aufgaben-Board. Horizontal scrollen, um alle Spalten zu sehen.">
+            <div class="kanban-board" id="pod-board"></div>
+          </div>
+          <div class="sr-only" id="pod-board-status" aria-live="polite"></div>
         </div>
 
         <div class="pod-tab" id="ptab-files" role="tabpanel" hidden>

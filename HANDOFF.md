@@ -1,10 +1,18 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-15 (Project Pulse und interaktive Task-Details für Pods live)
+**Zuletzt aktualisiert:** 2026-07-15 (Project Pulse, Aufgabenliste und Kanban-Board für Pods live)
+
+### Session 2026-07-15 — Alternative Kanban-Ansicht für Pod-Aufgaben
+
+- **Board als echte Alternativansicht:** Zwischen „Aufgaben“ und „Dateien“ liegt der neue URL-deeplinkbare Reiter `?tab=board`. Er zeigt dieselben `pod_tasks` in den vier Spalten Offen, In Arbeit, Blockiert und Erledigt — ohne zweite Datenhaltung oder abweichende Zustände.
+- **Direktes Arbeiten:** Desktop-Nutzer verschieben Karten per Drag-and-drop. Für Touch, Tastatur und Screenreader hat jede Karte zusätzlich einen benannten Status-Selektor. Ein Klick auf die Karte öffnet dasselbe vollständige Aufgabendetail wie in der Liste; Realtime hält die sichtbare Board-Ansicht aktuell.
+- **Ruhigere Übersicht:** Die große Leiste „Aktueller Fokus“ samt Status und Zieltermin wurde vollständig aus der Pod-Übersicht entfernt. Kennzahlen, Aufmerksamkeit, letzte Aktivität und Schnellaktionen bleiben erhalten; die zugrunde liegenden Projektfelder bleiben vorerst in den Einstellungen editierbar.
+- **Responsive & zugänglich:** Das Board scrollt auf schmalen Viewports nur innerhalb seines eigenen Containers, Spalten rasten beim horizontalen Scrollen ein, Touch-Ziele sind 44 px groß, Fokuszustände und Live-Statusmeldungen sind vorhanden und Reduced Motion wird respektiert.
+- **Verifiziert:** Backend-Tests 4/4, JavaScript-Syntax, Diff-Check und realer Browser-Test erfolgreich. Der visuelle Fixture-Test bestätigte die vier Spalten, URL-State, Detailöffnung und einen persistenten Statuswechsel zwischen Board-Spalten.
 
 ### Session 2026-07-15 — Pods als interaktives Team-Projektmanagement
 
-- **Project Pulse als neue Startansicht:** Jeder Pod öffnet mit aktuellem Fokus, Projektstatus, Zieltermin, Kennzahlen für offen/in Arbeit/blockiert/überfällig, automatisch priorisierter „Benötigt Aufmerksamkeit“-Liste und einer kombinierten Aktivität aus Aufgaben, Konversationen und Dateien. Die bestehenden Bereiche bleiben als ruhige, URL-deeplinkbare Tabs erhalten (`?tab=overview|convs|tasks|files|settings`).
+- **Project Pulse als Startansicht:** Jeder Pod öffnet mit Kennzahlen für offen/in Arbeit/blockiert/überfällig, automatisch priorisierter „Benötigt Aufmerksamkeit“-Liste und einer kombinierten Aktivität aus Aufgaben, Konversationen und Dateien. Die Bereiche sind URL-deeplinkbare Tabs (`?tab=overview|convs|tasks|board|files|settings`). Die anfangs vorhandene große Fokus-/Status-/Zieltermin-Leiste wurde in der Folgesession wieder entfernt.
 - **Aufgaben sind jetzt echte Arbeitsobjekte:** Migration `20260715155329_pod_project_pulse.sql` ergänzt Beschreibung, Priorität (`low/normal/high/urgent`) und Status `blocked`. Ein zugängliches Desktop-Sidepanel bzw. Mobile-Bottom-Sheet bietet Titel, Status, Priorität, Verantwortlichen, Termin, Abschnitt, Beschreibung, Konversationslink und Team-Kommentare. Fokus-Trap, Rücksprungfokus, Unsaved-Changes-Warnung, Reduced Motion und 44-px-Mobile-Ziele sind abgedeckt.
 - **Team-Kommentare mit harter RLS:** Neue Tabelle `pod_task_comments`; sichtbare Pod-Mitglieder dürfen lesen, nur als eigene Identität schreiben, nur eigene Kommentare ändern/löschen (Admins dürfen löschen). Realtime hält geöffnete Pulse-/Task-Ansichten aktuell. Migration `20260715160158_pod_project_pulse_advisor_indexes.sql` ergänzt die vom Supabase Advisor geforderten FK-Indizes.
 - **Bestehenden RLS-Fehler behoben:** Der echte 3-Account-Test fand eine Rekursion in `pod_members` beim Hinzufügen zu Restricted Pods. Migration `20260715160310_fix_pod_member_rls_recursion.sql` verschiebt die Owner/Admin-Prüfung in `private.can_manage_pod_members()`; der reproduzierbare Test bestätigt Owner-Erstellung, Teamzugriff, Outsider-Isolation, Anti-Spoofing, Kommentare und Status-Updates (7 Checks).
