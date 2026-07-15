@@ -3281,14 +3281,14 @@ document.addEventListener('keydown', (e) => {
 // ============================================================ Spaces (Dust-Pattern)
 // Connections = Wissensquellen (lesen/indexieren). Aktionen laufen separat als Tools.
 const CONNECTIONS = {
-  wiki: { name: 'Wiki', sub: 'Internes Firmenwissen · eingebaut', logo: './icons/enni.png' },
-  gitlab: { name: 'GitLab', sub: 'Code, Projekte, Merge Requests · read-only', logo: './icons/gitlab.svg' },
-  enneo: { name: 'Enneo-Plattform', sub: 'Tickets, Kunden, AI-Agenten, Settings', logo: './icons/enneo-icon.svg' },
-  outlook: { name: 'Outlook', sub: 'E-Mails und Kalender · via Marketplace', logo: './icons/outlook.svg' },
-  google_drive: { name: 'Google Drive', sub: 'Dokumente und Ordner · via Marketplace', logo: './icons/google-drive.svg' },
-  notion: { name: 'Notion', sub: 'Seiten und Datenbanken · via Marketplace', logo: './icons/notion.svg' },
-  slack: { name: 'Slack', sub: 'Channels und Threads · via Marketplace', logo: './icons/slack.svg' },
-  attio: { name: 'Attio', sub: 'CRM-Daten · via Marketplace', logo: './icons/attio.ico' },
+  wiki: { name: 'Wiki', sub: 'Internes Firmenwissen · eingebaut', logo: '/icons/enni.png' },
+  gitlab: { name: 'GitLab', sub: 'Code, Projekte, Merge Requests · read-only', logo: '/icons/gitlab.svg' },
+  enneo: { name: 'Enneo-Plattform', sub: 'Tickets, Kunden, AI-Agenten, Settings', logo: '/icons/enneo-icon.svg' },
+  outlook: { name: 'Outlook', sub: 'E-Mails und Kalender · via Marketplace', logo: '/icons/outlook.svg' },
+  google_drive: { name: 'Google Drive', sub: 'Dokumente und Ordner · via Marketplace', logo: '/icons/google-drive.svg' },
+  notion: { name: 'Notion', sub: 'Seiten und Datenbanken · via Marketplace', logo: '/icons/notion.svg' },
+  slack: { name: 'Slack', sub: 'Channels und Threads · via Marketplace', logo: '/icons/slack.svg' },
+  attio: { name: 'Attio', sub: 'CRM-Daten · via Marketplace', logo: '/icons/attio.ico' },
 }
 // Inhaltsgruppen nach Slug-Prefix — jede Seite landet in GENAU einer Gruppe
 // (erste Übereinstimmung gewinnt; "Weitere" fängt unbekannte Prefixe auf).
@@ -4368,14 +4368,14 @@ function parseWorkflowSteps(text) {
 const TOOL_NAME_RE = /\b((?:wiki|attio|slack|enneo|gitlab|google_drive|notion|outlook|pod|skill|dashboard)_[a-z0-9_]+|mcp__[a-zA-Z0-9_]+|create_file|request_tool_connection)\b/g
 
 const SKILL_TOOL_SERVICES = [
-  { prefix: 'google_drive_', label: 'Google Drive', icon: './icons/google-drive.svg' },
-  { prefix: 'wiki_', label: 'Wiki', icon: './icons/enni.png' },
-  { prefix: 'enneo_', label: 'Enneo', icon: './icons/enneo-icon.svg' },
-  { prefix: 'gitlab_', label: 'GitLab', icon: './icons/gitlab.svg' },
-  { prefix: 'attio_', label: 'Attio', icon: './icons/attio.ico' },
-  { prefix: 'slack_', label: 'Slack', icon: './icons/slack.svg' },
-  { prefix: 'notion_', label: 'Notion', icon: './icons/notion.svg' },
-  { prefix: 'outlook_', label: 'Outlook', icon: './icons/outlook.svg' },
+  { prefix: 'google_drive_', label: 'Google Drive', icon: '/icons/google-drive.svg' },
+  { prefix: 'wiki_', label: 'Wiki', icon: '/icons/enni.png' },
+  { prefix: 'enneo_', label: 'Enneo', icon: '/icons/enneo-icon.svg' },
+  { prefix: 'gitlab_', label: 'GitLab', icon: '/icons/gitlab.svg' },
+  { prefix: 'attio_', label: 'Attio', icon: '/icons/attio.ico' },
+  { prefix: 'slack_', label: 'Slack', icon: '/icons/slack.svg' },
+  { prefix: 'notion_', label: 'Notion', icon: '/icons/notion.svg' },
+  { prefix: 'outlook_', label: 'Outlook', icon: '/icons/outlook.svg' },
   { prefix: 'pod_', label: 'Pods' },
   { prefix: 'skill_', label: 'Skills' },
   { prefix: 'dashboard_', label: 'Dashboard' },

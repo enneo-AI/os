@@ -2,6 +2,11 @@
 
 **Zuletzt aktualisiert:** 2026-07-15 (Account Governance + Knowledge-/Release-Sync; live auf https://os.enneo.ai)
 
+### Session 2026-07-15 — Tool-Icons auf allen Routen repariert
+
+- **Root Cause:** Markenbilder wurden relativ (`./icons/...`) referenziert und dadurch auf Deep Links wie `/spaces/skills` fälschlich unter `/spaces/icons/...` angefragt. Safari zeigte deshalb in bestehenden Skills und im Tool-Picker das Broken-Image-Symbol.
+- **Fix:** Alle statischen und dynamischen Icon-Referenzen sind jetzt routenfest (`/icons/...`). Wiki nutzt Ennis Bot-Icon; GitLab, Attio, Outlook, Slack, Google Drive, Notion und die Enneo-Plattform zeigen ihre jeweiligen Markenbilder. Der generische Layer-Fallback bleibt ausschließlich für Tools ohne eigenes Markenasset.
+
 ### Session 2026-07-15 — Vollständige Smartphone-Optimierung
 
 - **Mobile App-Shell:** Unter 900 px ersetzt eine kompakte Glass-Topbar die Desktop-Navigation. Die komplette Sidebar öffnet als zugänglicher Off-Canvas-Drawer mit Backdrop, Fokusführung, Escape-/Swipe-Schließen und dynamischem Seitentitel. Safe-Area-Insets decken iPhone-Notch und Home-Indikator ab.
