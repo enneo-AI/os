@@ -15,6 +15,8 @@
 
 **Login (MVP Email+Passwort, Microsoft-SSO Phase 2):** `aleksa@enneo.ai`, Passwort hat Aleksa. Test-JWT für curl: via `POST {SUPABASE}/auth/v1/token?grant_type=password` mit Anon-Key.
 
+**Invite-Sicherheit:** Admin-Invites dürfen niemals als rohe Supabase-`/auth/v1/verify`-Links geteilt werden, weil Slack/Teams/Discord Link-Previews GET-Einmal-Links verbrauchen können. `/api/invite` erzeugt deshalb eine crawler-sichere `/invite?token_hash=…&type=invite|magiclink`-Zwischenseite; erst der bewusste Button-Klick ruft clientseitig `verifyOtp` auf.
+
 **Secrets/Keys:** Supabase-PAT `~/.supabase/access-token-enneo-companyos`. Anon/Service-Keys live via Management API ziehen (`?reveal=true`), nie cachen. Railway-Env-Vars: ANTHROPIC_API_KEY (Aleksas persönlicher, MVP-only), SUPABASE_URL/SERVICE_ROLE_KEY, GITLAB_TOKEN (Aleksas PAT „aleksa-enneo" aus macOS-Keychain `security find-internet-password -s gitlab.com -w`, gültig 2027-04), GITLAB_BASE_URL=https://gitlab.com, FRONTEND_ORIGIN, ENNI_MODEL, EUR_PER_USD.
 
 ## Architektur (Kurzform)

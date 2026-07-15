@@ -1,6 +1,13 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-15 (Slash-Skills im ganzen Satz und persistente Labels)
+**Zuletzt aktualisiert:** 2026-07-15 (crawler-sichere Einladungslinks)
+
+### Session 2026-07-15 — Slack kann Einladungen nicht mehr vorab verbrauchen
+
+- **Root Cause bei Richard bestätigt:** Der rohe Supabase-Invite wurde nur acht Sekunden nach dem Erstellen bestätigt, lange vor Richards eigener Rückmeldung. Das passt zum Slack-Link-Preview-Crawler, der den GET-basierten Einmal-Link beim Erzeugen der Vorschau eingelöst hat. Richards Auth-User und Session wurden dadurch zwar erstellt, beim späteren menschlichen Klick war der Link aber bereits verbraucht.
+- **Crawler-sicherer Link:** `/api/invite` gibt keine `supabase.co/auth/v1/verify`-URL mehr aus, sondern `https://os.enneo.ai/invite?token_hash=…&type=…`. Ein bloßer GET zeigt nur eine enneo-OS-Bestätigungskarte und verändert Auth nicht. Erst der bewusste Klick auf „Einladung annehmen“ bzw. „Sicher anmelden“ ruft `verifyOtp` auf.
+- **Invite und Re-Invite abgedeckt:** Neue Accounts verwenden `type=invite`, bestehende Accounts wie Richard `type=magiclink`. Nach erfolgreicher Bestätigung wird die URL auf `/chat` bereinigt; neue Nutzer landen direkt im Profil-Onboarding. Ungültige Links zeigen eine verständliche Erneuerungsaufforderung statt still auf der normalen Seite zu landen.
+- **Verifiziert und live:** Tests 8/8, Syntax und Diff-Check grün. Echter Production-Browser-Eval: Landing-GET ließ `confirmed_at` und `last_sign_in_at` leer; erst der Button-Klick bestätigte den Account und öffnete sichtbar das Onboarding. Der Magiclink-Pfad wurde zusätzlich mit einer echten temporären Session geprüft. Railway-Deployment `ebf2bf31-fa54-400b-845c-32d96fed4bde` ist erfolgreich, Netlify liefert Commit `1adc6d2`. Alle Testaccounts wurden gelöscht.
 
 ### Session 2026-07-15 — Slash-Skills sind keine Anfangskommandos mehr
 
