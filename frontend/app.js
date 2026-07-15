@@ -2863,13 +2863,45 @@ function groupPages(pages) {
   )
 }
 
-// Vorhandene Ordner eines Space (für die Datalist-Vorschläge in Editor + Import)
+// Vorhandene Ordner eines Space
 function spaceFolderPrefixes(spaceId) {
   return [...new Set(
     (wikiPages || [])
       .filter((p) => p.space_id === spaceId && p.slug.includes('/'))
       .map((p) => p.slug.split('/')[0])
   )].sort()
+}
+
+const NEW_FOLDER = '__new__'
+
+function configureFolderPicker(prefix, selected = '', { allowRoot = true, ensure = [], disabled = false } = {}) {
+  const select = $(`${prefix}-folder`)
+  const folders = [...new Set([
+    ...ensure,
+    ...spaceFolderPrefixes(currentSpace?.id),
+    selected,
+  ].filter(Boolean))].sort((a, b) => folderLabel(a).localeCompare(folderLabel(b)))
+  select.innerHTML = [
+    ...(allowRoot ? ['<option value="">Ohne Ordner</option>'] : []),
+    ...folders.map((folder) => `<option value="${esc(folder)}">${esc(folderLabel(folder))}</option>`),
+    `<option value="${NEW_FOLDER}">＋ Neuen Ordner hinzufügen …</option>`,
+  ].join('')
+  select.value = selected || (allowRoot ? '' : ensure[0] || folders[0] || NEW_FOLDER)
+  select.disabled = disabled
+  $(`${prefix}-folder-new`).value = ''
+  $(`${prefix}-folder-new-row`).hidden = true
+}
+
+function syncFolderPicker(prefix) {
+  const isNew = $(`${prefix}-folder`).value === NEW_FOLDER
+  $(`${prefix}-folder-new-row`).hidden = !isNew
+  if (isNew) setTimeout(() => $(`${prefix}-folder-new`).focus(), 0)
+}
+
+function folderPickerValue(prefix) {
+  return $(`${prefix}-folder`).value === NEW_FOLDER
+    ? $(`${prefix}-folder-new`).value.trim()
+    : $(`${prefix}-folder`).value
 }
 
 let spacesList = []
@@ -2944,7 +2976,7 @@ function renderSpaceTree() {
   }
 }
 
-// ---------- Space-Übersicht (Hauptfläche): Suche, Inhalte, Zuletzt geändert, Quellen
+// ---------- Space-Übersicht (Hauptfläche): Suche, Inhalte, Quellen
 function setSpaceHomeTab(tab) {
   const sources = tab === 'sources'
   $('sh-tab-content').classList.toggle('on', !sources)
@@ -2957,7 +2989,6 @@ function spacePageRow(page) {
   const row = document.createElement('button')
   row.className = 'space-page-row'
   row.innerHTML = `<div class="space-page-main"><div class="space-page-name">${esc(pageLabel(page))}</div><div class="space-page-sub">${esc(page.slug)}</div></div>
-    <span class="space-page-date">${compactPodDate(page.updated_at)}</span>
     <svg class="space-page-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>`
   row.addEventListener('click', () => openWikiPage(page.slug))
   return row
@@ -2993,12 +3024,6 @@ function openSpaceHome(space) {
   }
   if (!groupsBox.children.length)
     groupsBox.innerHTML = '<div class="space-empty">Noch keine Inhalte — erstelle eine Seite oder importiere eine URL.</div>'
-
-  const recentBox = $('sh-recent')
-  recentBox.innerHTML = ''
-  const recent = [...spacePages].sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at)).slice(0, 6)
-  if (!recent.length) recentBox.innerHTML = '<div class="space-empty">Noch keine Seiten.</div>'
-  for (const p of recent) recentBox.appendChild(spacePageRow(p))
 
   // Quellen (ehem. "Connected Data") kompakt in der Übersicht
   const srcBox = $('sh-sources')
@@ -3042,29 +3067,28 @@ $('pl-new-page').addEventListener('click', () => openPageEditor(null, currentFol
 // ---------- Seite per URL importieren (Crawl → Markdown → Auto-Reindex)
 function openImportModal(folderPrefix = '') {
   $('iu-url').value = ''
-  $('iu-folder').value = folderPrefix
-  $('iu-folder-list').innerHTML = spaceFolderPrefixes(currentSpace?.id)
-    .map((f) => `<option value="${esc(f)}">`)
-    .join('')
+  configureFolderPicker('iu', folderPrefix || 'import', { allowRoot: false, ensure: ['import'] })
   $('iu-err').textContent = ''
   $('iu-overlay').classList.add('open')
   setTimeout(() => $('iu-url').focus(), 50)
 }
 $('sh-import-url').addEventListener('click', () => openImportModal(''))
 $('pl-import-url').addEventListener('click', () => openImportModal(currentFolderPrefix))
+$('iu-folder').addEventListener('change', () => syncFolderPicker('iu'))
 $('iu-cancel').addEventListener('click', () => $('iu-overlay').classList.remove('open'))
 $('iu-save').addEventListener('click', async () => {
   const err = $('iu-err')
   err.textContent = ''
   const url = $('iu-url').value.trim()
   if (!/^https?:\/\/.+\..+/.test(url)) { err.textContent = 'Bitte eine vollständige URL eingeben.'; return }
+  if ($('iu-folder').value === NEW_FOLDER && !folderPickerValue('iu')) { err.textContent = 'Bitte den neuen Ordner benennen.'; $('iu-folder-new').focus(); return }
   $('iu-save').disabled = true
   $('iu-save').textContent = 'Importiert …'
   try {
     const res = await fetch(`${BACKEND_URL}/api/wiki/import-url`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
-      body: JSON.stringify({ url, space_id: currentSpace?.id || null, folder: slugify2($('iu-folder').value) || undefined }),
+      body: JSON.stringify({ url, space_id: currentSpace?.id || null, folder: slugify2(folderPickerValue('iu')) || undefined }),
     })
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
@@ -3215,7 +3239,6 @@ async function openWikiPage(slug) {
   currentSpace = spacesList.find((s) => s.id === data.space_id) || currentSpace
   $('doc-crumb').textContent = (currentSpace?.name || 'Company Data') + ' / ' + data.slug
   $('doc-title').textContent = pageLabel(data)
-  $('doc-meta').innerHTML = `<span>zuletzt aktualisiert ${new Date(data.updated_at).toLocaleDateString('de-DE')}</span>`
   $('doc-body').innerHTML = md(data.content.replace(/^#\s+.+\n/, ''))
   enhanceCode($('doc-body'))
   $('doc-edit').hidden = false
@@ -3238,11 +3261,7 @@ async function openPageEditor(page, folderPrefix = '') {
   $('pe-title').disabled = false
   // Ordner: bei bestehender Seite fix (Slug ändert sich nicht), bei neuer Seite frei
   // wählbar — vorbefüllt mit dem Ordner, aus dem heraus man "Neue Seite" geklickt hat
-  $('pe-folder').value = page ? (page.slug.includes('/') ? page.slug.split('/')[0] : '') : folderPrefix
-  $('pe-folder').disabled = !!page
-  $('pe-folder-list').innerHTML = spaceFolderPrefixes(currentSpace?.id)
-    .map((f) => `<option value="${esc(f)}">`)
-    .join('')
+  configureFolderPicker('pe', page ? (page.slug.includes('/') ? page.slug.split('/')[0] : '') : folderPrefix, { allowRoot: true, disabled: !!page })
   $('pe-slug').textContent = page ? page.slug : ''
   $('pe-content').value = page ? page.content : ''
   $('pe-preview').hidden = true
@@ -3257,12 +3276,13 @@ async function openPageEditor(page, folderPrefix = '') {
 
 function updateSlugPreview() {
   if (editingPage) return
-  const folder = slugify2($('pe-folder').value)
+  const folder = slugify2(folderPickerValue('pe'))
   const title = slugify2($('pe-title').value)
   $('pe-slug').textContent = title ? (folder ? `${folder}/${title}` : title) : ''
 }
 $('pe-title').addEventListener('input', updateSlugPreview)
-$('pe-folder').addEventListener('input', updateSlugPreview)
+$('pe-folder').addEventListener('change', () => { syncFolderPicker('pe'); updateSlugPreview() })
+$('pe-folder-new').addEventListener('input', updateSlugPreview)
 $('pe-preview-btn').addEventListener('click', () => {
   const showPreview = $('pe-preview').hidden
   $('pe-preview').hidden = !showPreview
@@ -3292,6 +3312,7 @@ $('pe-save').addEventListener('click', async () => {
   const content = $('pe-content').value
   if (!title) { err.textContent = 'Titel fehlt.'; return }
   if (!content.trim()) { err.textContent = 'Inhalt fehlt.'; return }
+  if (!editingPage && $('pe-folder').value === NEW_FOLDER && !folderPickerValue('pe')) { err.textContent = 'Bitte den neuen Ordner benennen.'; $('pe-folder-new').focus(); return }
   $('pe-save').disabled = true
   $('pe-save').textContent = 'Speichert …'
   try {
@@ -3301,7 +3322,7 @@ $('pe-save').addEventListener('click', async () => {
       const { error } = await sb.from('wiki_pages').update({ title, content, updated_by: session.user.id }).eq('id', editingPage.id)
       if (error) throw new Error(error.message)
     } else {
-      const folder = slugify2($('pe-folder').value)
+      const folder = slugify2(folderPickerValue('pe'))
       const titleSlug = slugify2(title)
       slug = folder ? `${folder}/${titleSlug}` : titleSlug
       if (!titleSlug) throw new Error('Aus dem Titel lässt sich kein Slug bilden.')
