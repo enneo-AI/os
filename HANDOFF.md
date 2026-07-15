@@ -1,6 +1,14 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-15 (Project Pulse, Aufgabenliste und Kanban-Board für Pods live)
+**Zuletzt aktualisiert:** 2026-07-15 (Pods sind mit Attio-Kunden verknüpfbar; Enni nutzt die Kundenidentität kontextuell)
+
+### Session 2026-07-15 — Attio-Kundenidentität pro Pod
+
+- **Eindeutiger Kunde statt Namensraten:** In den Pod-Einstellungen kann genau ein primäres Attio-Unternehmen verknüpft werden; Kontakte und Deals lassen sich optional ergänzen. Die Suche schlägt anhand des Pod-Namens passende Records vor und validiert jeden Beta-Suchtreffer über den aktuellen Record-GET, bevor ein Snapshot gespeichert wird.
+- **Rollen sauber getrennt:** Nur Pod-Owner und Admins dürfen verknüpfen, ändern, synchronisieren oder lösen. Members sehen den Kunden und zugehörige Records read-only. Browser-Direktwrites sind durch Grants + RLS blockiert; Mutationen laufen ausschließlich über authentifizierte Backend-Endpunkte.
+- **Enni kennt den Kunden, lädt aber nicht blind alles:** Der Pod-Systemkontext enthält Name, Domain und stabile Attio-Record-IDs. Einfache Identitätsfragen werden direkt beantwortet. Notizen, Meetings, Transkripte oder weitere CRM-Details lädt Enni nur bei tatsächlichem Bedarf über die bestehenden read-only Attio-Tools.
+- **Datenmodell:** Migration `20260715171459_pod_attio_links.sql` führt `pod_attio_links` und `pod_attio_related_records` ein. Gespeichert werden Referenzen und kompakte Identity-Snapshots, nie die gesamte CRM-Historie. Migration ist live und in der Supabase Migration History.
+- **Verifiziert:** Backend-Tests 5/5; Supabase Grants/RLS und Security Advisor sauber. Production-Eval `run-pod-attio-production.js` bestand 11 Checks inklusive echter STAWAG-Suche, Member-403, Outsider-Isolation, Sync und Enni-Antwort `STAWAG, stawag.de` ohne CRM-Tool-Call. Desktop und 390×844 sind visuell geprüft, ohne horizontalen Overflow. Railway-Deployment `c7d926cb-af70-4287-9f62-62656514e97d` ist erfolgreich und `/health` grün.
 
 ### Session 2026-07-15 — Enni-Projektstand-Aufruf und Slash-Skill-Labels
 

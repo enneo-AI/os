@@ -7,6 +7,7 @@ import { logUsage } from './usage.js'
 import { startRoutineTicker, runRoutine } from './routines.js'
 import { startKnowledgeSyncTicker, syncKnowledgeSource } from './knowledge-sync.js'
 import { logAudit } from './audit.js'
+import { getAttioRecordSummary, hasAttioConnection, searchAttioRecords } from './tools/attio.js'
 
 const app = express()
 app.use(express.json({ limit: '30mb' })) // Anhänge kommen als Base64 im Body
@@ -72,6 +73,185 @@ async function podIfVisible(podId, userId) {
   const { data: prof } = await db.from('profiles').select('is_admin').eq('id', userId).maybeSingle()
   return prof?.is_admin ? pod : null
 }
+
+async function podAttioAccess(podId, userId) {
+  const pod = await podIfVisible(podId, userId)
+  if (!pod) return null
+  const { data: profile } = await db.from('profiles').select('is_admin').eq('id', userId).maybeSingle()
+  return { pod, canManage: pod.created_by === userId || !!profile?.is_admin }
+}
+
+async function podAttioState(podId) {
+  const [{ data: link }, { data: related }] = await Promise.all([
+    db.from('pod_attio_links').select('*').eq('pod_id', podId).maybeSingle(),
+    db.from('pod_attio_related_records').select('*').eq('pod_id', podId).order('linked_at'),
+  ])
+  return { link: link || null, related: related || [] }
+}
+
+function attioSnapshot(record) {
+  return {
+    object: record.object,
+    record_id: record.record_id,
+    name: record.name,
+    secondary: record.secondary,
+    domain: record.domain,
+    email: record.email,
+    web_url: record.web_url,
+  }
+}
+
+async function podAttioPrompt(podId) {
+  const { link, related } = await podAttioState(podId)
+  if (!link) return ''
+  const relatedLine = related.length
+    ? related.map((item) => `${item.attio_object === 'people' ? 'Kontakt' : 'Deal'}: ${item.record_name} (object=${item.attio_object}, record_id=${item.attio_record_id})`).join('; ')
+    : 'Keine zusätzlichen Kontakte oder Deals verknüpft.'
+  return `\n\n# Verknüpfter Attio-Kunde\nPrimärer Kunde: ${link.record_name}${link.record_domain ? ` (${link.record_domain})` : ''}. Attio: object=companies, record_id=${link.attio_record_id}${link.record_url ? `, web_url=${link.record_url}` : ''}.\n${relatedLine}\nDiese Verknüpfung ist die eindeutige Kundenidentität in diesem Pod. Suche nicht erneut nach dem Kundennamen. Lade nicht reflexhaft die gesamte CRM-Historie. Wenn die konkrete Anfrage Kundenhistorie, Verträge, E-Mails, Notizen, Meetings oder Transkripte braucht, verwende gezielt die read-only attio_-Tools mit den IDs oben. Für Meetings nutze linked_object=companies und linked_record_id=${link.attio_record_id}. Attio bleibt read-only.`
+}
+
+app.get('/api/pods/:id/attio', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const access = await podAttioAccess(req.params.id, user.id)
+  if (!access) return res.status(404).json({ error: 'Pod nicht gefunden' })
+  const [state, connected] = await Promise.all([podAttioState(req.params.id), hasAttioConnection(user.id)])
+  res.json({ ...state, can_manage: access.canManage, connected })
+})
+
+app.get('/api/pods/:id/attio/search', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const access = await podAttioAccess(req.params.id, user.id)
+  if (!access) return res.status(404).json({ error: 'Pod nicht gefunden' })
+  if (!access.canManage) return res.status(403).json({ error: 'Nur Pod-Owner und Admins dürfen Verknüpfungen ändern.' })
+  const object = String(req.query.object || 'companies')
+  const query = String(req.query.q || '').trim()
+  if (!query) return res.json({ records: [] })
+  try {
+    res.json({ records: await searchAttioRecords(user.id, object, query, 12) })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+app.put('/api/pods/:id/attio', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const access = await podAttioAccess(req.params.id, user.id)
+  if (!access) return res.status(404).json({ error: 'Pod nicht gefunden' })
+  if (!access.canManage) return res.status(403).json({ error: 'Nur Pod-Owner und Admins dürfen Verknüpfungen ändern.' })
+  if (!req.body?.record_id) return res.status(400).json({ error: 'record_id fehlt' })
+  try {
+    const record = await getAttioRecordSummary(user.id, 'companies', req.body.record_id)
+    const now = new Date().toISOString()
+    const { data, error } = await db.from('pod_attio_links').upsert({
+      pod_id: req.params.id,
+      attio_object: 'companies',
+      attio_record_id: record.record_id,
+      record_name: record.name,
+      record_domain: record.domain,
+      record_url: record.web_url,
+      snapshot: attioSnapshot(record),
+      linked_by: user.id,
+      linked_at: now,
+      synced_at: now,
+    }).select('*').single()
+    if (error) throw error
+    await logAudit(user.id, 'pod.attio.link', 'pod', req.params.id, { attio_record_id: record.record_id })
+    res.json({ link: data })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+app.post('/api/pods/:id/attio/sync', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const access = await podAttioAccess(req.params.id, user.id)
+  if (!access) return res.status(404).json({ error: 'Pod nicht gefunden' })
+  if (!access.canManage) return res.status(403).json({ error: 'Nur Pod-Owner und Admins dürfen synchronisieren.' })
+  const state = await podAttioState(req.params.id)
+  if (!state.link) return res.status(404).json({ error: 'Kein Attio-Kunde verknüpft' })
+  try {
+    const primary = await getAttioRecordSummary(user.id, 'companies', state.link.attio_record_id)
+    const now = new Date().toISOString()
+    const { error } = await db.from('pod_attio_links').update({
+      record_name: primary.name,
+      record_domain: primary.domain,
+      record_url: primary.web_url,
+      snapshot: attioSnapshot(primary),
+      synced_at: now,
+    }).eq('pod_id', req.params.id)
+    if (error) throw error
+    await Promise.all(state.related.map(async (item) => {
+      const record = await getAttioRecordSummary(user.id, item.attio_object, item.attio_record_id)
+      const { error: relatedError } = await db.from('pod_attio_related_records').update({
+        record_name: record.name,
+        record_detail: record.secondary,
+        record_url: record.web_url,
+        snapshot: attioSnapshot(record),
+        synced_at: now,
+      }).eq('id', item.id)
+      if (relatedError) throw relatedError
+    }))
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+app.delete('/api/pods/:id/attio', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const access = await podAttioAccess(req.params.id, user.id)
+  if (!access) return res.status(404).json({ error: 'Pod nicht gefunden' })
+  if (!access.canManage) return res.status(403).json({ error: 'Nur Pod-Owner und Admins dürfen Verknüpfungen ändern.' })
+  const { error } = await db.from('pod_attio_links').delete().eq('pod_id', req.params.id)
+  if (error) return res.status(400).json({ error: error.message })
+  await logAudit(user.id, 'pod.attio.unlink', 'pod', req.params.id)
+  res.json({ ok: true })
+})
+
+app.post('/api/pods/:id/attio/related', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const access = await podAttioAccess(req.params.id, user.id)
+  if (!access) return res.status(404).json({ error: 'Pod nicht gefunden' })
+  if (!access.canManage) return res.status(403).json({ error: 'Nur Pod-Owner und Admins dürfen Verknüpfungen ändern.' })
+  const object = String(req.body?.object || '')
+  if (!['people', 'deals'].includes(object) || !req.body?.record_id) return res.status(400).json({ error: 'Ungültiger Record' })
+  try {
+    const record = await getAttioRecordSummary(user.id, object, req.body.record_id)
+    const { data, error } = await db.from('pod_attio_related_records').upsert({
+      pod_id: req.params.id,
+      attio_object: object,
+      attio_record_id: record.record_id,
+      record_name: record.name,
+      record_detail: record.secondary,
+      record_url: record.web_url,
+      snapshot: attioSnapshot(record),
+      linked_by: user.id,
+      synced_at: new Date().toISOString(),
+    }, { onConflict: 'pod_id,attio_object,attio_record_id' }).select('*').single()
+    if (error) throw error
+    res.json({ record: data })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+app.delete('/api/pods/:id/attio/related/:object/:recordId', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const access = await podAttioAccess(req.params.id, user.id)
+  if (!access) return res.status(404).json({ error: 'Pod nicht gefunden' })
+  if (!access.canManage) return res.status(403).json({ error: 'Nur Pod-Owner und Admins dürfen Verknüpfungen ändern.' })
+  const { error } = await db.from('pod_attio_related_records').delete()
+    .eq('pod_id', req.params.id).eq('attio_object', req.params.object).eq('attio_record_id', req.params.recordId)
+  if (error) return res.status(400).json({ error: error.message })
+  res.json({ ok: true })
+})
 
 // Verlauf ab dem letzten Compaction-Anker aufbauen (Dust-Muster).
 // In Pod-Konversationen werden User-Messages mit dem Autor-Namen geprefixt.
@@ -267,6 +447,7 @@ app.post('/api/chat', async (req, res) => {
         `Du hast Zugriff auf den GESAMTEN Pod über die pod_-Tools: Aufgabenliste (pod_list_tasks), geteilte Dateien (pod_list_files / pod_read_file) und die anderen Konversationen (pod_list_conversations / pod_read_conversation). Nutze sie, wenn die Frage Pod-Kontext braucht.` +
         (pod.description ? `\nPod-Beschreibung: ${pod.description}` : '') +
         (pod.instructions ? `\n\nInstructions for Agents (gelten in diesem Pod):\n${pod.instructions}` : '')
+      extraSystem += await podAttioPrompt(pod.id)
     }
     // Slash-Command: /slug am Nachrichtenanfang ruft einen Skill explizit auf —
     // voller Skill geht als System-Block mit, Enni startet mit einem Workflow-Overview.

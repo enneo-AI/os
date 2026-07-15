@@ -42,6 +42,72 @@ async function attioFetch(token, path, opts = {}) {
   return text
 }
 
+const ALLOWED_LINK_OBJECTS = new Set(['companies', 'people', 'deals'])
+
+function firstValue(values, key) {
+  const item = values?.[key]?.[0]
+  if (!item) return null
+  return item.value || item.full_name || item.email_address || item.domain || item.name || item.title || null
+}
+
+export function normalizeAttioRecord(record, fallbackObject = null) {
+  const values = record?.values || {}
+  const object = record?.id?.object_slug || record?.object || fallbackObject
+  const name = firstValue(values, 'name') || firstValue(values, 'full_name') || firstValue(values, 'title') || 'Unbenannter Record'
+  const domain = firstValue(values, 'domains')
+  const email = firstValue(values, 'email_addresses')
+  const secondary = domain || email || firstValue(values, 'stage') || null
+  return {
+    object,
+    record_id: record?.id?.record_id || record?.record_id,
+    name: String(name),
+    secondary: secondary ? String(secondary) : null,
+    domain: domain ? String(domain) : null,
+    email: email ? String(email) : null,
+    web_url: record?.web_url || null,
+  }
+}
+
+export async function hasAttioConnection(userId) {
+  return !!(await attioToken(userId))
+}
+
+export async function searchAttioRecords(userId, object, query, limit = 10) {
+  if (!ALLOWED_LINK_OBJECTS.has(object)) throw new Error('Unbekannter Attio-Objekttyp')
+  const token = await attioToken(userId)
+  if (!token) throw new Error('Attio ist nicht verbunden')
+  const raw = await attioFetch(token, '/objects/records/search', {
+    method: 'POST',
+    body: JSON.stringify({
+      query: String(query || '').trim(),
+      objects: [object],
+      request_as: { type: 'workspace' },
+      limit: Math.min(Number(limit) || 10, 25),
+    }),
+  })
+  const parsed = JSON.parse(raw)
+  // Der Beta-Suchendpunkt liefert absichtlich nur kompakte Treffer. Die UI zeigt
+  // deshalb nie veraltete/halbe Snapshots: jeden Treffer einmal exakt nachladen.
+  const ids = (parsed.data || [])
+    .map((record) => record?.id?.record_id || record?.record_id)
+    .filter(Boolean)
+    .slice(0, Math.min(Number(limit) || 10, 25))
+  return Promise.all(ids.map(async (recordId) => {
+    const exact = await attioFetch(token, `/objects/${encodeURIComponent(object)}/records/${encodeURIComponent(recordId)}`)
+    const record = JSON.parse(exact)
+    return normalizeAttioRecord(record.data || record, object)
+  }))
+}
+
+export async function getAttioRecordSummary(userId, object, recordId) {
+  if (!ALLOWED_LINK_OBJECTS.has(object)) throw new Error('Unbekannter Attio-Objekttyp')
+  const token = await attioToken(userId)
+  if (!token) throw new Error('Attio ist nicht verbunden')
+  const raw = await attioFetch(token, `/objects/${encodeURIComponent(object)}/records/${encodeURIComponent(recordId)}`)
+  const parsed = JSON.parse(raw)
+  return normalizeAttioRecord(parsed.data || parsed, object)
+}
+
 // Verbindungstest beim Anlegen — liefert den Workspace-Namen
 export async function probeAttio(token) {
   const raw = await attioFetch(token, '/self')

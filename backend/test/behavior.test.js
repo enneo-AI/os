@@ -68,3 +68,22 @@ test('UX/UI engineering keeps member and admin capabilities technically separate
   assert.match(source, /Default-Branch darf nicht beschrieben werden/)
   assert.match(source, /completed erfordert Merge-Request-Link und dokumentierte Verifikation/)
 })
+
+test('Pod customer links keep Attio read-only, scoped and lazy', () => {
+  const indexSource = readFileSync(join(here, '../src/index.js'), 'utf8')
+  const attioSource = readFileSync(join(here, '../src/tools/attio.js'), 'utf8')
+  const migration = readFileSync(
+    join(here, '../../supabase/migrations/20260715171459_pod_attio_links.sql'),
+    'utf8'
+  )
+
+  assert.match(indexSource, /pod\.created_by === userId \|\| !!profile\?\.is_admin/)
+  assert.match(indexSource, /Diese Verknüpfung ist die eindeutige Kundenidentität/)
+  assert.match(indexSource, /Lade nicht reflexhaft die gesamte CRM-Historie/)
+  assert.match(indexSource, /app\.put\('\/api\/pods\/:id\/attio'/)
+  assert.match(attioSource, /\/objects\/records\/search/)
+  assert.doesNotMatch(attioSource, /method:\s*'PATCH'/)
+  assert.match(migration, /enable row level security/g)
+  assert.match(migration, /grant select on table public\.pod_attio_links to authenticated/)
+  assert.match(migration, /revoke all on table public\.pod_attio_links from anon, authenticated/)
+})

@@ -2618,6 +2618,10 @@ async function ownProfile() {
 }
 
 let pendingPodLogo = null // File = neues Logo, 'remove' = Logo entfernen, null = unverändert
+let podAttioState = null
+let podAttioMode = 'companies'
+let podAttioResults = []
+let podAttioBusy = false
 function paintPodLogoTile() {
   const tile = $('pset-logo-tile')
   const url = pendingPodLogo instanceof File
@@ -2643,7 +2647,135 @@ async function fillPodSettings() {
   const { is_admin } = await ownProfile()
   $('pod-delete').hidden = !(isCreator || is_admin)
   $('pod-leave').hidden = isCreator || !activePod.members.includes(session.user.id)
+  await loadPodAttioSettings()
 }
+
+async function podAttioApi(path = '', options = {}) {
+  const res = await fetch(`${BACKEND_URL}/api/pods/${activePod.id}/attio${path}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${await token()}`,
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(options.headers || {}),
+    },
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+  return data
+}
+
+function attioSyncLabel(value) {
+  if (!value) return ''
+  return `Synchronisiert ${new Date(value).toLocaleDateString('de-DE', { day: '2-digit', month: 'short' })}`
+}
+
+function renderPodAttio() {
+  const state = $('pset-attio-state')
+  const host = $('pset-attio-content')
+  if (!podAttioState) {
+    state.textContent = 'Wird geladen'
+    state.className = 'pod-customer-state'
+    host.innerHTML = '<div class="attio-note">Attio-Verknüpfung wird geladen …</div>'
+    return
+  }
+  const { link, related = [], can_manage: canManage, connected } = podAttioState
+  state.textContent = link ? 'Verbunden' : connected ? 'Nicht verknüpft' : 'Attio fehlt'
+  state.className = `pod-customer-state${link ? ' on' : ''}`
+  if (!connected) {
+    host.innerHTML = '<div class="attio-note">Attio ist für deinen Account nicht verbunden. Ein Admin kann die read-only Verbindung unter Connections bereitstellen.</div>'
+    return
+  }
+  const primary = link ? `
+    <div class="attio-identity">
+      <span class="attio-mark" aria-hidden="true">A</span>
+      <span class="attio-copy"><span class="attio-name">${esc(link.record_name)}</span><span class="attio-detail">${esc(link.record_domain || attioSyncLabel(link.synced_at))}</span></span>
+      ${canManage ? `<span class="attio-actions"><button class="attio-mini" data-attio-action="sync">Sync</button><button class="attio-mini" data-attio-action="change">Ändern</button><button class="attio-mini danger" data-attio-action="unlink">Lösen</button></span>` : '<span class="attio-detail">Nur ansehen</span>'}
+    </div>` : ''
+  const relatedRows = related.map((item) => `
+    <div class="attio-related-row"><span class="attio-copy"><span class="attio-name">${esc(item.record_name)}</span><span class="attio-detail">${item.attio_object === 'people' ? 'Kontakt' : 'Deal'}${item.record_detail ? ` · ${esc(item.record_detail)}` : ''}</span></span>${canManage ? `<button class="attio-mini" data-attio-remove="${esc(item.attio_object)}|${esc(item.attio_record_id)}" aria-label="${esc(item.record_name)} entfernen">Entfernen</button>` : ''}</div>`).join('')
+  const relatedBlock = link ? `<div class="attio-related"><div class="attio-related-title">Verknüpfte Records${canManage ? '<span class="attio-actions"><button class="attio-mini" data-attio-add="people">+ Kontakt</button><button class="attio-mini" data-attio-add="deals">+ Deal</button></span>' : ''}</div>${relatedRows || '<div class="attio-note">Noch keine Kontakte oder Deals verknüpft.</div>'}</div>` : ''
+  const showSearch = canManage && (!link || podAttioMode !== 'idle')
+  const searchLabel = podAttioMode === 'people' ? 'Kontakt in Attio suchen' : podAttioMode === 'deals' ? 'Deal in Attio suchen' : 'Unternehmen in Attio suchen'
+  const results = podAttioResults.map((record, index) => `<button class="attio-result" data-attio-record="${esc(record.record_id)}"><span class="attio-copy"><span class="attio-name">${esc(record.name)}</span><span class="attio-detail">${esc(record.secondary || 'Attio')}</span></span>${index === 0 && podAttioMode === 'companies' ? '<span class="attio-result-badge">Vorschlag</span>' : '<span aria-hidden="true">→</span>'}</button>`).join('')
+  const search = showSearch ? `<div class="attio-search"><div class="attio-searchbar"><input id="attio-search-input" type="search" autocomplete="off" aria-label="${searchLabel}" placeholder="${searchLabel} …"><button class="attio-mini" data-attio-action="search">Suchen</button></div><div class="attio-results">${podAttioBusy ? '<div class="attio-note">Suche …</div>' : results}</div></div>` : ''
+  host.innerHTML = primary + relatedBlock + search + (!link && !canManage ? '<div class="attio-note">Noch kein Kunde verknüpft. Pod-Owner oder Admins können die Verknüpfung anlegen.</div>' : '')
+}
+
+async function loadPodAttioSettings() {
+  podAttioState = null
+  podAttioMode = 'companies'
+  podAttioResults = []
+  renderPodAttio()
+  try {
+    podAttioState = await podAttioApi()
+    podAttioMode = podAttioState.link ? 'idle' : 'companies'
+    renderPodAttio()
+    if (!podAttioState.link && podAttioState.connected && podAttioState.can_manage) await searchPodAttio(activePod.name)
+  } catch (err) {
+    podAttioState = { link: null, related: [], can_manage: false, connected: false }
+    $('pset-attio-content').innerHTML = `<div class="attio-note error">${esc(err.message)}</div>`
+  }
+}
+
+async function searchPodAttio(query) {
+  const q = String(query || $('attio-search-input')?.value || '').trim()
+  if (!q) return
+  podAttioBusy = true
+  renderPodAttio()
+  try {
+    let data = await podAttioApi(`/search?object=${encodeURIComponent(podAttioMode)}&q=${encodeURIComponent(q)}`)
+    podAttioResults = data.records || []
+    if (!podAttioResults.length && podAttioMode === 'companies' && q === activePod.name) {
+      const fallback = q.split(/\s+/).filter((word) => !['projekt', 'project', 'rollout', 'pod'].includes(word.toLowerCase())).slice(0, 2).join(' ')
+      if (fallback && fallback !== q) {
+        data = await podAttioApi(`/search?object=companies&q=${encodeURIComponent(fallback)}`)
+        podAttioResults = data.records || []
+      }
+    }
+  } catch (err) {
+    podAttioResults = []
+    window.alert('Attio-Suche fehlgeschlagen: ' + err.message)
+  } finally {
+    podAttioBusy = false
+    renderPodAttio()
+  }
+}
+
+$('pset-attio-content').addEventListener('click', async (event) => {
+  const action = event.target.closest('[data-attio-action]')?.dataset.attioAction
+  const add = event.target.closest('[data-attio-add]')?.dataset.attioAdd
+  const remove = event.target.closest('[data-attio-remove]')?.dataset.attioRemove
+  const recordId = event.target.closest('[data-attio-record]')?.dataset.attioRecord
+  if (!action && !add && !remove && !recordId) return
+  try {
+    if (action === 'search') return searchPodAttio()
+    if (action === 'change') { podAttioMode = 'companies'; podAttioResults = []; renderPodAttio(); return searchPodAttio(activePod.name) }
+    if (action === 'sync') await podAttioApi('/sync', { method: 'POST' })
+    if (action === 'unlink') {
+      if (!window.confirm('Attio-Kunde von diesem Pod lösen?')) return
+      await podAttioApi('', { method: 'DELETE' })
+    }
+    if (add) { podAttioMode = add; podAttioResults = []; renderPodAttio(); return }
+    if (remove) {
+      const [object, id] = remove.split('|')
+      await podAttioApi(`/related/${encodeURIComponent(object)}/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    }
+    if (recordId) {
+      if (podAttioMode === 'companies') await podAttioApi('', { method: 'PUT', body: JSON.stringify({ record_id: recordId }) })
+      else await podAttioApi('/related', { method: 'POST', body: JSON.stringify({ object: podAttioMode, record_id: recordId }) })
+    }
+    await loadPodAttioSettings()
+  } catch (err) {
+    window.alert('Attio-Aktion fehlgeschlagen: ' + err.message)
+  }
+})
+
+$('pset-attio-content').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && event.target.id === 'attio-search-input') {
+    event.preventDefault()
+    searchPodAttio(event.target.value)
+  }
+})
 
 $('pod-leave').addEventListener('click', async () => {
   if (!window.confirm(`Pod "${activePod.name}" verlassen?`)) return
