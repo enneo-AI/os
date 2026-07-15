@@ -1,15 +1,18 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-15 (Enni IQ-/Persönlichkeits-Upgrade lokal vorbereitet; noch nicht auf Railway deployed)
+**Zuletzt aktualisiert:** 2026-07-15 (Enni IQ-/Persönlichkeits-Upgrade live und produktiv verifiziert)
 
-### Session 2026-07-15 — Enni IQ, Persönlichkeit und bewusstes Tool-/Skill-Routing (lokal)
+### Session 2026-07-15 — Enni IQ, Persönlichkeit und bewusstes Tool-/Skill-Routing (live)
 
 - **Senior-Persönlichkeit statt Assistenten-Floskeln:** Der System-Prompt verlangt Ergebnis/Empfehlung zuerst, konkrete belegte Aussagen, freundlichen Widerspruch bei falschen Annahmen und klare Unsicherheitsmarkierung. Generische Einleitungen, Frage-Wiederholungen und austauschbare Ratschläge sind explizit ausgeschlossen.
 - **Verbindliches Entscheidungsprotokoll:** Vor jeder Antwort rekonstruiert Enni intern das echte Nutzerziel, wählt den spezifischsten Skill, plant die passende Evidenzquelle, recherchiert nur so weit wie nötig und synthetisiert daraus eine Konsequenz statt Tool-Ausgaben nachzuerzählen.
 - **Live Capability Map pro Account/Turn:** Der Prompt enthält jetzt den tatsächlich verfügbaren Katalog für Wiki/Docs, GitLab-Monorepo, Live-Enneo-Instanzen, Attio, Slack, Outlook, Drive, Notion, Skills, Brand-Dateien, Pods und zusätzliche MCPs. Nicht verbundene Systeme werden als solche markiert; bei Bedarf greift der bestehende Connection-Request-Flow.
 - **Skill-Komposition:** Spezial-Skills schlagen `/enneo-context`. Kombinierte Aufgaben werden in Reihenfolge geladen, z. B. erst `/sales-call-prep`, dann `/praesentation`. Dokumente und Decks müssen vor `create_file` den jeweiligen Brand-Skill laden.
-- **Regressionstests:** `backend/npm test` prüft Capability-Erkennung, Entscheidungs-/Qualitäts-Gates und Skill-Prioritäten. Stand lokal: 3/3 grün; `node --check` für alle geänderten Module und `git diff --check` bestanden.
-- **Noch nicht live:** Backend muss nach Review per Railway CLI deployed und anschließend mit echten Prompts gegen mindestens die Fälle technische Codefrage, CRM/Call-Prep, Live-Instanz-Health-Check, Enneo-Dokument und Enneo-Präsentation getestet werden.
+- **Automatisches Skill-Routing:** Enni lädt passende Team-Skills bereits serverseitig anhand der Anfrage — u. a. `/api-frage`, `/sales-call-prep`, `/health-check`, `/dokument` und `/praesentation`; `/enneo-context` ergänzt Enneo-Fakten, ohne spezifischere Skills zu verdrängen. Content-Skill kommt vor Output-Skill.
+- **Begrenzte Recherche statt Tool-Schleifen:** Suchwerkzeuge haben pro Turn sinnvolle Budgets. Wird das Iterationslimit nach einem Tool-Ergebnis erreicht, erzwingt das Backend einen letzten Synthese-Schritt, damit nie eine leere Antwort zurückkommt.
+- **Regression und Real-Evals:** `npm test` 3/3 grün; vier echte Eval-Fälle bestanden: belegte Produktantwort, technische Frage mit Wiki + GitLab-Monorepo, WBS-Legal-Call-Prep mit Attio sowie eine 3-Folien-Präsentation mit `/praesentation` und Enneo-Brand. Syntax- und Diff-Prüfungen ebenfalls sauber.
+- **Production-Smoke bestanden:** isolierter temporärer Account gegen `https://enneo-os-backend-production.up.railway.app/api/chat`; Live-Turn nutzte `wiki_search` + `wiki_semantic_search`, beantwortete Copilot/Copilot+/Autopilot direkt und quellenbasiert, SSE-Turn schloss fehlerfrei ab. `/health` meldet Chromium unter `/usr/bin/chromium`. Testaccount und Testkonversation wurden anschließend gelöscht.
+- **Live-Stand:** Code ab `enneo-AI/os@24732f5`; Railway-Deployment `e637a2e4-0f87-4cd8-a58d-3705f08322ed` erfolgreich. Der reproduzierbare Produktionscheck liegt in `backend/evals/run-production-smoke.js`.
 
 ### Session 2026-07-15 — Enni Research Lab für fehlende Tools
 
