@@ -3140,7 +3140,7 @@ async function fillPodSettings() {
   $('pset-open').checked = activePod.open
   pendingPodLogo = null
   paintPodLogoTile()
-  // Löschen: nur Ersteller (oder Admin). Verlassen: Mitglieder, die nicht Ersteller sind.
+  // Löschen: Ersteller oder ein explizit eingeladenes Admin-Mitglied.
   const isCreator = activePod.created_by === session.user.id
   const { is_admin } = await ownProfile()
   $('pod-delete').hidden = !(isCreator || is_admin)
@@ -3160,7 +3160,7 @@ async function renderPodTeam() {
   $('pset-team-state').className = `pod-customer-state${activePod.open ? ' on' : ''}`
   $('pset-team-copy').textContent = activePod.open
     ? 'Offener Pod: Alle aktiven Mitglieder haben automatisch Zugriff.'
-    : canManage ? 'Nur ausgewählte Mitglieder haben Zugriff. Du kannst sie hier verwalten.' : 'Nur Pod-Besitzer und Admins können Mitglieder verwalten.'
+    : canManage ? 'Nur ausgewählte Mitglieder haben Zugriff. Du kannst sie hier verwalten.' : 'Nur Pod-Besitzer und eingeladene Admins können Mitglieder verwalten.'
   const host = $('pset-team-content')
   host.innerHTML = `<div class="pod-member-list">${members.map((profile) => {
     const department = departmentInfo(profile)
@@ -3240,7 +3240,7 @@ function renderPodAttio() {
   const searchLabel = podAttioMode === 'people' ? 'Kontakt in Attio suchen' : podAttioMode === 'deals' ? 'Deal in Attio suchen' : 'Unternehmen in Attio suchen'
   const results = podAttioResults.map((record, index) => `<button class="attio-result" data-attio-record="${esc(record.record_id)}"><span class="attio-copy"><span class="attio-name">${esc(record.name)}</span><span class="attio-detail">${esc(record.secondary || 'Attio')}</span></span>${index === 0 && podAttioMode === 'companies' ? '<span class="attio-result-badge">Vorschlag</span>' : '<span aria-hidden="true">→</span>'}</button>`).join('')
   const search = showSearch ? `<div class="attio-search"><div class="attio-searchbar"><input id="attio-search-input" type="search" autocomplete="off" aria-label="${searchLabel}" placeholder="${searchLabel} …"><button class="attio-mini" data-attio-action="search">Suchen</button></div><div class="attio-results">${podAttioBusy ? '<div class="attio-note">Suche …</div>' : results}</div></div>` : ''
-  host.innerHTML = primary + relatedBlock + search + (!link && !canManage ? '<div class="attio-note">Noch kein Kunde verknüpft. Pod-Owner oder Admins können die Verknüpfung anlegen.</div>' : '')
+  host.innerHTML = primary + relatedBlock + search + (!link && !canManage ? '<div class="attio-note">Noch kein Kunde verknüpft. Pod-Owner oder eingeladene Admins können die Verknüpfung anlegen.</div>' : '')
 }
 
 async function loadPodAttioSettings() {

@@ -65,7 +65,8 @@ app.get('/files', async (req, res) => {
   }
 })
 
-// Pod laden, wenn der User ihn sehen darf (open / Mitglied / Ersteller / Admin)
+// Pod laden, wenn der User ihn sehen darf (open / Mitglied / Ersteller).
+// Restricted Pods bleiben auch für Account-Admins invitation-only.
 async function podIfVisible(podId, userId) {
   const { data: pod } = await db.from('pods').select('*').eq('id', podId).maybeSingle()
   if (!pod) return null
@@ -73,8 +74,7 @@ async function podIfVisible(podId, userId) {
   const { data: member } = await db
     .from('pod_members').select('user_id').eq('pod_id', podId).eq('user_id', userId).maybeSingle()
   if (member) return pod
-  const { data: prof } = await db.from('profiles').select('is_admin').eq('id', userId).maybeSingle()
-  return prof?.is_admin ? pod : null
+  return null
 }
 
 async function podAttioAccess(podId, userId) {

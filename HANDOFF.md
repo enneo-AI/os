@@ -1,6 +1,14 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-15 (Invite-Onboarding, Team-Profile und Pod-Mitgliederverwaltung)
+**Zuletzt aktualisiert:** 2026-07-15 (Restricted-Pod-Isolation und zentrierte Produkttour)
+
+### Session 2026-07-15 — Restricted heißt wirklich eingeladen
+
+- **Kein Admin-Bypass mehr:** Restricted Pods sind jetzt auch für Account-Admins unsichtbar, solange sie nicht als Mitglied eingeladen wurden. `aleksa@spalevic-consulting.de` hatte im „Dello Projekt“ keinen Mitgliedseintrag; ausschließlich der frühere Admin-Bypass machte den Pod sichtbar. Die produktive Rollen-Simulation liefert jetzt exakt `0` sichtbare Dello-Pods.
+- **Grenze durchgängig gehärtet:** Migration `20260715194247_restricted_pods_require_membership.sql` schützt Pods, Mitgliedslisten, Aufgaben/Kommentare, Konversationen, Attio-Verknüpfungen und den Storage-Bucket `pod-files` über dieselbe Sichtbarkeitsregel. Eingeladene Admins dürfen weiterhin Mitglieder und Pod-Einstellungen verwalten; nicht eingeladene Admins dürfen weder lesen noch schreiben.
+- **Backend-Sonderweg entfernt:** `podIfVisible()` akzeptiert Restricted Pods nur noch für Ersteller und explizite Mitglieder. Damit umgehen die service-role-basierten Pod-/Attio-Endpunkte die Datenbankregel nicht mehr.
+- **Produkttour ruhig und mittig:** Der Tour-Overlay verwendet keinen `backdrop-filter` mehr, nur noch eine leichte Abdunklung. Die Karte sitzt über `top: 50%` exakt in der vertikalen Mitte, bleibt auf kleinen Viewports scrollbar und erzeugt bei 390 × 844 keinen horizontalen Overflow.
+- **Verifiziert:** Backend-Tests 6/6, Syntax und Diff-Check grün. Der echte 3-Account-Production-Eval besteht 11 Checks inklusive nicht eingeladenem Admin, Membership-Leak und blockiertem Storage-Upload. Desktop-Abnahme bei 1280 × 720: Kartenmitte `360 px`, Mobile bei 390 × 844: `422 px`, jeweils `backdrop-filter: none`. Temporäre Testaccounts wurden gelöscht.
 
 ### Session 2026-07-15 — Invite-Links auf produktiver Domain
 
@@ -13,7 +21,7 @@
 - **Verbindliches Invite-Onboarding:** Neue Profile durchlaufen serverseitig gespeichert drei Schritte für Name/Profilfoto, Abteilung und Passwort. Feste Abteilungen erhalten konsistente Farben; „Custom Tag“ erlaubt eigene Position und Farbe. Bestehende Accounts wurden bewusst als abgeschlossen migriert, damit nur neue Einladungen den Pflichtfluss sehen.
 - **Kurze Produkttour:** Nach dem Onboarding erklärt eine 5-Schritt-Tour Chat, Pods, Tools/Spaces, Team-Verzeichnis und Benachrichtigungen. Abschluss bzw. Überspringen wird geräteübergreifend in `profiles.tour_completed_at` gespeichert.
 - **Menschen überall sichtbar:** Neue Rail-Navigation „Team“ gruppiert aktive Accounts nach Abteilung und zeigt Foto, Name, Rolle und Label. Klickbare Profilansichten stehen dort, in Pod-Mitgliederlisten und an Team-Nachrichten zur Verfügung; eigene Chat-Nachrichten zeigen ebenfalls den Avatar.
-- **Restricted Pods wirklich verwaltbar:** Pod-Besitzer und Admins können in den Einstellungen Mitglieder hinzufügen oder entfernen. Open Pods erklären den automatischen Teamzugriff; Members sehen die Liste und Profile read-only. Die bestehende Owner/Admin-RLS bleibt die einzige Berechtigungsquelle.
+- **Restricted Pods wirklich verwaltbar:** Pod-Besitzer und explizit eingeladene Admins können in den Einstellungen Mitglieder hinzufügen oder entfernen. Open Pods erklären den automatischen Teamzugriff; Members sehen die Liste und Profile read-only. Nicht eingeladene Admins erhalten keinen Sonderzugriff.
 - **Marketplace entwirrt:** Tools, Skills und Routinen erklären jetzt einheitlich „Persönlich / Ausgewählt / Teamweit“ und tragen sichtbare Scope-Labels. Nicht konfigurierte OAuth-Tools zeigen Members „Admin erforderlich“ statt eines scheinbar funktionslosen „Einrichten“-Buttons; Klick erklärt den nächsten Schritt. Die Spaces-Sidebar trennt „Enni konfigurieren“ von „Wissen & Spaces“.
 - **Datenmodell & Verifikation:** Migration `20260715175415_people_onboarding_and_departments.sql` ergänzt Abteilung, Custom-Label/-Farbe sowie Onboarding-/Tour-Zeitstempel mit expliziten Spalten-Grants; sie ist live und in der Remote-History synchron. Frischer temporärer Member wurde im Browser vollständig durch Onboarding, Tour, Team-Profil, Member-Marketplace und Restricted-Pod-Erstellung samt Hinzufügen eines Mitglieds geführt; Test-Pod und Testaccount danach gelöscht. Backend-Tests 6/6, JS-Syntax und Diff-Check grün.
 

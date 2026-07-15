@@ -35,7 +35,8 @@ async function assertOk(label, result) {
 try {
   const owner = await createUser('owner')
   const teammate = await createUser('teammate')
-  const outsider = await createUser('outsider')
+  const outsider = await createUser('admin-outsider')
+  await assertOk('make outsider account admin', await admin.from('profiles').update({ is_admin: true }).eq('id', outsider.id))
 
   const pod = await assertOk('create restricted pod', await owner.client
     .from('pods')
@@ -66,12 +67,19 @@ try {
 
   const outsiderTasks = await assertOk('outsider task isolation', await outsider.client.from('pod_tasks').select('id').eq('pod_id', pod.id))
   const outsiderComments = await assertOk('outsider comment isolation', await outsider.client.from('pod_task_comments').select('id').eq('pod_id', pod.id))
-  if (outsiderTasks.length || outsiderComments.length) throw new Error('restricted pod leaked to outsider')
+  const outsiderPods = await assertOk('admin outsider pod isolation', await outsider.client.from('pods').select('id').eq('id', pod.id))
+  const outsiderMembers = await assertOk('admin outsider membership isolation', await outsider.client.from('pod_members').select('user_id').eq('pod_id', pod.id))
+  if (outsiderTasks.length || outsiderComments.length || outsiderPods.length || outsiderMembers.length) {
+    throw new Error('restricted pod leaked to uninvited account admin')
+  }
+
+  const blockedUpload = await outsider.client.storage.from('pod-files').upload(`${pod.id}/forbidden.txt`, new Blob(['no access']))
+  if (!blockedUpload.error) throw new Error('uninvited account admin uploaded into restricted pod')
 
   const updated = await assertOk('teammate updates task', await teammate.client.from('pod_tasks').update({ status: 'in_progress' }).eq('id', task.id).select().single())
   if (updated.status !== 'in_progress') throw new Error('task status update failed')
 
-  console.log(JSON.stringify({ ok: true, checks: 7 }))
+  console.log(JSON.stringify({ ok: true, checks: 11 }))
 } finally {
   if (podId) await admin.from('pods').delete().eq('id', podId)
   for (const id of users) await admin.auth.admin.deleteUser(id)
