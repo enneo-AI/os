@@ -359,8 +359,9 @@
     @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
   }
   .page-head{text-align:center;margin:44px auto 32px;max-width:60ch}
-  .page-actions{display:flex;gap:10px;justify-content:center;margin-top:16px}
+  .page-actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;width:max-content;max-width:100%;margin:16px auto 0}
   .page-actions .btn{padding:7px 15px;font-size:12.5px}
+  .page-actions .btn.quiet{margin-left:0}
   .page-head .eyebrow{font-size:12px;font-weight:620;letter-spacing:.14em;text-transform:uppercase;color:var(--lila);margin-bottom:10px}
   .page-head h2{font-size:32px;line-height:1.15;font-weight:640;letter-spacing:-.025em;margin:0 0 10px;text-wrap:balance}
   .page-head p{margin:0;color:var(--ink-2);font-size:15px}
@@ -1483,6 +1484,8 @@
           <h3>Read &amp; Write</h3>
           <div class="crow"><span class="c-logo"><img src="/icons/enneo-icon.svg" alt=""></span><div><div class="c-name">Enneo-Plattform</div><div class="c-sub">Tickets, Kunden, AI-Agenten, Settings · alle Instanzen · Schreiben mit Freigabe-Karte</div></div><span class="c-right ok"><span class="dot-s"></span>Aktiv</span></div>
           <div class="crow"><span class="c-logo"><img src="/icons/enni.png" alt=""></span><div><div class="c-name">Wiki</div><div class="c-sub">Firmenwissen · eingebaut · Änderungen als Vorschlag mit Admin-Freigabe</div></div><span class="c-right ok"><span class="dot-s"></span>Aktiv</span></div>
+
+          <h3 style="margin-top:22px">Remote Control</h3>
           <div class="crow"><span class="c-logo"><img src="/icons/whatsapp.svg" alt=""></span><div><div class="c-name">WhatsApp</div><div class="c-sub">Enni mobil steuern — chatten &amp; Routinen-Ergebnisse aufs Handy</div></div><span class="c-right off"><span class="dot-s"></span>Coming soon</span></div>
           <div class="crow"><span class="c-logo"><img src="/icons/telegram.svg" alt=""></span><div><div class="c-name">Telegram</div><div class="c-sub">Enni mobil steuern — Bot-Chat von unterwegs</div></div><span class="c-right off"><span class="dot-s"></span>Coming soon</span></div>
 
