@@ -2,6 +2,14 @@
 
 **Zuletzt aktualisiert:** 2026-07-15 (Account Governance + Knowledge-/Release-Sync; live auf https://os.enneo.ai)
 
+### Session 2026-07-15 — OAuth-Integrationsplattform
+
+- **Railway-freie Einrichtung:** Outlook, Google Drive, Notion, Attio und Slack verwenden eine gemeinsame OAuth-Plattform. Admins hinterlegen die OAuth-App einmalig direkt im Marketplace (Redirect URI, Client-ID, Client-Secret, optional Microsoft-Tenant); Secrets werden AES-256-GCM-verschlüsselt gespeichert und sind weder über die Data API noch in der UI auslesbar. Danach erfolgt jede Account-Verbindung per normalem Anbieter-Login.
+- **Echte Connectoren statt Platzhalter:** Die Phase-2-Zeilen sind entfernt. Outlook erhält read-only Mail-/Kalender-Tools, Google Drive Suche/Lesen und Notion Suche/Seiten/Data Sources. Attio nutzt seine bestehenden sieben CRM-Tools jetzt ebenfalls per OAuth; Slack läuft über dieselbe generische Infrastruktur. Refresh-Tokens von Microsoft, Google und Notion werden serverseitig erneuert.
+- **Zukunftsfähiger Provider-Flow:** Gemeinsame Endpoints `GET /api/oauth/providers`, `PUT /api/admin/oauth/providers/:provider`, `POST /api/oauth/:provider/start` und `GET /api/oauth/:provider/callback`; ein neuer Anbieter braucht nur Registry-Metadaten, OAuth-Austausch und Tool-Definitionen, keine neue Credential-UI.
+- **Berechtigungen:** Admin-Verbindungen werden teamweit angelegt; Member-Verbindungen bleiben persönlich. Native Connectoren sind auch aus Ennis `request_tool_connection`-Karte direkt per OAuth verbindbar. Ein Admin kann erst verbinden, wenn die Anbieter-App einmalig konfiguriert ist; dies ist bewusst in enneo OS statt in Railway gelöst.
+- **Migrationen:** `20260715091620_oauth_provider_platform.sql` + `20260715092145_lock_oauth_provider_secrets.sql`. Expliziter Test bestätigt: `authenticated` und `anon` haben keinerlei Tabellenrecht auf `oauth_provider_configs`, `service_role` allein hat Zugriff.
+
 ### Session 2026-07-15 — Account Governance + Enni Knowledge-/Release-Sync
 
 - **Zwei Rollen konsequent umgesetzt:** Member arbeiten im eigenen Scope; Admins verwalten zusätzlich Team-Ressourcen und Freigaben. Invite-Flow nimmt `Member`/`Admin` entgegen und speichert die Rolle serverseitig über `pending_invites` statt unsicherer User-Metadaten. Mitgliederliste erlaubt Admins Rollenwechsel sowie Aktivieren/Deaktivieren; eigener Admin und letzter aktiver Admin sind geschützt.

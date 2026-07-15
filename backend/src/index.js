@@ -664,7 +664,9 @@ app.post('/api/connectors', async (req, res) => {
   if (kind === 'attio') {
     if (!token?.trim()) return res.status(400).json({ error: 'API-Key ist Pflicht' })
     try {
-      const { probeAttio, invalidateAttioCache } = await import('./tools/attio.js')
+      const [{ probeAttio, invalidateAttioCache }, { encryptSecret }] = await Promise.all([
+        import('./tools/attio.js'), import('./crypto.js'),
+      ])
       const workspace = await probeAttio(token.trim())
       // Re-Connect ersetzt den Key — im jeweiligen Scope (persoenlich vs. team)
       let delQ = db.from('connectors').delete().eq('kind', 'attio')
@@ -675,7 +677,7 @@ app.post('/api/connectors', async (req, res) => {
         .insert({
           name: 'Attio',
           url: 'https://api.attio.com',
-          token: token.trim(),
+          token: encryptSecret(token.trim()),
           category: 'connection',
           kind: 'attio',
           tool_count: 7,
@@ -703,36 +705,67 @@ app.post('/api/connectors', async (req, res) => {
   }
 })
 
-// Slack OAuth: Der eingeloggte Nutzer startet den Flow per API-Call, Slack selbst
-// leitet anschließend ohne Supabase-JWT auf den einmaligen Callback zurück.
-app.post('/api/oauth/slack/start', async (req, res) => {
+// Einheitliche OAuth-Plattform: Provider-Credentials werden einmalig durch einen
+// Admin in enneo OS konfiguriert; Accounts verbinden sich danach per Anbieter-Login.
+app.get('/api/oauth/providers', async (req, res) => {
   const user = await getUserFromRequest(req)
   if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
-  const { data: profile } = await db.from('profiles').select('is_admin').eq('id', user.id).maybeSingle()
-  const requestedTeam = req.body?.scope === 'team'
-  if (requestedTeam && !profile?.is_admin) return res.status(403).json({ error: 'Nur Admins können Slack teamweit verbinden.' })
   try {
-    const { createSlackInstallUrl } = await import('./slack-oauth.js')
-    const url = await createSlackInstallUrl({ userId: user.id, visibility: requestedTeam ? 'team' : 'personal' })
-    res.json({ url })
+    const { providerStatus } = await import('./provider-oauth.js')
+    res.json({ providers: await providerStatus() })
   } catch (err) {
-    res.status(503).json({ error: err.message })
+    res.status(500).json({ error: err.message })
   }
 })
 
-app.get('/api/oauth/slack/callback', async (req, res) => {
+app.put('/api/admin/oauth/providers/:provider', async (req, res) => {
+  const user = await requireAdmin(req, res)
+  if (!user) return
   try {
-    const { completeSlackOAuth } = await import('./slack-oauth.js')
-    const url = await completeSlackOAuth({
+    const { saveProviderConfig } = await import('./provider-oauth.js')
+    const provider = await saveProviderConfig(req.params.provider, req.body || {}, user.id)
+    await logAudit(user.id, 'oauth_provider.configure', 'oauth_provider', req.params.provider)
+    res.json({ provider })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+app.post('/api/oauth/:provider/start', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const { OAUTH_PROVIDERS, createProviderInstallUrl, providerRedirectUri } = await import('./provider-oauth.js')
+  const provider = req.params.provider
+  if (!OAUTH_PROVIDERS[provider]) return res.status(404).json({ error: 'OAuth-Anbieter nicht gefunden' })
+  const { data: profile } = await db.from('profiles').select('is_admin').eq('id', user.id).maybeSingle()
+  const requestedTeam = req.body?.scope === 'team'
+  if (requestedTeam && !profile?.is_admin) return res.status(403).json({ error: `Nur Admins können ${OAUTH_PROVIDERS[provider].label} teamweit verbinden.` })
+  try {
+    const url = await createProviderInstallUrl({ provider, userId: user.id, visibility: requestedTeam ? 'team' : 'personal' })
+    res.json({ url })
+  } catch (err) {
+    res.status(err.code === 'provider_not_configured' ? 409 : 503).json({
+      error: err.message, code: err.code || 'oauth_start_failed', redirectUri: providerRedirectUri(provider),
+      setupUrl: OAUTH_PROVIDERS[provider].setupUrl,
+    })
+  }
+})
+
+app.get('/api/oauth/:provider/callback', async (req, res) => {
+  const provider = req.params.provider
+  try {
+    const { OAUTH_PROVIDERS, completeProviderOAuth } = await import('./provider-oauth.js')
+    if (!OAUTH_PROVIDERS[provider]) return res.status(404).send('OAuth-Anbieter nicht gefunden')
+    const url = await completeProviderOAuth({ provider,
       code: String(req.query.code || ''),
       state: String(req.query.state || ''),
       deniedError: String(req.query.error || ''),
     })
     res.redirect(303, url)
   } catch (err) {
-    console.error('Slack OAuth Callback:', err.message)
-    const { slackOAuthErrorUrl } = await import('./slack-oauth.js')
-    res.redirect(303, slackOAuthErrorUrl('callback_failed'))
+    console.error(`${provider} OAuth Callback:`, err.message)
+    const { providerOAuthErrorUrl } = await import('./provider-oauth.js')
+    res.redirect(303, providerOAuthErrorUrl(provider, 'callback_failed'))
   }
 })
 
@@ -762,8 +795,8 @@ app.post('/api/connectors/:id/:action(approve|reject)', async (req, res) => {
   const target = req.params.action === 'approve' ? 'team' : 'personal'
   const { data: conn } = await db.from('connectors').select('id, kind, visibility').eq('id', req.params.id).maybeSingle()
   if (!conn) return res.status(404).json({ error: 'Tool nicht gefunden' })
-  // Bei attio/slack gibt es max. EINEN Team-Connector — alter wird ersetzt
-  if (target === 'team' && (conn.kind === 'attio' || conn.kind === 'slack')) {
+  // Pro nativem Anbieter gibt es max. EINEN Team-Connector — alter wird ersetzt.
+  if (target === 'team' && ['attio', 'slack', 'outlook', 'google_drive', 'notion'].includes(conn.kind)) {
     await db.from('connectors').delete().eq('kind', conn.kind).eq('visibility', 'team').neq('id', conn.id)
   }
   const { error } = await db.from('connectors').update({ visibility: target }).eq('id', conn.id)
@@ -771,7 +804,8 @@ app.post('/api/connectors/:id/:action(approve|reject)', async (req, res) => {
   const { invalidateAttioCache } = await import('./tools/attio.js')
   const { invalidateSlackCache } = await import('./tools/slack.js')
   const { invalidateMcpCache } = await import('./tools/mcp.js')
-  invalidateAttioCache(); invalidateSlackCache(); invalidateMcpCache()
+  const { invalidateProductivityCache } = await import('./tools/productivity.js')
+  invalidateAttioCache(); invalidateSlackCache(); invalidateMcpCache(); invalidateProductivityCache()
   await logAudit(user.id, `connector.${req.params.action}`, 'connector', conn.id, { visibility: target })
   res.json({ ok: true, visibility: target })
 })
@@ -794,6 +828,8 @@ app.delete('/api/connectors/:id', async (req, res) => {
     invalidateAttioCache()
     const { invalidateSlackCache } = await import('./tools/slack.js')
     invalidateSlackCache()
+    const { invalidateProductivityCache } = await import('./tools/productivity.js')
+    invalidateProductivityCache()
     res.json({ ok: true })
   } catch (err) {
     res.status(400).json({ error: err.message })

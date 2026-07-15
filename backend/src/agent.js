@@ -8,6 +8,7 @@ import { skillToolDefinitions, runSkillTool, loadEnabledSkills, skillsPromptBloc
 import { fileToolDefinitions, runFileTool } from './tools/files.js'
 import { attioToolDefinitions, runAttioTool } from './tools/attio.js'
 import { slackToolDefinitions, runSlackTool } from './tools/slack.js'
+import { productivityToolDefinitions, runProductivityTool } from './tools/productivity.js'
 import { registrationToolDefinitions, runRegistrationTool } from './tools/registration.js'
 import { learningsPromptBlock } from './learnings.js'
 import { releaseNotesPromptBlock } from './knowledge-sync.js'
@@ -35,6 +36,7 @@ Antworte IMMER in der Sprache der letzten Nachricht des Nutzers. Schreibt er auf
 - FEHLENDES TOOL: Wenn eine Aufgabe oder ein Skill-Workflow ein Tool braucht, das nicht verbunden ist (kein attio_/slack_/passendes mcp__-Tool verfügbar), oder der Nutzer ein neues Tool anbinden will: rufe SOFORT request_tool_connection auf — frag NICHT erst nach URL oder Zugangsdaten. Die Karte im Chat hat Felder für alles; der Nutzer trägt URL und Key dort selbst ein (du siehst sie nie). url im Tool-Call nur vorbefüllen, wenn du sie sicher kennst — sonst weglassen. Danach erscheint das Tool als persönliches Tool des Nutzers unter Spaces → Tools.
 - CRM-Fragen (Kunden-Accounts, Ansprechpartner, Deals, Discovery-Notizen): wenn attio_-Tools verfügbar sind, ist Attio die Quelle — erst attio_query_records (Filter z.B. {"name":{"$contains":"..."}}), dann attio_get_record / attio_list_notes für Details. Für Calls/Meetings und deren Gesprächs-Transkripte: attio_list_meetings (nach Titel/Zeitraum/Teilnehmern filtern) → attio_get_transcript mit der meeting_id. Attio ist read-only.
 - Slack-Fragen ("was wurde in #channel besprochen", Diskussionen, Entscheidungen aus Threads): wenn slack_-Tools verfügbar sind — erst slack_list_channels, dann slack_read_channel, Threads über slack_read_thread. Slack ist read-only; private Channels siehst du nur, wenn der Bot dort eingeladen wurde — sag das ehrlich, wenn ein Channel fehlt.
+- Outlook, Google Drive und Notion: Nutze outlook_*, google_drive_* bzw. notion_* sobald die entsprechende Connection verfügbar ist. Diese Tools sind read-only. Suche zuerst, lies Details danach über die zurückgegebene ID. Behaupte nie Zugriff auf nicht freigegebene Notion-Seiten oder Google-Dateien.
 - WISSENS-UPDATE-LOOP: Wenn du in einer Konversation dauerhaft gültiges Firmenwissen lernst — neue Fakten, Korrekturen an Wiki-Inhalten, getroffene Entscheidungen, Prozessänderungen — schlage PROAKTIV ein Wiki-Update vor: erst wiki_read_page auf die Zielseite (falls vorhanden), dann wiki_propose_update mit dem kompletten neuen Inhalt. Die Vorschläge sieht NUR der Admin in einer Review-Liste und prüft sie gesammelt — nicht der Nutzer im Chat. Sag dem Nutzer nur kurz, dass du dir das als Wissens-Vorschlag notiert hast. Kein Vorschlag für Flüchtiges (Termine, Smalltalk, Debug-Zwischenstände). Behaupte nie, das Wiki sei aktualisiert, solange es nur vorgeschlagen ist.
 - DATEIEN & PRÄSENTATIONEN: Mit create_file erstellst du herunterladbare Dokumente und Slide-Decks im enneo-Brand-Design (standardmäßig als echtes PDF; format="html" nur auf Wunsch für interaktive Decks) sowie rohe Textdateien (CSV/Markdown). Nutze es, wenn der Nutzer ein Dokument, ein PDF, einen Brief/Report/Plan "als Datei" oder eine Präsentation will. Inhalte darin: Deutsch, Sie-Form, pragmatisch, kein Hype, keine Emojis. Nach dem Erstellen: Link als Markdown-Link ausgeben.
 - Wenn du etwas im Wiki nicht findest, sag das ehrlich. Erfinde keine internen Fakten.
@@ -60,7 +62,7 @@ const TOOLS = [
 // eintippen zu müssen. Dynamische Connectoren werden pro Nutzer aufgelöst.
 export async function availableToolDefinitions(userId) {
   let definitions = [...TOOLS, ...podToolDefinitions]
-  for (const loader of [mcpToolDefinitions, attioToolDefinitions, slackToolDefinitions]) {
+  for (const loader of [mcpToolDefinitions, attioToolDefinitions, slackToolDefinitions, productivityToolDefinitions]) {
     try {
       definitions = [...definitions, ...(await loader(userId))]
     } catch (err) {
@@ -81,6 +83,7 @@ async function executeTool(name, input, ctx) {
     if (name.startsWith('skill_')) return { content: await runSkillTool(name, input, ctx), isError: false }
     if (name.startsWith('attio_')) return { content: await runAttioTool(name, input, ctx), isError: false }
     if (name.startsWith('slack_')) return { content: await runSlackTool(name, input, ctx), isError: false }
+    if (name.startsWith('outlook_') || name.startsWith('google_drive_') || name.startsWith('notion_')) return { content: await runProductivityTool(name, input, ctx), isError: false }
     if (name === 'create_file') return { content: await runFileTool(name, input, ctx), isError: false }
     return { content: `Unbekanntes Tool: ${name}`, isError: true }
   } catch (err) {
@@ -189,6 +192,12 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
     if (slackDefs.length) turnTools = [...turnTools, ...slackDefs]
   } catch (err) {
     console.error('Slack-Tool-Discovery fehlgeschlagen:', err.message)
+  }
+  try {
+    const productivityDefs = await productivityToolDefinitions(ctx.userId)
+    if (productivityDefs.length) turnTools = [...turnTools, ...productivityDefs]
+  } catch (err) {
+    console.error('Produktivitäts-Tool-Discovery fehlgeschlagen:', err.message)
   }
   const messages = [...history]
   const signal = ctx.signal || null // Stop-Button: AbortController-Signal aus index.js

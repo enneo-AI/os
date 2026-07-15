@@ -1,4 +1,5 @@
 import { db } from '../db.js'
+import { decryptSecret } from '../crypto.js'
 
 // ============================================================ Attio-CRM (nativ, read-only)
 // Per Knopfdruck verbunden: Admin hinterlegt einen Attio-API-Key (Workspace Settings →
@@ -18,7 +19,7 @@ async function attioToken(userId) {
   const rows = data || []
   const own = userId ? rows.find((r) => r.owner === userId && r.visibility !== 'team') : null
   const team = rows.find((r) => r.visibility === 'team')
-  const token = (own || team)?.token || null
+  const token = decryptSecret((own || team)?.token || null)
   cache.set(key, { at: Date.now(), token })
   return token
 }

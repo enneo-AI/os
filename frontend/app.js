@@ -903,8 +903,8 @@ async function renderWriteCards(wrap, toolCalls) {
   }
 }
 
-// Tool-Verbindungs-Karte (request_tool_connection): OAuth bei Slack, sichere
-// Credentials-Eingabe nur noch für Anbieter, die keinen Login-Flow anbieten.
+// Tool-Verbindungs-Karte: native Anbieter immer OAuth; nur freie MCP-Server
+// verwenden URL und optional einen Bearer-Token.
 function renderConnectCards(wrap, toolCalls) {
   const calls = (toolCalls || []).filter((c) => c.name === 'request_tool_connection' && !c.is_error)
   calls.forEach((call, i) => {
@@ -912,7 +912,8 @@ function renderConnectCards(wrap, toolCalls) {
     const key = ('tc-' + (inp.kind || '') + '-' + (inp.name || '') + '-' + i).replace(/[^a-zA-Z0-9-]/g, '_')
     if (wrap.querySelector(`[data-connect-card="${key}"]`)) return
     const isMcp = inp.kind === 'mcp'
-    const isSlack = inp.kind === 'slack'
+    const isOAuth = ['outlook', 'google_drive', 'notion', 'attio', 'slack'].includes(inp.kind)
+    const providerLabel = NATIVE_CONNECTORS[inp.kind]?.label || inp.name || inp.kind
     const el = document.createElement('div')
     el.className = 'wp-card'
     el.dataset.connectCard = key
@@ -922,31 +923,26 @@ function renderConnectCards(wrap, toolCalls) {
       <div class="tc-form">
         ${isMcp ? `<input type="text" class="tc-name" placeholder="Name" value="${esc(inp.name || '')}">
         <input type="text" class="tc-url" placeholder="https://… (MCP-Server-URL)" value="${esc(inp.url || '')}">` : ''}
-        ${isSlack ? '<div class="wp-req">Du wirst zu Slack weitergeleitet und wählst dort deinen Workspace aus.</div>' : `<input type="password" class="tc-token" placeholder="${isMcp ? 'Bearer-Token (optional)' : 'API-Key'}" autocomplete="off">`}
+        ${isOAuth ? `<div class="wp-req">Du wirst zu ${esc(providerLabel)} weitergeleitet und wählst dort den Unternehmensaccount aus.</div>` : '<input type="password" class="tc-token" placeholder="Bearer-Token (optional)" autocomplete="off">'}
       </div>
-      <div class="wp-req">${isSlack ? 'Slack zeigt dir vorab alle angefragten Leserechte.' : 'Wird sicher gespeichert — Enni sieht deine Zugangsdaten nie. Erscheint danach als dein persönliches Tool unter Spaces → Tools.'}</div>
-      <div class="wp-actions"><button class="btn dark tc-save">${isSlack ? 'Mit Slack verbinden' : 'Verbinden'}</button></div>
+      <div class="wp-req">${isOAuth ? `${esc(providerLabel)} zeigt vorab alle angefragten Leserechte.` : 'Wird sicher gespeichert — Enni sieht deine Zugangsdaten nie.'}</div>
+      <div class="wp-actions"><button class="btn dark tc-save">${isOAuth ? `Mit ${esc(providerLabel)} verbinden` : 'Verbinden'}</button></div>
       <div class="wp-result" hidden></div>`
     const saveBtn = el.querySelector('.tc-save')
     const result = el.querySelector('.wp-result')
     saveBtn.addEventListener('click', async () => {
-      if (isSlack) {
+      if (isOAuth) {
         saveBtn.disabled = true
-        saveBtn.textContent = 'Öffne Slack …'
+        saveBtn.textContent = `Öffne ${providerLabel} …`
         try {
-          const res = await fetch(`${BACKEND_URL}/api/oauth/slack/start`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
-            body: JSON.stringify({ scope: 'personal' }),
-          })
-          const data = await res.json()
-          if (!res.ok || !data.url) throw new Error(data.error || 'OAuth-Start fehlgeschlagen')
-          location.assign(data.url)
+          await startProviderOAuth(inp.kind)
+          saveBtn.disabled = false
+          saveBtn.textContent = `Mit ${providerLabel} verbinden`
         } catch (err) {
           result.hidden = false
           result.textContent = 'Fehler: ' + err.message
           saveBtn.disabled = false
-          saveBtn.textContent = 'Mit Slack verbinden'
+          saveBtn.textContent = `Mit ${providerLabel} verbinden`
         }
         return
       }
@@ -2968,10 +2964,11 @@ const CONNECTIONS = {
   wiki: { name: 'Wiki', sub: 'Internes Firmenwissen · eingebaut', logo: './icons/enni.png' },
   gitlab: { name: 'GitLab', sub: 'Code, Projekte, Merge Requests · read-only', logo: './icons/gitlab.svg' },
   enneo: { name: 'Enneo-Plattform', sub: 'Tickets, Kunden, AI-Agenten, Settings', logo: './icons/enneo-icon.svg' },
-  google_drive: { name: 'Google Drive', sub: 'Phase 2', logo: './icons/google-drive.svg', disabled: true },
-  notion: { name: 'Notion', sub: 'Phase 2', logo: './icons/notion.svg', disabled: true },
-  slack: { name: 'Slack', sub: 'Phase 2', logo: './icons/slack.svg', disabled: true },
-  attio: { name: 'Attio', sub: 'Phase 2', logo: './icons/attio.ico', disabled: true },
+  outlook: { name: 'Outlook', sub: 'E-Mails und Kalender · via Marketplace', logo: './icons/outlook.svg' },
+  google_drive: { name: 'Google Drive', sub: 'Dokumente und Ordner · via Marketplace', logo: './icons/google-drive.svg' },
+  notion: { name: 'Notion', sub: 'Seiten und Datenbanken · via Marketplace', logo: './icons/notion.svg' },
+  slack: { name: 'Slack', sub: 'Channels und Threads · via Marketplace', logo: './icons/slack.svg' },
+  attio: { name: 'Attio', sub: 'CRM-Daten · via Marketplace', logo: './icons/attio.ico' },
 }
 // Inhaltsgruppen nach Slug-Prefix — jede Seite landet in GENAU einer Gruppe
 // (erste Übereinstimmung gewinnt; "Weitere" fängt unbekannte Prefixe auf).
@@ -3697,6 +3694,7 @@ async function loadConnectorRows() {
     .select('id, name, url, category, tool_count, kind, owner, visibility, auth_type, external_account_name')
     .order('created_at')
   const { is_admin } = await ownProfile()
+  await loadOAuthProviderStatus().catch(() => null)
   const me = session.user.id
   // Sichtbar: team-weite + eigene (personal/proposed)
   const visible = (data || []).filter((c) => c.visibility === 'team' || c.owner === me)
@@ -3736,26 +3734,27 @@ async function loadConnectorRows() {
   }
 }
 
-// Native Connectors (Attio, Slack): Status live, Klick öffnet das Key-Modal (Admin),
-// Trennen über ✕. Ein Config-Eintrag pro Dienst — keine Code-Kopien.
+// Native OAuth-Connectoren: identischer Einrichtungs-, Login- und Trenn-Flow.
+// Neue Anbieter benötigen nur einen Registry-Eintrag im Backend und eine Zeile hier.
 const NATIVE_CONNECTORS = {
-  attio: {
-    row: 'attio-row', status: 'attio-status', sub: 'attio-sub',
-    overlay: 'attio-overlay', input: 'at-token', err: 'at-err', save: 'at-save', cancel: 'at-cancel',
-    subConnected: 'CRM: Accounts, Kontakte, Deals, Notizen · read-only',
-    subDefault: 'CRM-Daten · read-only',
-    confirmMsg: 'Attio trennen? Enni verliert sofort den CRM-Zugriff.',
-    missingMsg: 'API-Key fehlt.',
-  },
-  slack: {
-    row: 'slack-row', status: 'slack-status', sub: 'slack-sub',
-    auth: 'oauth',
-    subConnected: 'Channels lesen: öffentlich automatisch, privat nach Bot-Einladung',
-    subDefault: 'Channels und Threads · read-only · sicherer Slack-Login',
-    confirmMsg: 'Slack trennen? Enni verliert sofort den Lesezugriff.',
-  },
+  outlook: { row: 'outlook-row', status: 'outlook-status', sub: 'outlook-sub', label: 'Outlook', subConnected: 'E-Mails und Kalender · read-only', subDefault: 'E-Mails und Kalender · read-only' },
+  google_drive: { row: 'google_drive-row', status: 'google_drive-status', sub: 'google_drive-sub', label: 'Google Drive', subConnected: 'Dokumente und Ordner · read-only', subDefault: 'Dokumente und Ordner · read-only' },
+  notion: { row: 'notion-row', status: 'notion-status', sub: 'notion-sub', label: 'Notion', subConnected: 'Freigegebene Seiten und Datenbanken · read-only', subDefault: 'Seiten und Datenbanken · read-only' },
+  attio: { row: 'attio-row', status: 'attio-status', sub: 'attio-sub', label: 'Attio', subConnected: 'Accounts, Kontakte, Deals und Notizen · read-only', subDefault: 'CRM-Daten · read-only' },
+  slack: { row: 'slack-row', status: 'slack-status', sub: 'slack-sub', label: 'Slack', subConnected: 'Channels lesen: öffentlich automatisch, privat nach Bot-Einladung', subDefault: 'Channels und Threads · read-only' },
 }
 const nativeState = {} // kind -> connector-Row oder null
+let oauthProviders = new Map()
+let pendingOAuthProvider = null
+
+async function loadOAuthProviderStatus(force = false) {
+  if (oauthProviders.size && !force) return oauthProviders
+  const res = await fetch(`${BACKEND_URL}/api/oauth/providers`, { headers: { Authorization: `Bearer ${await token()}` } })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'OAuth-Status nicht verfügbar')
+  oauthProviders = new Map((data.providers || []).map((provider) => [provider.provider, provider]))
+  return oauthProviders
+}
 
 function showOAuthResult(type, title, detail = '') {
   const box = $('oauth-result')
@@ -3769,40 +3768,94 @@ function showOAuthResult(type, title, detail = '') {
 
 function handleOAuthReturn() {
   const params = new URLSearchParams(location.search)
-  if (params.get('oauth') !== 'slack') return
+  const provider = params.get('oauth')
+  if (!provider || !NATIVE_CONNECTORS[provider]) return
+  const label = NATIVE_CONNECTORS[provider].label
   if (params.get('status') === 'connected') {
-    showOAuthResult('success', 'Slack ist verbunden', params.get('workspace') || 'Enni kann jetzt Channels und Threads lesen.')
+    showOAuthResult('success', `${label} ist verbunden`, params.get('workspace') || `Enni kann ${label} jetzt verwenden.`)
   } else {
     const detail = params.get('reason') === 'cancelled'
       ? 'Die Verbindung wurde abgebrochen.'
       : 'Bitte versuche die Verbindung erneut.'
-    showOAuthResult('error', 'Slack konnte nicht verbunden werden', detail)
+    showOAuthResult('error', `${label} konnte nicht verbunden werden`, detail)
   }
   const clean = new URL(location.href)
   for (const key of ['oauth', 'status', 'workspace', 'reason']) clean.searchParams.delete(key)
   history.replaceState({}, '', clean)
 }
 
-async function startSlackOAuth() {
-  const status = $('slack-status')
+async function startProviderOAuth(provider) {
+  const cfg = NATIVE_CONNECTORS[provider]
+  const status = $(cfg.status)
   const previous = status.innerHTML
   status.className = 'c-right off'
-  status.innerHTML = '<span class="connector-connect">Öffne Slack …</span>'
+  status.innerHTML = `<span class="connector-connect">Öffne ${esc(cfg.label)} …</span>`
   try {
     const { is_admin } = await ownProfile()
-    const res = await fetch(`${BACKEND_URL}/api/oauth/slack/start`, {
+    const res = await fetch(`${BACKEND_URL}/api/oauth/${provider}/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
       body: JSON.stringify({ scope: is_admin ? 'team' : 'personal' }),
     })
     const data = await res.json()
+    if (res.status === 409 && is_admin) {
+      status.innerHTML = previous
+      openOAuthSetup(provider)
+      return
+    }
     if (!res.ok || !data.url) throw new Error(data.error || 'OAuth-Start fehlgeschlagen')
     location.assign(data.url)
   } catch (err) {
     status.innerHTML = previous
-    showOAuthResult('error', 'Slack ist noch nicht bereit', err.message)
+    showOAuthResult('error', `${cfg.label} ist noch nicht bereit`, err.message)
   }
 }
+
+async function openOAuthSetup(provider) {
+  const meta = oauthProviders.get(provider) || (await loadOAuthProviderStatus(true)).get(provider)
+  pendingOAuthProvider = provider
+  $('oauth-setup-title').textContent = `${meta.label} einrichten`
+  $('oauth-setup-hint').textContent = meta.setupHint
+  $('oauth-redirect').value = meta.redirectUri
+  $('oauth-provider-link').href = meta.setupUrl
+  $('oauth-provider-link').textContent = `${meta.label}-Portal öffnen ↗`
+  $('oauth-client-id').value = ''
+  $('oauth-client-secret').value = ''
+  $('oauth-tenant-wrap').hidden = provider !== 'outlook'
+  $('oauth-tenant').value = meta.tenantId || 'organizations'
+  $('oauth-setup-err').textContent = ''
+  $('oauth-setup-overlay').classList.add('open')
+  setTimeout(() => $('oauth-client-id').focus(), 50)
+}
+
+$('oauth-copy').addEventListener('click', async () => {
+  await navigator.clipboard.writeText($('oauth-redirect').value)
+  $('oauth-copy').textContent = 'Kopiert'
+  setTimeout(() => { $('oauth-copy').textContent = 'Kopieren' }, 1400)
+})
+$('oauth-setup-cancel').addEventListener('click', () => $('oauth-setup-overlay').classList.remove('open'))
+$('oauth-setup-save').addEventListener('click', async () => {
+  const err = $('oauth-setup-err')
+  err.textContent = ''
+  const clientId = $('oauth-client-id').value.trim()
+  const clientSecret = $('oauth-client-secret').value.trim()
+  if (!clientId || !clientSecret) { err.textContent = 'Client-ID und Client-Secret sind Pflicht.'; return }
+  $('oauth-setup-save').disabled = true
+  $('oauth-setup-save').textContent = 'Speichert …'
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/admin/oauth/providers/${pendingOAuthProvider}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, tenant_id: $('oauth-tenant').value.trim() }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || 'Einrichtung fehlgeschlagen')
+    oauthProviders.clear()
+    $('oauth-setup-overlay').classList.remove('open')
+    await startProviderOAuth(pendingOAuthProvider)
+  } catch (error) { err.textContent = error.message }
+  $('oauth-setup-save').disabled = false
+  $('oauth-setup-save').textContent = 'Speichern & verbinden'
+})
 
 function renderNativeRow(kind, conn, isAdmin, me) {
   const cfg = NATIVE_CONNECTORS[kind]
@@ -3817,7 +3870,7 @@ function renderNativeRow(kind, conn, isAdmin, me) {
     status.innerHTML = `<span class="dot-s"></span>${scope}` +
       (mine && conn.visibility === 'personal' ? `<button class="btn quiet" data-native-share="${kind}" style="padding:3px 10px;font-size:11px;margin-left:8px" title="Team-weite Nutzung beantragen">Teilen</button>` : '') +
       (isAdmin || mine ? `<button class="c-del" data-native-del="${kind}" title="Trennen" style="display:inline-flex;margin-left:8px"><svg viewBox="0 0 24 24"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg></button>` : '')
-    sub.textContent = kind === 'slack' && conn.external_account_name
+    sub.textContent = conn.external_account_name
       ? `${conn.external_account_name} · ${cfg.subConnected}`
       : cfg.subConnected
     status.querySelector('[data-native-share]')?.addEventListener('click', (e) => {
@@ -3826,7 +3879,7 @@ function renderNativeRow(kind, conn, isAdmin, me) {
     })
     status.querySelector('[data-native-del]')?.addEventListener('click', async (e) => {
       e.stopPropagation()
-      if (!window.confirm(cfg.confirmMsg)) return
+      if (!window.confirm(`${cfg.label} trennen? Enni verliert sofort den Zugriff.`)) return
       const res = await fetch(`${BACKEND_URL}/api/connectors/${conn.id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${await token()}` },
@@ -3837,50 +3890,22 @@ function renderNativeRow(kind, conn, isAdmin, me) {
     })
   } else {
     status.className = 'c-right off'
-    status.innerHTML = cfg.auth === 'oauth'
+    const configured = oauthProviders.get(kind)?.configured
+    status.innerHTML = configured
       ? '<span class="connector-connect"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Verbinden</span>'
-      : '<span class="dot-s"></span>Verbinden'
-    sub.textContent = cfg.auth === 'oauth' ? cfg.subDefault : `${cfg.subDefault} · Klick zum Verbinden (persönlich; Admin: team-weit)`
+      : '<span class="connector-setup">Einrichten</span>'
+    sub.textContent = configured ? `${cfg.subDefault} · sicherer Anbieter-Login` : `${cfg.subDefault} · einmalige Admin-Einrichtung`
   }
 }
 
 for (const [kind, cfg] of Object.entries(NATIVE_CONNECTORS)) {
-  if (cfg.auth === 'oauth') {
-    $(cfg.row).addEventListener('click', () => {
-      if (!nativeState[kind]) startSlackOAuth()
-    })
-    continue
-  }
   $(cfg.row).addEventListener('click', async () => {
-    if (nativeState[kind]) return // verbunden — Trennen läuft über das ✕ (jeder darf verbinden)
-    $(cfg.input).value = ''
-    $(cfg.err).textContent = ''
-    $(cfg.overlay).classList.add('open')
-    setTimeout(() => $(cfg.input).focus(), 50)
-  })
-  $(cfg.cancel).addEventListener('click', () => $(cfg.overlay).classList.remove('open'))
-  $(cfg.save).addEventListener('click', async () => {
-    const err = $(cfg.err)
-    err.textContent = ''
-    if (!$(cfg.input).value.trim()) { err.textContent = cfg.missingMsg; return }
-    $(cfg.save).disabled = true
-    $(cfg.save).textContent = 'Verbinde …'
-    try {
-      const res = await fetch(`${BACKEND_URL}/api/connectors`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
-        body: JSON.stringify({ kind, token: $(cfg.input).value.trim() }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
-      $(cfg.overlay).classList.remove('open')
-      toolCatalogCache = null
-      loadConnectorRows()
-    } catch (e) {
-      err.textContent = e.message
-    }
-    $(cfg.save).disabled = false
-    $(cfg.save).textContent = 'Verbinden'
+    if (nativeState[kind]) return
+    const { is_admin } = await ownProfile()
+    const configured = oauthProviders.get(kind)?.configured
+    if (!configured && is_admin) return openOAuthSetup(kind)
+    if (!configured) return showOAuthResult('error', `${cfg.label} ist noch nicht eingerichtet`, 'Bitte einen Admin um die einmalige Einrichtung.')
+    startProviderOAuth(kind)
   })
 }
 
