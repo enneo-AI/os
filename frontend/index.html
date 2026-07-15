@@ -754,6 +754,18 @@
   .crow:hover .c-del{display:inline-flex}
   .crow .c-del:hover{color:var(--high);background:var(--hover)}
   .crow .c-del svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round}
+  .research-lab{display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;gap:14px;margin:0 auto 18px;max-width:980px;padding:13px 14px;border:1px solid var(--glass-outline);border-radius:16px;background:linear-gradient(145deg,var(--key-hi),var(--surface-2));box-shadow:inset 0 1px 0 var(--glass-highlight),0 16px 38px -30px rgba(29,30,44,.46)}
+  .research-orb{width:42px;height:42px;border-radius:13px;background:url(/icons/enni.png) center/112% no-repeat;box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 8px 18px -10px rgba(71,48,142,.5)}
+  .research-copy{min-width:0}.research-copy strong{display:block;font-size:13.5px;font-weight:650}.research-copy span{display:block;margin-top:2px;font-size:11.5px;color:var(--ink-3)}
+  .research-activity{max-width:980px;margin:-8px auto 18px;border-top:1px solid var(--hair)}.research-activity:empty{display:none}
+  .research-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:10px;min-height:50px;border-bottom:1px solid var(--hair);padding:7px 2px}
+  .research-row button{font:inherit}.research-name{font-size:12.5px;font-weight:620}.research-meta{font-size:10.5px;color:var(--ink-3);margin-top:1px}.research-state{font-size:10.5px;font-weight:650;color:var(--ink-3);white-space:nowrap}.research-state.live{color:var(--lila-deep)}.research-state.ready{color:var(--good)}.research-state.failed{color:var(--high)}
+  .research-pulse{display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:6px;animation:research-pulse 1.4s ease-in-out infinite}@keyframes research-pulse{50%{opacity:.25;transform:scale(.72)}}
+  .research-detail-head{display:flex;align-items:flex-start;gap:13px;margin-bottom:18px}.research-detail-head .research-orb{flex:none}.research-detail-head h3{margin:1px 0 2px}.research-detail-head p{margin:0;color:var(--ink-3);font-size:12px}
+  .research-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--hair);border:1px solid var(--hair);border-radius:13px;overflow:hidden;margin-bottom:18px}.research-fact{background:var(--surface-2);padding:11px 12px}.research-fact span{display:block;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}.research-fact strong{display:block;margin-top:3px;font-size:12px;font-weight:650}
+  .research-section{margin:17px 0}.research-section h4{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:0 0 7px}.research-chips{display:flex;flex-wrap:wrap;gap:6px}.research-chip{border:1px solid var(--hair);border-radius:999px;background:var(--surface-2);padding:4px 9px;font-size:10.5px;color:var(--ink-2)}
+  .research-evidence{display:flex;flex-direction:column}.research-evidence a{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;padding:8px 2px;border-bottom:1px solid var(--hair);color:inherit;text-decoration:none;font-size:11.5px}.research-evidence a span{color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.research-evidence a:hover strong{color:var(--lila-deep)}
+  @media(max-width:680px){.research-lab{grid-template-columns:38px minmax(0,1fr);padding:12px}.research-lab .btn{grid-column:1/-1;width:100%;justify-content:center}.research-orb{width:38px;height:38px}.research-row{grid-template-columns:minmax(0,1fr) auto}.research-row .research-state{grid-column:1/2}.research-facts{grid-template-columns:1fr}.research-fact{padding:9px 11px}}
 
   /* ---------- connectors ---------- */
   .conn-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;max-width:980px;margin:0 auto;padding-bottom:50px}
@@ -1457,9 +1469,15 @@
         <div class="eyebrow">Marketplace</div>
         <h2>Ennis Tools & Quellen.</h2>
         <p>Read-only liest nur. Read &amp; Write führt Aktionen aus — Schreiben läuft immer über eine Freigabe-Karte.</p>
-        <div class="page-actions"><button class="btn dark" data-category="tool">＋ Tool verknüpfen</button></div>
+        <div class="page-actions"><button class="btn quiet" data-category="tool">MCP direkt verbinden</button><button class="btn dark" id="tool-research-open">＋ Tool anfragen</button></div>
       </div>
       <div class="oauth-result" id="oauth-result" hidden></div>
+      <div class="research-lab">
+        <span class="research-orb" aria-hidden="true"></span>
+        <div class="research-copy"><strong>Fehlt ein Tool?</strong><span>Name oder Dokumentation genügt — Enni recherchiert Verbindung, Rechte und Einrichtungsweg.</span></div>
+        <button class="btn quiet" id="tool-research-open-inline">Enni recherchieren lassen</button>
+      </div>
+      <div class="research-activity" id="tool-research-activity"></div>
       <div class="cost-shell">
         <div class="list-panel">
           <h3>Read &amp; Write</h3>
@@ -1475,6 +1493,8 @@
           <button class="crow" id="slack-row"><span class="c-logo"><img src="/icons/slack.svg" alt=""></span><div><div class="c-name">Slack</div><div class="c-sub" id="slack-sub">Channels · read-only</div></div><span class="c-right off" id="slack-status"><span class="dot-s"></span>Verbinden</span></button>
           <button class="crow" id="google_drive-row"><span class="c-logo"><img src="/icons/google-drive.svg" alt=""></span><div><div class="c-name">Google Drive</div><div class="c-sub" id="google_drive-sub">Dokumente und Ordner · read-only</div></div><span class="c-right off" id="google_drive-status"><span class="dot-s"></span>Verbinden</span></button>
           <button class="crow" id="notion-row"><span class="c-logo"><img src="/icons/notion.svg" alt=""></span><div><div class="c-name">Notion</div><div class="c-sub" id="notion-sub">Seiten und Datenbanken · read-only</div></div><span class="c-right off" id="notion-status"><span class="dot-s"></span>Verbinden</span></button>
+
+          <div id="researched-marketplace"></div>
 
           <h3 style="margin-top:22px">Eigene Tools <span class="lbl-hint" style="text-transform:none;letter-spacing:0">— MCP-Server, Rechte je nach Server</span></h3>
           <div id="dyn-tools"></div>
@@ -1538,6 +1558,10 @@
             <section class="list-panel" id="panel-tools" hidden>
               <h3>Tools <span class="ku-count" id="tp-count"></span></h3>
               <div id="tp-list"></div>
+            </section>
+            <section class="list-panel" id="panel-tool-research" hidden>
+              <h3>Neue Integrationen <span class="ku-count" id="tr-count"></span></h3>
+              <div id="tr-list"></div>
             </section>
             <section class="list-panel" id="panel-routines" hidden>
               <h3>Routinen <span class="ku-count" id="rp-count"></span></h3>
@@ -1609,6 +1633,33 @@
       <kbd class="pal-esc">esc</kbd>
     </div>
     <div class="pal-results" id="pal-results"></div>
+  </div>
+</div>
+
+<!-- ================= ENNI TOOL RESEARCH ================= -->
+<div class="overlay" id="tool-research-overlay">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="tool-research-title">
+    <div class="research-detail-head">
+      <span class="research-orb" aria-hidden="true"></span>
+      <div><div class="eyebrow">Enni Research Lab</div><h3 id="tool-research-title">Neues Tool recherchieren</h3><p>Enni prüft ausschließlich offizielle Quellen und erstellt einen Marketplace-Entwurf.</p></div>
+    </div>
+    <label for="tr-name">Tool oder Anbieter</label>
+    <input type="text" id="tr-name" placeholder="z. B. HubSpot, Linear oder Miro">
+    <label for="tr-url">Website oder Dokumentation <span class="lbl-hint">— optional, hilft bei ähnlichen Namen</span></label>
+    <input type="text" id="tr-url" inputmode="url" placeholder="https://developers.example.com">
+    <label for="tr-note">Was soll Enni damit können? <span class="lbl-hint">— optional</span></label>
+    <textarea id="tr-note" rows="3" placeholder="z. B. Projekte und Tasks lesen, aber nichts verändern."></textarea>
+    <p class="pf-hint">Die Recherche kann ein bis zwei Minuten dauern. Zugangsdaten werden dabei weder benötigt noch an Enni übergeben.</p>
+    <div class="err" id="tr-err"></div>
+    <div class="m-actions"><button class="btn quiet" id="tr-cancel">Abbrechen</button><button class="btn dark" id="tr-start">Recherche starten</button></div>
+  </div>
+</div>
+
+<div class="overlay" id="tool-research-detail-overlay">
+  <div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="trd-title">
+    <div id="trd-content"></div>
+    <div class="err" id="trd-err"></div>
+    <div class="m-actions" id="trd-actions"><button class="btn quiet" id="trd-close">Schließen</button></div>
   </div>
 </div>
 

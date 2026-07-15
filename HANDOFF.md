@@ -1,6 +1,15 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-15 (neutrale Glass-Fokuszustände + externe Einladungen; live auf https://os.enneo.ai)
+**Zuletzt aktualisiert:** 2026-07-15 (Enni Research Lab für autonome Tool-Integrationen; live auf https://os.enneo.ai)
+
+### Session 2026-07-15 — Enni Research Lab für fehlende Tools
+
+- **Tool nur nennen oder verlinken:** Im Marketplace gibt es jetzt „Tool anfragen“. Name, Website/Dokumentation und ein optionaler gewünschter Use Case reichen; die Recherche läuft im Hintergrund und bleibt beim Verlassen der Seite aktiv.
+- **Quellenbasierter Blueprint:** Enni sucht und liest offizielle Entwicklerquellen über Firecrawl und erstellt mit Sonnet einen strukturierten Integrationsentwurf: Auth-Typ, Remote-MCP/API/OAuth, Scopes, Funktionen, Zugriffsebene, Sicherheitsnotizen, Einrichtungsschritte, Evidenzlinks und Confidence. Webseiteninhalt wird ausdrücklich als untrusted data behandelt; Endpoints/Scopes dürfen nicht erfunden werden.
+- **Freigabe statt Blindflug:** Entwürfe erscheinen im Admin-Bereich unter Freigaben → Neue Integrationen. Erst nach Admin-Review werden sie für alle im Marketplace sichtbar. Offiziell belegte Remote-MCPs ohne OAuth sind danach direkt über den bestehenden sicheren MCP-Flow verbindbar; OAuth/API-Anbieter zeigen den recherchierten Einrichtungsplan und das Anbieterportal, werden aber nicht fälschlich als ausführbar markiert, solange ein nativer Adapter fehlt.
+- **Security & Persistenz:** Migration `20260715131020_autonomous_tool_research.sql` führt `tool_requests` mit RLS ein. Nutzer sehen eigene Anfragen plus veröffentlichte Integrationen; Admins sehen alle. Browser-Writes sind gesperrt, Erstellung/Recherche/Review laufen nur über authentifizierte Backend-Endpunkte. Private/localhost-URLs werden abgelehnt, Credentials sind nie Teil der Recherche.
+- **Robustheit:** Status `queued → researching → review → approved/rejected` sowie `failed` mit Retry; ein Backend-Neustart nimmt liegengebliebene Jobs wieder auf. Die Marketplace-UI pollt nur während aktiver Recherchen.
+- **E2E verifiziert:** Testanfrage „DeepWiki“ mit offizieller Devin-Dokumentation durchlief produktiv `queued → researching → review`; Enni identifizierte korrekt `https://mcp.deepwiki.com/mcp`, Typ `remote_mcp`, direkt verbindbar und acht Evidenzquellen. Testentwurf anschließend gelöscht. RLS-Test mit zwei echten temporären Accounts: Owner sah private+approved, anderer nur approved, direkter Browser-Insert → `403`; Testaccounts gelöscht.
 
 ### Session 2026-07-15 — Premium-Fokus und externe Accounts
 

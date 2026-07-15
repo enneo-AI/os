@@ -780,6 +780,87 @@ app.post('/api/connectors', async (req, res) => {
   }
 })
 
+// Enni Research Lab: fehlendes Tool nennen oder verlinken → offizielle Quellen
+// recherchieren → sicherer Blueprint → Admin-Review → Marketplace.
+app.get('/api/tool-requests', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const { data: profile } = await db.from('profiles').select('is_admin').eq('id', user.id).maybeSingle()
+  let query = db.from('tool_requests').select('*').order('created_at', { ascending: false }).limit(100)
+  if (!profile?.is_admin) query = query.or(`status.eq.approved,requested_by.eq.${user.id}`)
+  const { data, error } = await query
+  if (error) return res.status(400).json({ error: error.message })
+  res.json({ requests: data || [], is_admin: !!profile?.is_admin })
+})
+
+app.post('/api/tool-requests', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const name = String(req.body?.name || '').trim().slice(0, 100)
+  const sourceUrl = String(req.body?.source_url || '').trim()
+  const note = String(req.body?.request_note || '').trim().slice(0, 1000)
+  if (!name && !sourceUrl) return res.status(400).json({ error: 'Nenne das Tool oder füge einen Link ein.' })
+  if (sourceUrl) {
+    try {
+      const parsed = new URL(sourceUrl)
+      const host = parsed.hostname.toLowerCase()
+      const privateHost = host === 'localhost' || host === '::1' || host.endsWith('.local') || /^127\.|^10\.|^192\.168\.|^169\.254\.|^172\.(1[6-9]|2\d|3[01])\./.test(host)
+      if (parsed.protocol !== 'https:' || privateHost) throw new Error('invalid')
+    } catch {
+      return res.status(400).json({ error: 'Bitte verwende eine öffentliche https://-Adresse.' })
+    }
+  }
+  const { data, error } = await db.from('tool_requests').insert({
+    requested_by: user.id,
+    name: name || null,
+    source_url: sourceUrl || null,
+    request_note: note || null,
+    status: 'queued',
+  }).select('*').single()
+  if (error) return res.status(400).json({ error: error.message })
+  await logAudit(user.id, 'tool_research.request', 'tool_request', data.id, { name, source_url: sourceUrl || null })
+  const { researchToolRequest } = await import('./tool-research.js')
+  setImmediate(() => researchToolRequest(data.id))
+  res.status(202).json({ request: data })
+})
+
+app.post('/api/tool-requests/:id/retry', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const { data: profile } = await db.from('profiles').select('is_admin').eq('id', user.id).maybeSingle()
+  const { data: request } = await db.from('tool_requests').select('id, requested_by').eq('id', req.params.id).maybeSingle()
+  if (!request) return res.status(404).json({ error: 'Anfrage nicht gefunden' })
+  if (!profile?.is_admin && request.requested_by !== user.id) return res.status(403).json({ error: 'Nicht erlaubt' })
+  await db.from('tool_requests').update({ status: 'queued', research_error: null }).eq('id', request.id)
+  const { researchToolRequest } = await import('./tool-research.js')
+  setImmediate(() => researchToolRequest(request.id))
+  res.status(202).json({ ok: true })
+})
+
+app.post('/api/tool-requests/:id/:action(approve|reject)', async (req, res) => {
+  const user = await requireAdmin(req, res)
+  if (!user) return
+  const status = req.params.action === 'approve' ? 'approved' : 'rejected'
+  const { data: existing } = await db.from('tool_requests').select('id, status, research').eq('id', req.params.id).maybeSingle()
+  if (!existing) return res.status(404).json({ error: 'Anfrage nicht gefunden' })
+  if (req.params.action === 'approve' && existing.status !== 'review') {
+    return res.status(400).json({ error: 'Nur vollständig recherchierte Entwürfe können veröffentlicht werden.' })
+  }
+  const now = new Date().toISOString()
+  const { data, error } = await db.from('tool_requests').update({
+    status,
+    reviewed_by: user.id,
+    reviewed_at: now,
+    published_at: status === 'approved' ? now : null,
+  }).eq('id', existing.id).select('*').single()
+  if (error) return res.status(400).json({ error: error.message })
+  await logAudit(user.id, `tool_research.${req.params.action}`, 'tool_request', data.id, {
+    integration_type: data.research?.integration_type,
+    connect_ready: !!data.research?.connect_ready,
+  })
+  res.json({ request: data })
+})
+
 // Einheitliche OAuth-Plattform: Provider-Credentials werden einmalig durch einen
 // Admin in enneo OS konfiguriert; Accounts verbinden sich danach per Anbieter-Login.
 app.get('/api/oauth/providers', async (req, res) => {
@@ -1086,5 +1167,6 @@ const port = Number(process.env.PORT || 8080)
 app.listen(port, () => {
   console.log(`enneo OS backend läuft auf :${port}`)
   startKnowledgeSyncTicker()
+  import('./tool-research.js').then(({ resumeToolResearch }) => resumeToolResearch()).catch((err) => console.error('Tool-Recherche konnte nicht fortgesetzt werden:', err.message))
 })
 startRoutineTicker()

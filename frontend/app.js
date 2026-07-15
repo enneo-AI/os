@@ -448,7 +448,7 @@ async function loadAdmin() {
   setAdminTab(!is_admin && ADMIN_ONLY_TABS.has(initial) ? 'usage' : initial, false)
   await Promise.all([
     refreshCosts(), loadMembers(), loadKnowledgeUpdates(), loadLearnings(), loadSkillProposals(), loadToolProposals(),
-    loadRoutineProposals(), loadWikiPageProposals(), loadKnowledgeSources(),
+    loadToolResearchProposals(), loadRoutineProposals(), loadWikiPageProposals(), loadKnowledgeSources(),
   ])
 }
 
@@ -1282,6 +1282,31 @@ async function loadToolProposals() {
     const [rejectBtn, approveBtn] = row.querySelectorAll('button')
     approveBtn.addEventListener('click', () => act(c.id, 'approve'))
     rejectBtn.addEventListener('click', () => act(c.id, 'reject'))
+    list.appendChild(row)
+  }
+}
+
+async function loadToolResearchProposals() {
+  const { is_admin } = await ownProfile()
+  const panel = $('panel-tool-research')
+  panel.hidden = !is_admin
+  if (!is_admin) return
+  const data = await fetchToolResearch()
+  const proposed = data.requests.filter((item) => item.status === 'review')
+  $('tr-count').textContent = proposed.length ? `${proposed.length} offen` : 'nichts offen'
+  const list = $('tr-list')
+  list.innerHTML = proposed.length ? '' : '<div class="empty-plain">Keine fertig recherchierten Integrationen.</div>'
+  for (const item of proposed) {
+    const blueprint = item.research || {}
+    const row = document.createElement('div')
+    row.className = 'row'
+    row.innerHTML = `<div><div class="r-name">${esc(blueprint.display_name || item.name || 'Neue Integration')}</div>
+      <div class="r-sub">${esc(researchTypeLabel(blueprint.integration_type))} · ${Number(blueprint.confidence || 0)} % Evidenz · ${blueprint.connect_ready ? 'direkt verbindbar' : 'Einrichtungsplan geprüft'}</div></div>
+      <button class="btn quiet" style="padding:5px 13px;font-size:12px">Prüfen</button>
+      <button class="btn dark" style="padding:5px 13px;font-size:12px">Veröffentlichen</button>`
+    const [view, approve] = row.querySelectorAll('button')
+    view.addEventListener('click', () => openToolResearchDetail(item, true))
+    approve.addEventListener('click', () => decideToolResearch(item.id, 'approve'))
     list.appendChild(row)
   }
 }
@@ -3989,6 +4014,160 @@ document.addEventListener('click', (event) => {
 })
 setModel('claude-sonnet-5')
 
+// ============================================================ Enni Research Lab (fehlende Marketplace-Tools)
+let toolResearchCache = []
+let toolResearchAdmin = false
+let toolResearchPoll = null
+let currentToolResearch = null
+
+const researchTypeLabel = (type) => ({
+  remote_mcp: 'Remote MCP', oauth2: 'OAuth 2.0', api_key: 'API-Key', webhook: 'Webhook', unsupported: 'Kein sicherer Weg gefunden',
+}[type] || 'Wird geprüft')
+
+const researchState = (status) => ({
+  queued: ['Wartet', 'live'], researching: ['Enni recherchiert', 'live'], review: ['Bereit zur Prüfung', 'ready'],
+  approved: ['Im Marketplace', 'ready'], rejected: ['Nicht veröffentlicht', ''], failed: ['Recherche fehlgeschlagen', 'failed'],
+}[status] || [status, ''])
+
+async function fetchToolResearch() {
+  const res = await fetch(`${BACKEND_URL}/api/tool-requests`, { headers: { Authorization: `Bearer ${await token()}` } })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Tool-Recherchen konnten nicht geladen werden')
+  toolResearchCache = data.requests || []
+  toolResearchAdmin = !!data.is_admin
+  return data
+}
+
+function researchIcon(name) {
+  return esc(String(name || '?').trim().charAt(0).toUpperCase() || '?')
+}
+
+async function loadToolResearch() {
+  clearTimeout(toolResearchPoll)
+  try {
+    const { requests } = await fetchToolResearch()
+    const activity = $('tool-research-activity')
+    const active = requests.filter((item) => item.status !== 'approved').slice(0, 8)
+    activity.innerHTML = ''
+    for (const item of active) {
+      const [label, cls] = researchState(item.status)
+      const row = document.createElement('div')
+      row.className = 'research-row'
+      row.innerHTML = `<div><div class="research-name">${esc(item.research?.display_name || item.name || item.source_url || 'Tool-Anfrage')}</div><div class="research-meta">${item.status === 'failed' ? esc(item.research_error || '') : esc(researchTypeLabel(item.research?.integration_type))}</div></div>
+        <span class="research-state ${cls}">${['queued', 'researching'].includes(item.status) ? '<span class="research-pulse"></span>' : ''}${label}</span>
+        <button class="btn quiet" style="padding:4px 10px;font-size:11px">Ansehen</button>`
+      row.querySelector('button').addEventListener('click', () => openToolResearchDetail(item, toolResearchAdmin))
+      activity.appendChild(row)
+    }
+
+    const approved = requests.filter((item) => item.status === 'approved')
+    const marketplace = $('researched-marketplace')
+    marketplace.innerHTML = approved.length ? '<h3 style="margin-top:22px">Von Enni recherchiert</h3>' : ''
+    for (const item of approved) {
+      const blueprint = item.research || {}
+      const row = document.createElement('button')
+      row.className = 'crow'
+      row.innerHTML = `<span class="c-logo"><strong style="font-size:13px;color:var(--ink-2)">${researchIcon(blueprint.display_name)}</strong></span><div><div class="c-name">${esc(blueprint.display_name || item.name || 'Integration')}</div><div class="c-sub">${esc(blueprint.summary || researchTypeLabel(blueprint.integration_type))}</div></div><span class="c-right off"><span class="connector-connect"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>${blueprint.connect_ready ? 'Verbinden' : 'Einrichten'}</span></span>`
+      row.addEventListener('click', () => blueprint.connect_ready ? openResearchedMcp(item) : openToolResearchDetail(item, toolResearchAdmin))
+      marketplace.appendChild(row)
+    }
+    if (requests.some((item) => ['queued', 'researching'].includes(item.status))) toolResearchPoll = setTimeout(loadToolResearch, 5000)
+  } catch (error) {
+    $('tool-research-activity').innerHTML = `<div class="err">${esc(error.message)}</div>`
+  }
+}
+
+function openToolResearchRequest() {
+  $('tr-name').value = ''
+  $('tr-url').value = ''
+  $('tr-note').value = ''
+  $('tr-err').textContent = ''
+  $('tool-research-overlay').classList.add('open')
+  setTimeout(() => $('tr-name').focus(), 50)
+}
+
+for (const id of ['tool-research-open', 'tool-research-open-inline']) $(id).addEventListener('click', openToolResearchRequest)
+$('tr-cancel').addEventListener('click', () => $('tool-research-overlay').classList.remove('open'))
+$('tr-start').addEventListener('click', async () => {
+  const err = $('tr-err')
+  err.textContent = ''
+  $('tr-start').disabled = true
+  $('tr-start').textContent = 'Enni startet …'
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/tool-requests`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ name: $('tr-name').value, source_url: $('tr-url').value, request_note: $('tr-note').value }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || 'Recherche konnte nicht gestartet werden')
+    $('tool-research-overlay').classList.remove('open')
+    showOAuthResult('success', 'Enni recherchiert das Tool', 'Du kannst den Marketplace verlassen. Der Entwurf erscheint hier automatisch.')
+    loadToolResearch()
+  } catch (error) { err.textContent = error.message }
+  $('tr-start').disabled = false
+  $('tr-start').textContent = 'Recherche starten'
+})
+
+function renderToolResearchDetail(item, isAdmin) {
+  const blueprint = item.research || {}
+  const [stateLabel, stateClass] = researchState(item.status)
+  const capabilities = (blueprint.capabilities || []).map((capability) => `<span class="research-chip" title="${esc(capability.description || '')}">${esc(capability.name)}</span>`).join('')
+  const scopes = (blueprint.auth?.scopes || []).map((scope) => `<span class="research-chip">${esc(scope)}</span>`).join('')
+  const notes = (blueprint.security_notes || []).map((note) => `<li>${esc(note)}</li>`).join('')
+  const steps = (blueprint.implementation_steps || []).map((step) => `<li>${esc(step)}</li>`).join('')
+  const evidence = (blueprint.evidence || []).map((source) => `<a href="${esc(source.url)}" target="_blank" rel="noopener"><span><strong>${esc(source.title || new URL(source.url).hostname)}</strong> · ${esc(source.claim || '')}</span><b>↗</b></a>`).join('')
+  $('trd-content').innerHTML = `<div class="research-detail-head"><span class="research-orb" aria-hidden="true"></span><div><div class="eyebrow">Enni Research Lab</div><h3 id="trd-title">${esc(blueprint.display_name || item.name || 'Tool-Recherche')}</h3><p>${esc(blueprint.summary || item.research_error || 'Die Recherche läuft noch.')}</p></div></div>
+    <div class="research-facts"><div class="research-fact"><span>Status</span><strong class="research-state ${stateClass}">${stateLabel}</strong></div><div class="research-fact"><span>Verbindung</span><strong>${esc(researchTypeLabel(blueprint.integration_type))}</strong></div><div class="research-fact"><span>Quellensicherheit</span><strong>${Number(blueprint.confidence || 0)} %</strong></div></div>
+    ${capabilities ? `<div class="research-section"><h4>Funktionen</h4><div class="research-chips">${capabilities}</div></div>` : ''}
+    ${scopes ? `<div class="research-section"><h4>Angefragte Rechte</h4><div class="research-chips">${scopes}</div></div>` : ''}
+    ${notes ? `<div class="research-section"><h4>Sicherheitsprüfung</h4><ul class="pf-hint">${notes}</ul></div>` : ''}
+    ${steps ? `<div class="research-section"><h4>Einrichtungsplan</h4><ol class="pf-hint">${steps}</ol></div>` : ''}
+    ${evidence ? `<div class="research-section"><h4>Geprüfte Quellen</h4><div class="research-evidence">${evidence}</div></div>` : ''}`
+  const actions = $('trd-actions')
+  actions.innerHTML = '<button class="btn quiet" id="trd-close">Schließen</button>'
+  if (item.status === 'failed') actions.insertAdjacentHTML('beforeend', '<button class="btn dark" id="trd-retry">Erneut recherchieren</button>')
+  if (isAdmin && item.status === 'review') actions.insertAdjacentHTML('beforeend', '<button class="btn quiet danger-link" id="trd-reject">Ablehnen</button><button class="btn dark" id="trd-approve">Im Marketplace veröffentlichen</button>')
+  if (item.status === 'approved' && blueprint.setup_url) actions.insertAdjacentHTML('beforeend', `<a class="btn quiet" href="${esc(blueprint.setup_url)}" target="_blank" rel="noopener">Anbieter-Portal ↗</a>`)
+  if (item.status === 'approved' && blueprint.connect_ready) actions.insertAdjacentHTML('beforeend', '<button class="btn dark" id="trd-connect">Verbinden</button>')
+  $('trd-close').addEventListener('click', () => $('tool-research-detail-overlay').classList.remove('open'))
+  $('trd-retry')?.addEventListener('click', () => retryToolResearch(item.id))
+  $('trd-reject')?.addEventListener('click', () => decideToolResearch(item.id, 'reject'))
+  $('trd-approve')?.addEventListener('click', () => decideToolResearch(item.id, 'approve'))
+  $('trd-connect')?.addEventListener('click', () => openResearchedMcp(item))
+}
+
+function openToolResearchDetail(item, isAdmin = false) {
+  currentToolResearch = item
+  $('trd-err').textContent = ''
+  renderToolResearchDetail(item, isAdmin)
+  $('tool-research-detail-overlay').classList.add('open')
+}
+
+$('trd-close').addEventListener('click', () => $('tool-research-detail-overlay').classList.remove('open'))
+
+async function decideToolResearch(id, action) {
+  const res = await fetch(`${BACKEND_URL}/api/tool-requests/${id}/${action}`, { method: 'POST', headers: { Authorization: `Bearer ${await token()}` } })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) { $('trd-err').textContent = data.error || 'Entscheidung fehlgeschlagen'; return }
+  $('tool-research-detail-overlay').classList.remove('open')
+  await Promise.all([loadToolResearch(), loadToolResearchProposals()])
+}
+
+async function retryToolResearch(id) {
+  const res = await fetch(`${BACKEND_URL}/api/tool-requests/${id}/retry`, { method: 'POST', headers: { Authorization: `Bearer ${await token()}` } })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) { $('trd-err').textContent = data.error || 'Neustart fehlgeschlagen'; return }
+  $('tool-research-detail-overlay').classList.remove('open')
+  loadToolResearch()
+}
+
+async function openResearchedMcp(item) {
+  const blueprint = item.research || {}
+  if (!blueprint.connect_ready || !blueprint.mcp_url) return openToolResearchDetail(item, toolResearchAdmin)
+  $('tool-research-detail-overlay').classList.remove('open')
+  openConnectorModal({ name: blueprint.display_name || item.name, url: blueprint.mcp_url })
+}
+
 // ============================================================ Connectors (MCP-Server verknüpfen)
 let cnCategory = 'tool'
 
@@ -4015,6 +4194,7 @@ async function loadConnectorRows() {
     .order('created_at')
   const { is_admin } = await ownProfile()
   await loadOAuthProviderStatus().catch(() => null)
+  loadToolResearch()
   const me = session.user.id
   // Sichtbar: team-weite + eigene (personal/proposed)
   const visible = (data || []).filter((c) => c.visibility === 'team' || c.owner === me)
@@ -4229,12 +4409,11 @@ for (const [kind, cfg] of Object.entries(NATIVE_CONNECTORS)) {
   })
 }
 
-document.querySelectorAll('[data-category]').forEach((b) =>
-  b.addEventListener('click', async () => {
-    cnCategory = b.dataset.category
+async function openConnectorModal(prefill = {}) {
+    cnCategory = prefill.category || 'tool'
     $('cm-title').textContent = cnCategory === 'tool' ? 'Eigenes Tool verknüpfen' : 'Connection verknüpfen'
-    $('cn-name').value = ''
-    $('cn-url').value = ''
+    $('cn-name').value = prefill.name || ''
+    $('cn-url').value = prefill.url || ''
     $('cn-token').value = ''
     const { is_admin } = await ownProfile()
     $('cn-owner-wrap').hidden = !is_admin
@@ -4244,8 +4423,11 @@ document.querySelectorAll('[data-category]').forEach((b) =>
     }
     $('cn-err').textContent = ''
     $('conn-overlay').classList.add('open')
-    setTimeout(() => $('cn-name').focus(), 50)
-  })
+    setTimeout(() => (prefill.url ? $('cn-token') : $('cn-name')).focus(), 50)
+}
+
+document.querySelectorAll('[data-category]').forEach((b) =>
+  b.addEventListener('click', () => openConnectorModal({ category: b.dataset.category }))
 )
 $('cn-cancel').addEventListener('click', () => $('conn-overlay').classList.remove('open'))
 $('cn-save').addEventListener('click', async () => {
