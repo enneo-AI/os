@@ -43,7 +43,9 @@ async function api(user, path = '', options = {}) {
 try {
   const owner = await createUser('owner')
   const member = await createUser('member')
-  const outsider = await createUser('outsider')
+  const outsider = await createUser('admin-outsider')
+  const { error: adminError } = await admin.from('profiles').update({ is_admin: true }).eq('id', outsider.id)
+  if (adminError) throw adminError
 
   const { data: pod, error: podError } = await owner.client.from('pods')
     .insert({ name: 'STAWAG Attio Verknüpfungstest', open: false, created_by: owner.id })
@@ -75,6 +77,8 @@ try {
 
   const outsiderRows = await outsider.client.from('pod_attio_links').select('pod_id').eq('pod_id', podId)
   if (outsiderRows.error || outsiderRows.data.length) throw new Error('restricted Attio link leaked to outsider')
+  const outsiderBackend = await api(outsider)
+  if (outsiderBackend.status !== 404) throw new Error(`uninvited admin backend access unexpectedly returned ${outsiderBackend.status}`)
 
   const synced = await api(owner, '/sync', { method: 'POST' })
   if (synced.status !== 200) throw new Error(`sync failed: ${JSON.stringify(synced)}`)
@@ -98,7 +102,7 @@ try {
   if (!/STAWAG/i.test(answer) || !/stawag\.de/i.test(answer)) throw new Error(`Pod customer context missing: ${answer}`)
   if (tools.length) throw new Error(`Simple identity question loaded CRM tools unnecessarily: ${tools.join(', ')}`)
 
-  console.log(JSON.stringify({ ok: true, checks: 11, customer: record.name, enni_answer: answer, tools }))
+  console.log(JSON.stringify({ ok: true, checks: 12, customer: record.name, enni_answer: answer, tools }))
 } finally {
   if (podId) await admin.from('pods').delete().eq('id', podId)
   for (const id of users) await admin.auth.admin.deleteUser(id)
