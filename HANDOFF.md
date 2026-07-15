@@ -2,6 +2,13 @@
 
 **Zuletzt aktualisiert:** 2026-07-15 (Account Governance + Knowledge-/Release-Sync; live auf https://os.enneo.ai)
 
+### Session 2026-07-15 — Globale und Restricted Routinen
+
+- **Drei echte Zielgruppen:** Routinen können jetzt `Nur ich`, `Alle Accounts` oder `Ausgewählte Accounts` gelten. Nur Admins dürfen globale/restricted Routinen anlegen; Members bleiben persönlich und können ihre Routine wie bisher zur globalen Freigabe vorschlagen.
+- **Account-genaue Ausführung:** Globale und restricted Routinen erzeugen pro aktivem Ziel-Account einen eigenen privaten Enni-Lauf. Dadurch werden die persönlichen Tools und Learnings des jeweiligen Accounts verwendet und die Kosten korrekt diesem Account zugeordnet. Pod-Routinen bleiben bewusst ein einzelner persönlicher Lauf, damit kein Ergebnis mehrfach im selben Pod erscheint.
+- **UI:** Der Routine-Editor hat einen kompakten Zielgruppen-Switch und bei „Ausgewählte“ eine Account-Liste mit Avatar, Name und E-Mail. Listenzeilen zeigen die Zielgruppe; globale manuelle Testläufe verlangen vor dem accountübergreifenden Start eine Bestätigung. Mobile geprüft bei 390 px ohne horizontalen Überlauf.
+- **Security:** Migration `20260715123308_routine_audiences.sql` ist live und in der Migration History. Neue Tabelle `routine_accounts` hat RLS und nur `SELECT` für `authenticated`; Writes laufen über den authentifizierten Backend-Endpoint. Echte JWT-RLS-Prüfung: zugewiesener Account sah global+restricted, nicht zugewiesener nur global, beide keine fremde persönliche Routine. Backend-Deployment `3d2f7020-014b-4949-b911-ee293ee11792` ist live.
+
 ### Session 2026-07-15 — Tool-Icons auf allen Routen repariert
 
 - **Root Cause:** Markenbilder wurden relativ (`./icons/...`) referenziert und dadurch auf Deep Links wie `/spaces/skills` fälschlich unter `/spaces/icons/...` angefragt. Safari zeigte deshalb in bestehenden Skills und im Tool-Picker das Broken-Image-Symbol.

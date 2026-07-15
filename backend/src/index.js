@@ -583,15 +583,90 @@ app.post('/api/admin/knowledge-sources/:id/sync', async (req, res) => {
   catch (error) { res.status(500).json({ error: error.message }) }
 })
 
+app.post('/api/routines', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const { data: actor } = await db.from('profiles').select('is_admin, account_status').eq('id', user.id).maybeSingle()
+  if (actor?.account_status !== 'active') return res.status(403).json({ error: 'Account ist deaktiviert' })
+
+  const input = req.body?.routine || {}
+  const id = String(input.id || '').trim() || null
+  const name = String(input.name || '').trim()
+  const prompt = String(input.prompt || '').trim()
+  const cron = String(input.cron || '').trim()
+  const scheduleLabel = String(input.schedule_label || '').trim()
+  const requestedAudience = ['personal', 'all', 'restricted'].includes(input.audience) ? input.audience : 'personal'
+  const audience = actor?.is_admin ? requestedAudience : 'personal'
+  if (!name || !prompt || cron.split(/\s+/).length !== 5) return res.status(400).json({ error: 'Name, Auftrag und gültiger Zeitplan sind Pflicht.' })
+  if (!ALLOWED_MODELS.includes(input.model)) return res.status(400).json({ error: 'Modell ist nicht erlaubt' })
+
+  let existing = null
+  if (id) {
+    const { data } = await db.from('routines').select('*').eq('id', id).maybeSingle()
+    existing = data
+    if (!existing) return res.status(404).json({ error: 'Routine nicht gefunden' })
+    if (!actor?.is_admin && (existing.created_by !== user.id || existing.visibility === 'team')) {
+      return res.status(403).json({ error: 'Diese Routine kann nur ein Admin bearbeiten.' })
+    }
+  }
+
+  let accountIds = [...new Set((Array.isArray(req.body?.account_ids) ? req.body.account_ids : []).map(String).filter(Boolean))]
+  if (audience === 'restricted') {
+    const { data: activeAccounts } = await db.from('profiles').select('id').eq('account_status', 'active').in('id', accountIds)
+    accountIds = (activeAccounts || []).map((profile) => profile.id)
+    if (!accountIds.length) return res.status(400).json({ error: 'Wähle mindestens einen aktiven Account aus.' })
+  } else {
+    accountIds = []
+  }
+
+  const podId = audience === 'personal' ? (input.pod_id || null) : null
+  const routineOwnerId = existing?.created_by || user.id
+  if (podId && !(await podIfVisible(podId, routineOwnerId))) {
+    return res.status(403).json({ error: 'Der Ziel-Pod ist für diesen Routine-Account nicht verfügbar.' })
+  }
+  const visibility = audience === 'personal'
+    ? (!actor?.is_admin && existing?.visibility === 'proposed' ? 'proposed' : 'personal')
+    : 'team'
+  const row = {
+    name,
+    prompt,
+    cron,
+    schedule_label: scheduleLabel,
+    pod_id: podId,
+    model: input.model,
+    enabled: input.enabled !== false,
+    audience,
+    visibility,
+  }
+  const query = existing
+    ? db.from('routines').update(row).eq('id', existing.id)
+    : db.from('routines').insert({ ...row, created_by: user.id })
+  const { data: routine, error } = await query.select('*').single()
+  if (error) return res.status(400).json({ error: error.message })
+
+  const { error: clearError } = await db.from('routine_accounts').delete().eq('routine_id', routine.id)
+  if (clearError) return res.status(400).json({ error: clearError.message })
+  if (accountIds.length) {
+    const { error: assignmentError } = await db.from('routine_accounts').insert(
+      accountIds.map((accountId) => ({ routine_id: routine.id, user_id: accountId }))
+    )
+    if (assignmentError) return res.status(400).json({ error: assignmentError.message })
+  }
+  await logAudit(user.id, existing ? 'routine.update' : 'routine.create', 'routine', routine.id, { audience, account_ids: accountIds })
+  res.json({ routine: { ...routine, routine_accounts: accountIds.map((user_id) => ({ user_id })) } })
+})
+
 app.post('/api/routines/:id/:action(approve|reject|demote)', async (req, res) => {
   const user = await requireAdmin(req, res)
   if (!user) return
   const visibility = req.params.action === 'approve' ? 'team' : 'personal'
-  const { data, error } = await db.from('routines').update({ visibility }).eq('id', req.params.id)
-    .select('id, name, visibility').maybeSingle()
+  const audience = req.params.action === 'approve' ? 'all' : 'personal'
+  const { data, error } = await db.from('routines').update({ visibility, audience, pod_id: null }).eq('id', req.params.id)
+    .select('id, name, visibility, audience').maybeSingle()
   if (error) return res.status(400).json({ error: error.message })
   if (!data) return res.status(404).json({ error: 'Routine nicht gefunden' })
-  await logAudit(user.id, `routine.${req.params.action}`, 'routine', data.id, { visibility })
+  await db.from('routine_accounts').delete().eq('routine_id', data.id)
+  await logAudit(user.id, `routine.${req.params.action}`, 'routine', data.id, { visibility, audience })
   res.json({ ok: true, routine: data })
 })
 
@@ -996,9 +1071,11 @@ app.post('/api/routines/:id/run', async (req, res) => {
   if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
   const { data: r } = await db.from('routines').select('*').eq('id', req.params.id).maybeSingle()
   if (!r) return res.status(404).json({ error: 'Routine nicht gefunden' })
-  if (r.created_by !== user.id) {
-    const { data: prof } = await db.from('profiles').select('is_admin').eq('id', user.id).maybeSingle()
-    if (!prof?.is_admin) return res.status(403).json({ error: 'Nur Ersteller oder Admin' })
+  const { data: prof } = await db.from('profiles').select('is_admin, account_status').eq('id', user.id).maybeSingle()
+  if (prof?.account_status !== 'active') return res.status(403).json({ error: 'Account ist deaktiviert' })
+  const crossAccount = r.audience === 'all' || r.audience === 'restricted' || r.visibility === 'team'
+  if ((crossAccount && !prof?.is_admin) || (!crossAccount && r.created_by !== user.id && !prof?.is_admin)) {
+    return res.status(403).json({ error: crossAccount ? 'Accountübergreifende Läufe können nur Admins starten.' : 'Nur Ersteller oder Admin' })
   }
   const result = await runRoutine(r)
   if (!result.ok) return res.status(500).json(result)

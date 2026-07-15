@@ -4637,8 +4637,32 @@ $('sk-delete').addEventListener('click', async () => {
 })
 
 // ============================================================ Routinen (Enni nach Zeitplan)
-// Jeder verwaltet eigene Routinen (RLS), Admins sehen alle. Der Ticker läuft im Backend.
+// Persönliche Routinen gehören einem Account; Admins können zusätzlich globale und
+// auf ausgewählte Accounts beschränkte Routinen verwalten. Der Ticker läuft im Backend.
 let editingRoutine = null
+let routineAudience = 'personal'
+
+function setRoutineAudience(audience, isAdmin = false) {
+  routineAudience = isAdmin && ['all', 'restricted'].includes(audience) ? audience : 'personal'
+  document.querySelectorAll('#rt-audience-seg button').forEach((button) => {
+    button.hidden = !isAdmin && button.dataset.audience !== 'personal'
+    button.classList.toggle('on', button.dataset.audience === routineAudience)
+  })
+  $('rt-accounts-wrap').hidden = routineAudience !== 'restricted'
+  $('rt-pod-wrap').hidden = routineAudience !== 'personal'
+  if (routineAudience !== 'personal') $('rt-pod').value = ''
+  $('rt-audience-hint').textContent = routineAudience === 'all'
+    ? 'Standard-Enni: Die Routine läuft separat für jeden aktiven Account mit dessen persönlichen Tools und Learnings.'
+    : routineAudience === 'restricted'
+      ? 'Die Routine läuft nur für die unten ausgewählten Accounts — jeweils in deren persönlichem Enni.'
+      : isAdmin
+        ? 'Diese Routine läuft nur für deinen Account.'
+        : 'Diese Routine läuft nur für deinen Account. Du kannst sie anschließend für alle vorschlagen.'
+}
+
+document.querySelectorAll('#rt-audience-seg button').forEach((button) => {
+  button.addEventListener('click', async () => setRoutineAudience(button.dataset.audience, (await ownProfile()).is_admin))
+})
 
 function cronFromForm() {
   const [h, m] = $('rt-time').value.split(':').map(Number)
@@ -4669,7 +4693,7 @@ $('rt-freq').addEventListener('change', () => { $('rt-dow-wrap').hidden = $('rt-
 
 async function loadRoutines() {
   const [{ data: routines }, profs, { is_admin }] = await Promise.all([
-    sb.from('routines').select('*').order('created_at'),
+    sb.from('routines').select('*, routine_accounts(user_id)').order('created_at'),
     allProfiles(),
     ownProfile(),
   ])
@@ -4680,15 +4704,21 @@ async function loadRoutines() {
     const mine = r.created_by === session.user.id
     const editable = is_admin || (mine && r.visibility !== 'team')
     const pod = podsList.find((p) => p.id === r.pod_id)
+    const audience = r.audience || (r.visibility === 'team' && !r.pod_id ? 'all' : 'personal')
+    const audienceLabel = audience === 'all'
+      ? 'Alle Accounts'
+      : audience === 'restricted'
+        ? (is_admin ? `${r.routine_accounts?.length || 0} Accounts` : 'Für dich freigegeben')
+        : (pod ? `Pod „${pod.name}“` : mine ? 'Nur ich' : `Nur ${profName(profs, r.created_by)}`)
     const last = r.last_run_at
       ? ` · zuletzt ${new Date(r.last_run_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}${r.last_result === 'ok' ? '' : ' ⚠'}`
       : ''
     const row = document.createElement('div')
-    row.className = 'crow'
+    row.className = 'crow routine-row'
     row.style.cursor = 'pointer'
     row.innerHTML = `<span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:var(--lila-deep);fill:none;stroke-width:1.7;stroke-linecap:round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg></span>
-      <div><div class="c-name">${esc(r.name)}</div><div class="c-sub">${esc(r.schedule_label || r.cron)} · ${pod ? `Pod „${esc(pod.name)}“` : 'Privat'} · ${esc(profName(profs, r.created_by))}${last}</div></div>
-      ${r.visibility === 'proposed' ? '<span class="sk-badge prop">Team-weit vorgeschlagen</span>' : r.visibility === 'personal' ? '<span class="sk-badge">Persönlich</span>' : ''}
+      <div><div class="c-name">${esc(r.name)}</div><div class="c-sub">${esc(r.schedule_label || r.cron)} · ${esc(audienceLabel)} · erstellt von ${esc(profName(profs, r.created_by))}${last}</div></div>
+      ${r.visibility === 'proposed' ? '<span class="sk-badge prop">Für alle vorgeschlagen</span>' : `<span class="sk-badge${audience === 'all' ? ' prop' : ''}">${esc(audienceLabel)}</span>`}
       ${mine && r.visibility === 'personal' ? '<button class="btn quiet rt-share" style="padding:4px 12px;font-size:11.5px">Teilen</button>' : ''}
       <span class="c-right ${r.enabled ? 'ok' : 'off'}"><span class="dot-s"></span>${r.enabled ? 'Aktiv' : 'Aus'}</span>
       ${editable ? '<button class="c-del rt-run" title="Jetzt ausführen" style="display:inline-flex"><svg viewBox="0 0 24 24" style="fill:none"><polygon points="6 4 20 12 6 20 6 4"/></svg></button>' : ''}`
@@ -4699,6 +4729,7 @@ async function loadRoutines() {
       loadRoutines()
     })
     row.querySelector('.rt-run')?.addEventListener('click', async (ev) => {
+      if (audience !== 'personal' && !window.confirm(`Routine jetzt für ${audienceLabel} ausführen? Für jeden Ziel-Account entsteht ein eigener Enni-Lauf.`)) return
       const btn = ev.currentTarget
       btn.style.opacity = '.4'
       const res = await fetch(`${BACKEND_URL}/api/routines/${r.id}/run`, {
@@ -4717,6 +4748,9 @@ async function loadRoutines() {
 
 async function openRoutine(r) {
   editingRoutine = r
+  const { is_admin } = await ownProfile()
+  if (is_admin) profilesCache = null // neue/eingeladene Accounts immer frisch anbieten
+  const profs = await allProfiles()
   $('rt-title').textContent = r ? r.name : 'Neue Routine'
   $('rt-name').value = r?.name || ''
   $('rt-prompt').value = r?.prompt || ''
@@ -4726,6 +4760,12 @@ async function openRoutine(r) {
   podSel.innerHTML = '<option value="">Privat (nur ich)</option>' +
     podsList.map((p) => `<option value="${p.id}">Pod: ${esc(p.name)}</option>`).join('')
   podSel.value = r?.pod_id || ''
+  const selectedAccounts = new Set((r?.routine_accounts || []).map((assignment) => assignment.user_id))
+  $('rt-accounts').innerHTML = profs.map((profile) => {
+    const name = profile.display_name || profile.email
+    return `<label class="check-row"><input type="checkbox" value="${profile.id}" ${selectedAccounts.has(profile.id) ? 'checked' : ''}><span class="t-av">${profileAvatarInner(profile, name)}</span><span class="rt-account-name">${esc(name)}</span><span class="cr-sub">${esc(profile.email)}</span></label>`
+  }).join('')
+  setRoutineAudience(r?.audience || (r?.visibility === 'team' && !r?.pod_id ? 'all' : 'personal'), is_admin)
   if (r?.cron) formFromCron(r.cron)
   else { $('rt-freq').value = 'daily'; $('rt-time').value = '08:00'; $('rt-dow-wrap').hidden = true }
   $('rt-err').textContent = ''
@@ -4743,21 +4783,27 @@ $('rt-save').addEventListener('click', async () => {
   const prompt = $('rt-prompt').value.trim()
   if (!name || !prompt) { err.textContent = 'Name und Auftrag sind Pflicht.'; return }
   const { cron, label } = cronFromForm()
-  const { is_admin } = await ownProfile()
-  const row = {
+  const accountIds = routineAudience === 'restricted'
+    ? [...document.querySelectorAll('#rt-accounts input:checked')].map((input) => input.value)
+    : []
+  if (routineAudience === 'restricted' && !accountIds.length) { err.textContent = 'Wähle mindestens einen Account aus.'; return }
+  const routine = {
+    ...(editingRoutine ? { id: editingRoutine.id } : {}),
     name, prompt, cron, schedule_label: label,
-    pod_id: $('rt-pod').value || null,
+    pod_id: routineAudience === 'personal' ? ($('rt-pod').value || null) : null,
     model: $('rt-model').value,
     enabled: $('rt-enabled').checked,
-    ...(!editingRoutine ? { visibility: is_admin ? 'team' : 'personal' } : {}),
+    audience: routineAudience,
   }
   $('rt-save').disabled = true
-  const q = editingRoutine
-    ? sb.from('routines').update(row).eq('id', editingRoutine.id)
-    : sb.from('routines').insert({ ...row, created_by: session.user.id })
-  const { error } = await q
+  const res = await fetch(`${BACKEND_URL}/api/routines`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+    body: JSON.stringify({ routine, account_ids: accountIds }),
+  })
+  const data = await res.json().catch(() => ({}))
   $('rt-save').disabled = false
-  if (error) { err.textContent = 'Fehler: ' + error.message; return }
+  if (!res.ok) { err.textContent = 'Fehler: ' + (data.error || 'Routine konnte nicht gespeichert werden.'); return }
   $('routine-overlay').classList.remove('open')
   loadRoutines()
 })
