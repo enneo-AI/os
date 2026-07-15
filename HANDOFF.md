@@ -1,6 +1,15 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-15 (Enni Research Lab für autonome Tool-Integrationen; live auf https://os.enneo.ai)
+**Zuletzt aktualisiert:** 2026-07-15 (Enni IQ-/Persönlichkeits-Upgrade lokal vorbereitet; noch nicht auf Railway deployed)
+
+### Session 2026-07-15 — Enni IQ, Persönlichkeit und bewusstes Tool-/Skill-Routing (lokal)
+
+- **Senior-Persönlichkeit statt Assistenten-Floskeln:** Der System-Prompt verlangt Ergebnis/Empfehlung zuerst, konkrete belegte Aussagen, freundlichen Widerspruch bei falschen Annahmen und klare Unsicherheitsmarkierung. Generische Einleitungen, Frage-Wiederholungen und austauschbare Ratschläge sind explizit ausgeschlossen.
+- **Verbindliches Entscheidungsprotokoll:** Vor jeder Antwort rekonstruiert Enni intern das echte Nutzerziel, wählt den spezifischsten Skill, plant die passende Evidenzquelle, recherchiert nur so weit wie nötig und synthetisiert daraus eine Konsequenz statt Tool-Ausgaben nachzuerzählen.
+- **Live Capability Map pro Account/Turn:** Der Prompt enthält jetzt den tatsächlich verfügbaren Katalog für Wiki/Docs, GitLab-Monorepo, Live-Enneo-Instanzen, Attio, Slack, Outlook, Drive, Notion, Skills, Brand-Dateien, Pods und zusätzliche MCPs. Nicht verbundene Systeme werden als solche markiert; bei Bedarf greift der bestehende Connection-Request-Flow.
+- **Skill-Komposition:** Spezial-Skills schlagen `/enneo-context`. Kombinierte Aufgaben werden in Reihenfolge geladen, z. B. erst `/sales-call-prep`, dann `/praesentation`. Dokumente und Decks müssen vor `create_file` den jeweiligen Brand-Skill laden.
+- **Regressionstests:** `backend/npm test` prüft Capability-Erkennung, Entscheidungs-/Qualitäts-Gates und Skill-Prioritäten. Stand lokal: 3/3 grün; `node --check` für alle geänderten Module und `git diff --check` bestanden.
+- **Noch nicht live:** Backend muss nach Review per Railway CLI deployed und anschließend mit echten Prompts gegen mindestens die Fälle technische Codefrage, CRM/Call-Prep, Live-Instanz-Health-Check, Enneo-Dokument und Enneo-Präsentation getestet werden.
 
 ### Session 2026-07-15 — Enni Research Lab für fehlende Tools
 

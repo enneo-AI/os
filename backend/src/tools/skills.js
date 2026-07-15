@@ -31,8 +31,56 @@ export function skillsPromptBlock(skills) {
   )
   return (
     `# Skills (Best-Practice-Playbooks)\n` +
-    `Für wiederkehrende Aufgaben gibt es Skills. Wenn die Anfrage zu einem Trigger passt ODER der Nutzer den Skill per Slash-Command (/slug) aufruft: lies ZUERST den vollen Skill mit skill_read und arbeite dann exakt nach dessen Workflow, beachte Corner Cases und prüfe am Ende die Definition of Done. Die im Skill verknüpften Tools sind deine Basis, aber nicht exklusiv.\n` +
+    `Für wiederkehrende Aufgaben gibt es Skills. Prüfe die Trigger BEVOR du fachlich antwortest. Wenn die Anfrage zu einem Trigger passt ODER der Nutzer den Skill per Slash-Command (/slug) aufruft: stelle sicher, dass der volle Skill geladen ist. Steht er bereits im Block "Automatisch geladene Skills", rufe skill_read NICHT erneut auf; andernfalls lies ihn ZUERST mit skill_read. Arbeite dann nach seinem Workflow, beachte Corner Cases und prüfe am Ende die Definition of Done. Explizite Nutzerwünsche zu Länge, Format und Fokus haben Vorrang vor dem Standardumfang des Skills.\n` +
+    `Auswahlregeln: (1) Der spezifischste Fach-Skill gewinnt; /enneo-context ist nur der Fallback für Enneo-Themen ohne Spezial-Skill. (2) Wenn mehrere Skills nötig sind, lade sie in Arbeitsreihenfolge — zuerst Recherche/Fachinhalt, zuletzt Ausgabeformat. Beispiel: Sales-Call-Briefing als Deck = /sales-call-prep, danach /praesentation. (3) Lade nicht mehrere konkurrierende Skills nur wegen einzelner ähnlicher Wörter. (4) Die im Skill verknüpften Tools sind die Basis, aber nicht exklusiv; nutze weitere verfügbare Connections, wenn sie für eine belastbare Antwort relevant sind.\n` +
     lines.join('\n')
+  )
+}
+
+const INTENT_RULES = [
+  { slug: 'praesentation', re: /\b(präsentation|praesentation|deck|slides?|folien?|pitch deck)\b/i, output: true },
+  { slug: 'dokument', re: /\b(dokument|pdf|brief|report|bericht|memo|angebot)\b.*\b(datei|verschicken|ausdrucken|erstell|fertig)|\bals (pdf|datei)\b/i, output: true },
+  { slug: 'api-frage', re: /\b(api|endpoint|webhook|auth|monorepo|gitlab|code|quellcode|implementier|konfigurationsfeld|plattform-feature)\b/i },
+  { slug: 'health-check', re: /\b(health.?check|läuft nicht|funktioniert nicht|antworten? (sind|ist) schlecht|eskalationsquote|kunde unzufrieden|live.?problem)\b/i },
+  { slug: 'sales-call-prep', re: /\b(call|meeting|termin|demo|gespräch)\b.*\b(vorbereit|brief|prep|wissen)|\b(vorbereit|brief|prep)\b.*\b(call|meeting|termin|demo|gespräch)\b/i },
+  { slug: 'kickoff-vorbereitung', re: /\b(kickoff|erstgespräch)\b.*\b(vorbereit|agenda|brief)|\b(vorbereit|agenda|brief)\b.*\b(kickoff|erstgespräch)\b/i },
+  { slug: 'stakeholder-email', re: /\b(mail|e-?mail|status.?update|eskalation|decision memo)\b.*\b(kunde|stakeholder|partner|ceo|cto|operations|it)\b/i },
+  { slug: 'email-creator', re: /\b(e-?mail|mail)\b.*\b(schreib|formulier|verbesser|schärf|entwurf|draft)\b/i },
+]
+
+// Deterministisches Fast-Path-Routing für klare Intents. Das vermeidet einen
+// zusätzlichen LLM-/Tool-Turn und verhindert, dass Enni offensichtliche Skills
+// trotz passendem Trigger übersieht. Unklare Long-Tail-Intents bleiben beim
+// modellgesteuerten skill_read aus dem kompakten Trigger-Katalog.
+export function selectSkillsForPrompt(skills, prompt) {
+  const bySlug = new Map(skills.map((skill) => [skill.slug, skill]))
+  const selected = []
+  const add = (slug) => {
+    const skill = bySlug.get(slug)
+    if (skill && !selected.some((item) => item.slug === slug)) selected.push(skill)
+  }
+
+  for (const match of String(prompt || '').matchAll(/(?:^|\s)\/([a-z0-9][a-z0-9-]*)\b/gi)) add(match[1].toLowerCase())
+
+  const matched = INTENT_RULES.filter((rule) => rule.re.test(prompt || ''))
+  const contentRules = matched.filter((rule) => !rule.output)
+  const outputRules = matched.filter((rule) => rule.output)
+  contentRules.forEach((rule) => add(rule.slug))
+
+  // Enneo Context ist der fachliche Grounding-Fallback. Bei reinen Ausgabe-
+  // Skills liefert es erst die Fakten, danach formatiert Dokument/Präsentation.
+  const enneoRelated = /\benneo\b|\bcopilot\+?\b|\bautopilot\b|\bdunkelverarbeitung\b/i.test(prompt || '')
+  if (!contentRules.length && enneoRelated) add('enneo-context')
+  outputRules.forEach((rule) => add(rule.slug))
+  return selected.slice(0, 3)
+}
+
+export function autoSkillsPromptBlock(skills) {
+  if (!skills.length) return null
+  return (
+    `# Automatisch geladene Skills\n` +
+    `Diese Skills wurden anhand der aktuellen Nutzeranfrage bereits vollständig geladen. Rufe skill_read dafür NICHT erneut auf. Wende sie in der angegebenen Reihenfolge an. Explizite Wünsche des Nutzers zu Kürze, Format und Fokus schlagen den Standardumfang der Definition of Done.\n\n` +
+    skills.map(skillText).join('\n\n---\n\n')
   )
 }
 

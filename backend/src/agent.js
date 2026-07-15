@@ -4,7 +4,14 @@ import { gitlabToolDefinitions, runGitlabTool } from './tools/gitlab.js'
 import { enneoToolDefinitions, runEnneoTool } from './tools/enneo.js'
 import { mcpToolDefinitions, runMcpTool } from './tools/mcp.js'
 import { podToolDefinitions, runPodTool } from './tools/pod.js'
-import { skillToolDefinitions, runSkillTool, loadEnabledSkills, skillsPromptBlock } from './tools/skills.js'
+import {
+  skillToolDefinitions,
+  runSkillTool,
+  loadEnabledSkills,
+  skillsPromptBlock,
+  selectSkillsForPrompt,
+  autoSkillsPromptBlock,
+} from './tools/skills.js'
 import { fileToolDefinitions, runFileTool } from './tools/files.js'
 import { attioToolDefinitions, runAttioTool } from './tools/attio.js'
 import { slackToolDefinitions, runSlackTool } from './tools/slack.js'
@@ -12,20 +19,42 @@ import { productivityToolDefinitions, runProductivityTool } from './tools/produc
 import { registrationToolDefinitions, runRegistrationTool } from './tools/registration.js'
 import { learningsPromptBlock } from './learnings.js'
 import { releaseNotesPromptBlock } from './knowledge-sync.js'
+import { capabilityPromptBlock } from './behavior.js'
 import { db } from './db.js'
 
 const anthropic = new Anthropic()
 const DEFAULT_MODEL = process.env.ENNI_MODEL || 'claude-sonnet-5'
 export const ALLOWED_MODELS = ['claude-opus-4-8', 'claude-fable-5', 'claude-sonnet-5', 'claude-haiku-4-5']
 const MAX_TOOL_ITERATIONS = 12
+const SEARCH_TOOL_LIMITS = {
+  wiki_semantic_search: 3,
+  wiki_search: 3,
+  gitlab_search_projects: 2,
+  gitlab_search_code: 6,
+  attio_query_records: 3,
+  slack_list_channels: 2,
+}
 
-const SYSTEM_PROMPT = `Du bist Enni, der interne AI-Assistent des enneo-Teams (enneo GmbH, Berlin — AI-Agenten für Energieversorger).
+export const SYSTEM_PROMPT = `Du bist Enni, der interne AI-Assistent des enneo-Teams (enneo GmbH, Berlin — AI-Agenten für Energieversorger).
+
+# Persönlichkeit
+Du arbeitest wie ein sehr guter Senior-Kollege: aufmerksam, urteilsfähig, pragmatisch und fachlich neugierig. Du willst nicht bloß eine plausible Antwort formulieren, sondern das eigentliche Ziel des Nutzers lösen. Du widersprichst freundlich, wenn eine Annahme nicht trägt, benennst Unsicherheit klar und triffst eine Empfehlung, sobald die Evidenz reicht.
+
+Deine Antworten beginnen mit Ergebnis, Empfehlung oder nächster Entscheidung — nie mit einer Wiederholung der Frage, einer Zusammenfassung deines Vorgehens oder Floskeln wie „Gerne“, „Natürlich“ und „Das ist eine gute Frage“. Du schreibst konkret statt generisch: echte Namen, Daten, Dateien, Endpoints, Entscheidungen und Konsequenzen, sofern sie belegt sind. Tiefe ist kein Selbstzweck: so kurz wie möglich, so ausführlich wie für eine belastbare Antwort nötig.
 
 # Sprache (wichtigste Regel)
 Antworte IMMER in der Sprache der letzten Nachricht des Nutzers. Schreibt er auf Englisch, antwortest du komplett auf Englisch; schreibt er auf Deutsch, auf Deutsch. Diese Regel gilt, obwohl deine Anweisungen hier auf Deutsch verfasst sind — sie steuern nur dein Verhalten, nicht deine Antwortsprache. Wechselt der Nutzer die Sprache, wechselst du mit.
 
 # Arbeitsweise
 - Sprache immer wie die letzte Nutzer-Nachricht (siehe Regel oben).
+- ENTSCHEIDUNGSPROTOKOLL — vor jeder Antwort intern durchlaufen, aber nicht als Meta-Erklärung ausgeben:
+  1. Ziel erkennen: Was will der Nutzer am Ende wissen, entscheiden, erstellen oder verändern? Beachte den Gesprächskontext, nicht nur den letzten Satz. Wenn eine fehlende Information das Ergebnis wesentlich verändern würde, stelle genau EINE gezielte Rückfrage. Sonst arbeite mit einer klar benannten Annahme weiter.
+  2. Skill wählen: Prüfe die Skill-Trigger. Der spezifischste Fach-Skill gewinnt; /enneo-context ist nur der Fallback. Passt ein Skill, MUSS sein voller Inhalt vor der Facharbeit geladen sein. Steht er bereits unter "Automatisch geladene Skills", verwende ihn direkt und rufe skill_read nicht doppelt auf; sonst skill_read aufrufen. Bei kombinierten Aufgaben Skills ketten: zuerst Fach-/Recherche-Skill, danach Ausgabe-Skill wie /dokument oder /praesentation.
+  3. Evidenz planen: Wähle die Quelle nach der Art der Wahrheit — Wiki/Docs für dauerhaftes Wissen, GitLab für echten Code, Enneo-Tools für Live-Instanzen, Attio für CRM/Deals/Meetings, Slack für Diskussionen/Entscheidungen, Drive/Notion/Outlook für dort abgelegte Inhalte. Bei technischen UND fachlichen Fragen kombiniere Quellen, wenn eine allein die Aussage nicht tragen kann.
+  4. Minimal ausreichend recherchieren: Nutze nicht reflexhaft jedes Tool. Starte mit der stärksten Quelle, vertiefe nur bei Lücken oder Widersprüchen und stoppe, sobald die Nutzerfrage belastbar beantwortet ist. Eine qualifizierte Antwort ist wichtiger als viele Tool-Calls.
+  5. Antwort synthetisieren: Ziehe eine klare Schlussfolgerung aus den Ergebnissen. Zitiere keine Tool-Ausgaben roh und liste nicht bloß Fundstellen auf. Sage zuerst, was daraus folgt; nenne danach nur die Evidenz, die der Nutzer für Vertrauen oder Handeln braucht.
+- RECHERCHE-BUDGET: Wiederhole nicht dieselbe Suche mit immer neuen Synonymen. Pro Quellenfamilie gelten standardmäßig höchstens drei Such-Calls; danach liest du den besten Treffer gezielt oder beantwortest mit klar benannter Lücke. Überschreite das nur bei ausdrücklich verlangter Vollständigkeit oder echter Pagination.
+- ANTWORT-BUDGET: Explizite Längen- und Formatwünsche sind verbindlich und schlagen Skill-Templates. "Kurz/kompakt/nur das Wichtigste" bedeutet höchstens ca. 250 Wörter. Eine konkrete Satz-, Folien- oder Punktzahl hältst du exakt ein. Signierte Datei-URLs zählen dabei nicht als inhaltliche Länge.
 - Firmenwissen lebt im Wiki. Bei Fragen zu enneo-internen Themen (Prozesse, Kunden, Produkte, Team): IMMER zuerst wiki_semantic_search aufrufen, bevor du aus dem Gedächtnis antwortest. Die gelieferten Abschnitte reichen meist — lies nur dann eine ganze Seite (wiki_read_page), wenn die Abschnitte wirklich nicht genügen.
 - wiki_search (Stichwort) und wiki_list_pages nutzt du für exakte Begriffe, Aufzählungen oder wenn du wissen willst, was es überhaupt gibt.
 - Bei Fragen zu Code, Implementierungen oder technischen Details: nutze die GitLab-Tools (Projekt suchen → Code suchen → Datei lesen).
@@ -38,10 +67,11 @@ Antworte IMMER in der Sprache der letzten Nachricht des Nutzers. Schreibt er auf
 - Slack-Fragen ("was wurde in #channel besprochen", Diskussionen, Entscheidungen aus Threads): wenn slack_-Tools verfügbar sind — erst slack_list_channels, dann slack_read_channel, Threads über slack_read_thread. Slack ist read-only; private Channels siehst du nur, wenn der Bot dort eingeladen wurde — sag das ehrlich, wenn ein Channel fehlt.
 - Outlook, Google Drive und Notion: Nutze outlook_*, google_drive_* bzw. notion_* sobald die entsprechende Connection verfügbar ist. Diese Tools sind read-only. Suche zuerst, lies Details danach über die zurückgegebene ID. Behaupte nie Zugriff auf nicht freigegebene Notion-Seiten oder Google-Dateien.
 - WISSENS-UPDATE-LOOP: Wenn du in einer Konversation dauerhaft gültiges Firmenwissen lernst — neue Fakten, Korrekturen an Wiki-Inhalten, getroffene Entscheidungen, Prozessänderungen — schlage PROAKTIV ein Wiki-Update vor: erst wiki_read_page auf die Zielseite (falls vorhanden), dann wiki_propose_update mit dem kompletten neuen Inhalt. Die Vorschläge sieht NUR der Admin in einer Review-Liste und prüft sie gesammelt — nicht der Nutzer im Chat. Sag dem Nutzer nur kurz, dass du dir das als Wissens-Vorschlag notiert hast. Kein Vorschlag für Flüchtiges (Termine, Smalltalk, Debug-Zwischenstände). Behaupte nie, das Wiki sei aktualisiert, solange es nur vorgeschlagen ist.
-- DATEIEN & PRÄSENTATIONEN: Mit create_file erstellst du herunterladbare Dokumente und Slide-Decks im enneo-Brand-Design (standardmäßig als echtes PDF; format="html" nur auf Wunsch für interaktive Decks) sowie rohe Textdateien (CSV/Markdown). Nutze es, wenn der Nutzer ein Dokument, ein PDF, einen Brief/Report/Plan "als Datei" oder eine Präsentation will. Inhalte darin: Deutsch, Sie-Form, pragmatisch, kein Hype, keine Emojis. Nach dem Erstellen: Link als Markdown-Link ausgeben.
+- DATEIEN & PRÄSENTATIONEN: Bei Dokumenten/PDFs muss /dokument, bei Decks/Slides /praesentation vollständig geladen sein (Auto-Block oder skill_read). Wenn der Inhalt einen weiteren Fach-Skill braucht (z. B. Sales Call, Health-Check, Executive Brief), diesen ZUERST und den Ausgabe-Skill DANACH anwenden. Erstelle erst nach der fachlichen Recherche mit create_file die Datei im enneo-Brand-Design (standardmäßig echtes PDF; format="html" nur auf ausdrücklichen Wunsch). Inhalte: Deutsch, Sie-Form, pragmatisch, kein Hype, keine Emojis. Nach dem Erstellen: Link als Markdown-Link ausgeben.
 - Wenn du etwas im Wiki nicht findest, sag das ehrlich. Erfinde keine internen Fakten.
 - Sei direkt und knapp. Keine Floskeln.
-- ABSCHLUSS BEI ARBEITSAUFTRÄGEN: Wenn du etwas erstellt, geändert oder ausgeführt hast (Datei, Wiki-Vorschlag, Write-Vorschlag, mehrstufige Recherche mit Ergebnis), beende die Antwort mit 3-5 kompakten Bullets: was getan wurde, was bewusst NICHT getan wurde (falls relevant), und woran du das Ergebnis geprüft hast. Bei einfachen Fragen und kurzen Antworten: KEINE Bullets — normale Antwort.
+- QUALITÄTSCHECK VOR DEM SENDEN: Ist die konkrete Nutzerfrage wirklich beantwortet? Ist die wichtigste Aussage belegt? Habe ich einen passenden Skill oder eine verfügbare Connection übersehen? Enthält die Antwort eine klare Konsequenz oder Empfehlung statt nur Hintergrund? Streiche generische Einleitungen, Wiederholungen und austauschbare Ratschläge.
+- ABSCHLUSS BEI ARBEITSAUFTRÄGEN: Wenn du eine echte Änderung oder Datei erstellt/ausgeführt hast, beende die Antwort bei Bedarf mit höchstens 3 kompakten Bullets: was getan wurde, was bewusst NICHT getan wurde und woran du geprüft hast. Reine Recherche-Antworten brauchen diesen Zusatz NICHT — dort reichen Schlussfolgerung + knappe Quellenangabe. Bei einfachen Fragen und kurzen Antworten: KEINE Abschluss-Bullets.
 
 # Grenzen
 - GitLab ist read-only. Wiki-Änderungen gehen AUSSCHLIESSLICH über wiki_propose_update (Freigabe durch den Admin). Enneo-Instanzen kannst du nur über den Freigabe-Mechanismus ändern — nie direkt. DELETE-Operationen gibt es gar nicht.
@@ -115,9 +145,19 @@ function setCacheBreakpoint(messages) {
 export async function runEnniTurn(history, emit, modelOverride, extraSystem = null, ctx = {}) {
   const MODEL = ALLOWED_MODELS.includes(modelOverride) ? modelOverride : DEFAULT_MODEL
   // Skill-Trigger-Übersicht pro Turn frisch laden (ändert sich selten, DB-Read ist billig)
+  let enabledSkills = []
   let skillsBlock = null
+  let autoSkills = []
+  let autoSkillsBlock = null
   try {
-    skillsBlock = skillsPromptBlock(await loadEnabledSkills(ctx.userId))
+    enabledSkills = await loadEnabledSkills(ctx.userId)
+    skillsBlock = skillsPromptBlock(enabledSkills)
+    const latestUser = [...history].reverse().find((message) => message.role === 'user')
+    const latestText = typeof latestUser?.content === 'string'
+      ? latestUser.content
+      : (latestUser?.content || []).filter((block) => block.type === 'text').map((block) => block.text).join('\n')
+    autoSkills = selectSkillsForPrompt(enabledSkills, latestText)
+    autoSkillsBlock = autoSkillsPromptBlock(autoSkills)
   } catch (err) {
     console.error('Skills-Load fehlgeschlagen:', err.message)
   }
@@ -163,15 +203,6 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
   const sunday = new Date(monday)
   sunday.setDate(monday.getDate() + 6)
   const d = (x) => x.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
-  const systemBlocks = [
-    { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: `Aktuelles Datum und Uhrzeit: ${now} (Europe/Berlin). Die aktuelle Woche läuft von Montag, ${d(monday)}, bis Sonntag, ${d(sunday)}. Rechne relative Zeitangaben ("diese Woche", "gestern", "letzter Monat") immer davon ausgehend.` },
-    ...(skillsBlock ? [{ type: 'text', text: skillsBlock }] : []),
-    ...(learningsBlock ? [{ type: 'text', text: learningsBlock }] : []),
-    ...(releasesBlock ? [{ type: 'text', text: releasesBlock }] : []),
-    ...(personalBlock ? [{ type: 'text', text: personalBlock }] : []),
-    ...(extraSystem ? [{ type: 'text', text: extraSystem }] : []),
-  ]
   // Statische Tools + Pod-Kontext-Tools (nur in Pod-Konversationen)
   // + live geladene Tools der verknüpften MCP-Server (gecacht, nicht-fatal)
   let turnTools = ctx.podId ? [...TOOLS, ...podToolDefinitions] : TOOLS
@@ -199,6 +230,18 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
   } catch (err) {
     console.error('Produktivitäts-Tool-Discovery fehlgeschlagen:', err.message)
   }
+  const capabilitiesBlock = capabilityPromptBlock(turnTools)
+  const systemBlocks = [
+    { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: `Aktuelles Datum und Uhrzeit: ${now} (Europe/Berlin). Die aktuelle Woche läuft von Montag, ${d(monday)}, bis Sonntag, ${d(sunday)}. Rechne relative Zeitangaben ("diese Woche", "gestern", "letzter Monat") immer davon ausgehend.` },
+    ...(skillsBlock ? [{ type: 'text', text: skillsBlock }] : []),
+    ...(autoSkillsBlock ? [{ type: 'text', text: autoSkillsBlock }] : []),
+    { type: 'text', text: capabilitiesBlock },
+    ...(learningsBlock ? [{ type: 'text', text: learningsBlock }] : []),
+    ...(releasesBlock ? [{ type: 'text', text: releasesBlock }] : []),
+    ...(personalBlock ? [{ type: 'text', text: personalBlock }] : []),
+    ...(extraSystem ? [{ type: 'text', text: extraSystem }] : []),
+  ]
   const messages = [...history]
   const signal = ctx.signal || null // Stop-Button: AbortController-Signal aus index.js
   let aborted = false
@@ -209,6 +252,7 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
     cache_read_input_tokens: 0,
   }
   const toolCalls = []
+  const searchCounts = new Map()
   let thinkingText = ''
   const narrative = [] // Zwischen-Texte vor Tool-Calls — gehören zu den Gedanken, nicht zur Antwort
   let finalText = ''
@@ -278,12 +322,29 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
       if (signal?.aborted) { aborted = true; break }
       emit({ type: 'tool_use', name: block.name, input: block.input })
       const started = Date.now()
-      const result = await executeTool(block.name, block.input, ctx)
+      const searchLimit = SEARCH_TOOL_LIMITS[block.name]
+      const usedSearches = searchCounts.get(block.name) || 0
+      let suppressed = false
+      let result
+      if (searchLimit && usedSearches >= searchLimit) {
+        suppressed = true
+        result = {
+          content:
+            `Recherche-Budget für ${block.name} erreicht (${searchLimit}). ` +
+            `Nutze die bisherigen Treffer, lies die beste konkrete Datei/Seite oder benenne die verbleibende Lücke. ` +
+            `Starte keine weitere Synonym-Suche.`,
+          isError: false,
+        }
+      } else {
+        if (searchLimit) searchCounts.set(block.name, usedSearches + 1)
+        result = await executeTool(block.name, block.input, ctx)
+      }
       const call = {
         name: block.name,
         input: block.input,
         output: result.content.slice(0, 20000),
         is_error: result.isError,
+        suppressed,
         duration_ms: Date.now() - started,
       }
       toolCalls.push(call)
@@ -299,10 +360,51 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
     messages.push({ role: 'user', content: toolResults })
   }
 
+  // Ein komplexer Recherchefall kann die Tool-Iterationsgrenze exakt auf einem
+  // Tool-Ergebnis erreichen. Dann darf Enni niemals leer antworten: ein letzter
+  // Pass ohne Tools zwingt zur Synthese aus der bereits gesammelten Evidenz.
+  if (!finalText.trim() && !aborted && messages.length) {
+    const finalResponse = await anthropic.messages.create({
+      model: MODEL,
+      max_tokens: 6000,
+      system: [
+        ...systemBlocks,
+        {
+          type: 'text',
+          text:
+            '# Finalisierung\nDas Recherche- und Tool-Budget ist beendet. Rufe keine weiteren Tools auf. ' +
+            'Formuliere jetzt die bestmögliche direkte Antwort aus den vorhandenen Ergebnissen. ' +
+            'Benenne verbleibende Lücken ehrlich und halte explizite Längen-/Formatwünsche ein.',
+        },
+      ],
+      ...(MODEL.startsWith('claude-haiku') ? {} : { thinking: { type: 'adaptive', display: 'summarized' } }),
+      messages,
+    })
+    finalText = finalResponse.content.filter((block) => block.type === 'text').map((block) => block.text).join('\n')
+    const finalThinking = finalResponse.content
+      .filter((block) => block.type === 'thinking')
+      .map((block) => block.thinking || '')
+      .join('\n')
+    if (finalThinking) thinkingText += `\n${finalThinking}`
+    totalUsage.input_tokens += finalResponse.usage.input_tokens
+    totalUsage.output_tokens += finalResponse.usage.output_tokens
+    totalUsage.cache_creation_input_tokens += finalResponse.usage.cache_creation_input_tokens || 0
+    totalUsage.cache_read_input_tokens += finalResponse.usage.cache_read_input_tokens || 0
+    if (finalText) emit({ type: 'text_delta', text: finalText })
+  }
+
   // Zwischen-Narrativ dem Gedanken-Text voranstellen (bleibt so beim Neuladen im Panel,
   // nicht in der Antwort). Trenner, damit Modell-Thinking und Narrativ unterscheidbar bleiben.
   const mergedThinking = [narrative.join('\n\n'), thinkingText].filter((s) => s && s.trim()).join('\n\n')
-  return { text: finalText, thinking: mergedThinking, toolCalls, usage: totalUsage, model: MODEL, aborted }
+  return {
+    text: finalText,
+    thinking: mergedThinking,
+    toolCalls,
+    usage: totalUsage,
+    model: MODEL,
+    aborted,
+    autoSkills: autoSkills.map((skill) => skill.slug),
+  }
 }
 
 // Auto-Titel: Haiku (unser günstigstes Modell, $1/$5 pro MTok) analysiert die ERSTE
