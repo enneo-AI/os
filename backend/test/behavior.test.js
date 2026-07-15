@@ -126,3 +126,15 @@ test('slash skills work and stay visible inside complete sentences', () => {
   assert.match(frontendSource, /message-skill-tag/)
   assert.match(frontendSource, /!hasSlashSkill\(text\)/)
 })
+
+test('shared invite links cannot be consumed by link preview crawlers', () => {
+  const indexSource = readFileSync(join(here, '../src/index.js'), 'utf8')
+  const frontendSource = readFileSync(join(here, '../../frontend/app.js'), 'utf8')
+
+  assert.match(indexSource, /function safeAuthLink/)
+  assert.match(indexSource, /properties\.hashed_token/)
+  assert.match(indexSource, /new URL\('\/invite', SITE_URL\)/)
+  assert.doesNotMatch(indexSource, /const link = data\?\.properties\?\.action_link/)
+  assert.match(frontendSource, /sb\.auth\.verifyOtp\(pendingAuthInvite\)/)
+  assert.match(frontendSource, /invite-accept.*addEventListener\('click'/)
+})

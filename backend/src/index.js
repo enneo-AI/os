@@ -906,6 +906,16 @@ app.post('/api/admin/announcements', async (req, res) => {
 // Bewusst Link-basiert statt E-Mail-Versand — Supabase-SMTP ist rate-limitiert und
 // der Admin verschickt den Link ohnehin persönlich (Slack/Mail).
 const SITE_URL = process.env.SITE_URL || 'https://os.enneo.ai'
+function safeAuthLink(data, fallbackType) {
+  const properties = data?.properties || {}
+  const tokenHash = properties.hashed_token
+  const type = properties.verification_type || fallbackType
+  if (!tokenHash || !['invite', 'magiclink'].includes(type)) return null
+  const url = new URL('/invite', SITE_URL)
+  url.searchParams.set('token_hash', tokenHash)
+  url.searchParams.set('type', type)
+  return url.toString()
+}
 app.post('/api/invite', async (req, res) => {
   const user = await requireAdmin(req, res)
   if (!user) return
@@ -937,7 +947,10 @@ app.post('/api/invite', async (req, res) => {
   if (existing) {
     await db.from('pending_invites').delete().eq('email', email)
   }
-  const link = data?.properties?.action_link || data?.action_link
+  // Niemals den rohen Supabase-Verify-Link teilen: Slack/Teams/Discord können
+  // Einmal-Links beim Erzeugen einer Vorschau vor dem Empfänger verbrauchen.
+  // Die enneo-OS-Zwischenseite löst den Token erst nach bewusstem Klick ein.
+  const link = safeAuthLink(data, existing ? 'magiclink' : 'invite')
   if (!link) return res.status(500).json({ error: 'Kein Link erzeugt' })
   await logAudit(user.id, existing ? 'member.reinvite' : 'member.invite', 'profile', email, { role })
   res.json({ link, existing, role })

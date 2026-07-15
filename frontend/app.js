@@ -68,16 +68,60 @@ function followIfNearBottom() {
 
 // ============================================================ Auth
 async function init() {
+  const invite = inviteFromLocation()
   const { data } = await sb.auth.getSession()
   session = data.session
-  if (session) showApp()
+  if (invite) showInvite(invite)
+  else if (session) showApp()
   else showLogin()
 }
 
 function showLogin() {
+  $('invite-view').hidden = true
   $('login-view').hidden = false
   $('app-view').hidden = true
 }
+
+function inviteFromLocation() {
+  const params = new URLSearchParams(location.search)
+  const token_hash = params.get('token_hash') || ''
+  const type = params.get('type') || ''
+  return token_hash && ['invite', 'magiclink'].includes(type) ? { token_hash, type } : null
+}
+
+let pendingAuthInvite = null
+function showInvite(invite) {
+  pendingAuthInvite = invite
+  $('login-view').hidden = true
+  $('app-view').hidden = true
+  $('invite-view').hidden = false
+  $('invite-accept').disabled = false
+  $('invite-accept').textContent = invite.type === 'magiclink' ? 'Sicher anmelden' : 'Einladung annehmen'
+  $('invite-title').textContent = invite.type === 'magiclink' ? 'Willkommen zurück.' : 'Du bist eingeladen.'
+  $('invite-copy').textContent = invite.type === 'magiclink'
+    ? 'Bestätige kurz, dass du dich bei enneo OS anmelden möchtest.'
+    : 'Bestätige die Einladung – danach richtest du dein persönliches Profil ein.'
+  $('invite-error').textContent = ''
+}
+
+$('invite-accept').addEventListener('click', async () => {
+  if (!pendingAuthInvite) return
+  const button = $('invite-accept')
+  button.disabled = true
+  button.textContent = 'Wird bestätigt …'
+  $('invite-error').textContent = ''
+  const { data, error } = await sb.auth.verifyOtp(pendingAuthInvite)
+  if (error || !data.session) {
+    $('invite-error').textContent = 'Dieser Link ist nicht mehr gültig. Bitte lass dir eine neue Einladung senden.'
+    button.disabled = false
+    button.textContent = 'Erneut versuchen'
+    return
+  }
+  session = data.session
+  pendingAuthInvite = null
+  history.replaceState({}, '', '/chat')
+  await showApp()
+})
 
 $('login-form').addEventListener('submit', async (e) => {
   e.preventDefault()
@@ -107,6 +151,7 @@ async function token() {
 
 // ============================================================ App shell
 async function showApp() {
+  $('invite-view').hidden = true
   $('login-view').hidden = true
   $('app-view').hidden = false
   await renderFooterProfile()
