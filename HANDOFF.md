@@ -1,6 +1,14 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-15 (crawler-sichere Einladungslinks)
+**Zuletzt aktualisiert:** 2026-07-16 (dauerhafte Startpasswörter statt Invite-Links)
+
+### Session 2026-07-16 — Einladungen ohne Ablauf- oder Preview-Risiko
+
+- **Neuer Standard:** `/api/invite` erzeugt bestätigte Supabase-Accounts mit einem kryptografisch zufälligen Startpasswort statt eines Invite-/Magiclinks. Das Passwort wird ausschließlich einmal in der Admin-Response gezeigt, nicht lesbar gespeichert und bleibt gültig, bis der Nutzer im Pflicht-Onboarding sein eigenes Passwort setzt.
+- **Klare Admin-Übergabe:** Die Mitgliederverwaltung zeigt nach „Zugang erstellen“ eine kompakte Karte mit E-Mail und Startpasswort. „Login-Daten kopieren“ erstellt eine fertige Nachricht mit `https://os.enneo.ai`, E-Mail, Startpasswort und dem Hinweis zum persönlichen Passwort.
+- **Pflicht-Onboarding vor Workspace:** Neue Accounts laden vor Name, Profilfoto, Abteilung und persönlichem Passwort weder Chats noch Pods, Tools oder Realtime-Abos. Erst nach erfolgreichem Passwortwechsel wird der Workspace initialisiert und die Produkttour gestartet. Bereits eingerichtete Accounts können über den Invite-Endpunkt nicht versehentlich zurückgesetzt werden.
+- **Richard umgestellt:** `richard@enneo.ai` ist als bestätigter Admin mit leerem Onboarding-Status hinterlegt. Das neue Startpasswort wurde separat an Aleksa ausgegeben und wird bewusst nie in Git, Handoff oder Audit-Metadaten gespeichert.
+- **Produktiv verifiziert:** Tests 8/8, JavaScript-Syntax und Diff-Check grün. Railway-Deployment `600458e2-81b7-44c9-9598-322b0bc887a5` ist `SUCCESS`, `/health` grün und Netlify liefert Commit `55532e1`. Der echte Production-Eval bestätigt: Credentials statt Link, bestätigter Account, Pflicht-Onboarding, Login mit Startpasswort, Wechsel auf persönliches Passwort, Ablehnung des alten Startpassworts und erfolgreicher Login mit dem neuen Passwort. Alle Testaccounts, Profile und Pending-Invites wurden entfernt.
 
 ### Session 2026-07-15 — Slack kann Einladungen nicht mehr vorab verbrauchen
 
