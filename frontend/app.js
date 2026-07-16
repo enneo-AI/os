@@ -155,12 +155,22 @@ async function showApp() {
   $('login-view').hidden = true
   $('app-view').hidden = false
   await renderFooterProfile()
+  // Neue Accounts sehen vor dem vollständigen Onboarding keinerlei Workspace-
+  // Inhalte. Erst danach werden Chats, Pods, Tools und Realtime-Abos geladen.
+  if (await onboardingNudge()) return
+  await enterWorkspace()
+  if (!myProfile?.tour_completed_at) startProductTour()
+}
+
+let workspaceLoaded = false
+async function enterWorkspace() {
+  if (workspaceLoaded) return
+  workspaceLoaded = true
   subscribeRealtime()
   await Promise.all([loadConversations(), loadPods(), refreshCosts(), loadConnectorRows(), loadNotifications()])
   await route()
   registerServiceWorker()
   handleOAuthReturn()
-  await onboardingNudge()
 }
 
 // ============================================================ Notifications
@@ -483,10 +493,7 @@ function showOnboardingStep(step) {
 
 async function onboardingNudge() {
   const profile = await ownProfile()
-  if (profile.onboarding_completed_at) {
-    if (!profile.tour_completed_at) startProductTour()
-    return
-  }
+  if (profile.onboarding_completed_at) return false
   onboardingDepartment = profile.department || ''
   onboardingAvatarFile = null
   $('onboarding-name').value = profile.display_name || ''
@@ -500,6 +507,7 @@ async function onboardingNudge() {
   $('app-view').inert = true
   $('onboarding-overlay').classList.add('open')
   setTimeout(() => $('onboarding-name').focus(), 50)
+  return true
 }
 
 $('onboarding-avatar-btn').addEventListener('click', () => $('onboarding-avatar-file').click())
@@ -553,6 +561,7 @@ $('onboarding-next').addEventListener('click', async () => {
     $('onboarding-overlay').classList.remove('open')
     $('app-view').inert = false
     await renderFooterProfile()
+    await enterWorkspace()
     startProductTour()
   } catch (err) { error.textContent = `Einrichtung fehlgeschlagen: ${err.message}` }
   $('onboarding-next').disabled = false
@@ -5158,7 +5167,8 @@ async function updateMember(id, patch) {
   return data.member
 }
 
-// Mitglied einladen (Admin): Backend erzeugt Invite-/Login-Link zum Weitergeben
+// Mitglied einladen (Admin): Backend erzeugt einen bestätigten Account mit einem
+// zufälligen Startpasswort. Es wird nur hier angezeigt und nicht lokal gespeichert.
 async function createInvite() {
   const email = $('inv-email').value.trim()
   $('inv-err').textContent = ''
@@ -5173,9 +5183,11 @@ async function createInvite() {
     })
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
-    $('inv-link').textContent = data.link
+    $('inv-result-email').textContent = data.email
+    $('inv-result-password').textContent = data.temporary_password
+    $('inv-result').dataset.copy = `enneo OS Zugang\n\nLogin: ${data.login_url}\nE-Mail: ${data.email}\nStartpasswort: ${data.temporary_password}\n\nNach der ersten Anmeldung legst du dein persönliches Passwort fest.`
     $('inv-result').hidden = false
-    $('inv-copy').textContent = data.existing ? 'Login-Link kopieren' : 'Einladungslink kopieren'
+    $('inv-copy').textContent = 'Login-Daten kopieren'
     $('inv-email').value = ''
     $('inv-role').value = 'member'
     loadMembers()
@@ -5187,9 +5199,9 @@ async function createInvite() {
 $('inv-create').addEventListener('click', createInvite)
 $('inv-email').addEventListener('keydown', (e) => { if (e.key === 'Enter') createInvite() })
 $('inv-copy').addEventListener('click', async () => {
-  if (await copyText($('inv-link').textContent)) {
+  if (await copyText($('inv-result').dataset.copy || '')) {
     $('inv-copy').textContent = 'Kopiert ✓'
-    setTimeout(() => ($('inv-copy').textContent = 'Kopieren'), 1600)
+    setTimeout(() => ($('inv-copy').textContent = 'Login-Daten kopieren'), 1600)
   }
 })
 

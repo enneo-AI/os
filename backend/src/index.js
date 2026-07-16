@@ -1,5 +1,6 @@
 import express from 'express'
 import cors from 'cors'
+import { randomBytes } from 'node:crypto'
 import { db, getUserFromRequest } from './db.js'
 import { runEnniTurn, ALLOWED_MODELS, generateTitle, availableToolDefinitions } from './agent.js'
 import { attachmentsToBlocks, attachmentMeta } from './attachments.js'
@@ -902,19 +903,26 @@ app.post('/api/admin/announcements', async (req, res) => {
   res.json({ announcement, recipients: profiles?.length || 0 })
 })
 
-// Kollegen einladen (Admin): erzeugt einen Invite-/Login-Link zum Weitergeben.
-// Bewusst Link-basiert statt E-Mail-Versand — Supabase-SMTP ist rate-limitiert und
-// der Admin verschickt den Link ohnehin persönlich (Slack/Mail).
+// Kollegen einladen (Admin): erzeugt einen bestätigten Account mit einem zufälligen
+// Startpasswort. Damit hängt die Einladung weder von SMTP noch von kurzlebigen
+// Einmal-Links ab. Das Startpasswort wird ausschließlich in dieser Response gezeigt
+// und bei Abschluss des verpflichtenden Onboardings durch ein eigenes Passwort ersetzt.
 const SITE_URL = process.env.SITE_URL || 'https://os.enneo.ai'
-function safeAuthLink(data, fallbackType) {
-  const properties = data?.properties || {}
-  const tokenHash = properties.hashed_token
-  const type = properties.verification_type || fallbackType
-  if (!tokenHash || !['invite', 'magiclink'].includes(type)) return null
-  const url = new URL('/invite', SITE_URL)
-  url.searchParams.set('token_hash', tokenHash)
-  url.searchParams.set('type', type)
-  return url.toString()
+function temporaryPassword() {
+  // Der feste Präfix garantiert alle konfigurierten Zeichengruppen; der zufällige
+  // Anteil liefert 96 Bit Entropie und bleibt URL-/Messenger-sicher.
+  return `En!7-${randomBytes(12).toString('base64url')}`
+}
+
+async function authUserByEmail(email) {
+  for (let page = 1; page <= 10; page += 1) {
+    const { data, error } = await db.auth.admin.listUsers({ page, perPage: 1000 })
+    if (error) throw error
+    const found = data.users.find((candidate) => candidate.email?.toLowerCase() === email)
+    if (found) return found
+    if (data.users.length < 1000) break
+  }
+  return null
 }
 app.post('/api/invite', async (req, res) => {
   const user = await requireAdmin(req, res)
@@ -924,36 +932,64 @@ app.post('/api/invite', async (req, res) => {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return res.status(400).json({ error: 'Bitte gib eine gültige E-Mail-Adresse ein.' })
   }
-  const opts = { redirectTo: SITE_URL }
   const { error: pendingError } = await db.from('pending_invites').upsert({
     email, requested_role: role, invited_by: user.id,
     expires_at: new Date(Date.now() + 14 * 86400000).toISOString(),
   }, { onConflict: 'email' })
   if (pendingError) return res.status(400).json({ error: pendingError.message })
+  const password = temporaryPassword()
   let existing = false
-  let { data, error } = await db.auth.admin.generateLink({
-    type: 'invite', email,
-    options: { ...opts, data: { full_name: String(req.body?.name || '').trim() } },
-  })
-  if (error && /already|registered|exists/i.test(error.message)) {
-    // User existiert schon → Login-Link statt Invite
-    existing = true
-    ;({ data, error } = await db.auth.admin.generateLink({ type: 'magiclink', email, options: opts }))
-  }
-  if (error) {
+  let target = null
+  try {
+    target = await authUserByEmail(email)
+    if (target) {
+      existing = true
+      const { data: profile } = await db.from('profiles')
+        .select('onboarding_completed_at').eq('id', target.id).maybeSingle()
+      if (profile?.onboarding_completed_at) {
+        await db.from('pending_invites').delete().eq('email', email)
+        return res.status(409).json({ error: 'Dieser Account ist bereits eingerichtet. Nutze bei Bedarf die Passwort-zurücksetzen-Funktion.' })
+      }
+      const { data, error } = await db.auth.admin.updateUserById(target.id, {
+        password,
+        email_confirm: true,
+        app_metadata: { ...(target.app_metadata || {}), credential_mode: 'temporary_password' },
+      })
+      if (error) throw error
+      target = data.user
+    } else {
+      const { data, error } = await db.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: { full_name: String(req.body?.name || '').trim() },
+        app_metadata: { credential_mode: 'temporary_password' },
+      })
+      if (error) throw error
+      target = data.user
+    }
+    const { error: profileError } = await db.from('profiles').update({
+      is_admin: role === 'admin',
+      account_status: 'active',
+      onboarding_completed_at: null,
+      tour_completed_at: null,
+    }).eq('id', target.id)
+    if (profileError) throw profileError
+  } catch (error) {
     await db.from('pending_invites').delete().eq('email', email)
     return res.status(400).json({ error: error.message })
   }
-  if (existing) {
-    await db.from('pending_invites').delete().eq('email', email)
-  }
-  // Niemals den rohen Supabase-Verify-Link teilen: Slack/Teams/Discord können
-  // Einmal-Links beim Erzeugen einer Vorschau vor dem Empfänger verbrauchen.
-  // Die enneo-OS-Zwischenseite löst den Token erst nach bewusstem Klick ein.
-  const link = safeAuthLink(data, existing ? 'magiclink' : 'invite')
-  if (!link) return res.status(500).json({ error: 'Kein Link erzeugt' })
-  await logAudit(user.id, existing ? 'member.reinvite' : 'member.invite', 'profile', email, { role })
-  res.json({ link, existing, role })
+  await db.from('pending_invites').delete().eq('email', email)
+  await logAudit(user.id, existing ? 'member.credentials_rotate' : 'member.invite', 'profile', target.id, {
+    role, credential_mode: 'temporary_password',
+  })
+  res.json({
+    email,
+    temporary_password: password,
+    login_url: SITE_URL,
+    existing,
+    role,
+  })
 })
 
 app.patch('/api/admin/members/:id', async (req, res) => {

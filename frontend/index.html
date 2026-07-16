@@ -331,8 +331,9 @@
   .sk-badge{flex:none;font-size:10px;font-weight:650;padding:2px 8px;border-radius:999px;background:var(--press);color:var(--ink-3);white-space:nowrap;margin-right:8px}
   .sk-badge.prop{background:rgba(123,90,226,.1);color:var(--lila-deep)}
   .sk-badge.team{background:rgba(45,156,112,.09);color:var(--good)}
-  .inv-result{display:flex;align-items:center;gap:10px;margin-top:10px;padding:10px 12px;border:1px solid var(--hair);border-radius:12px;background:var(--surface)}
-  .inv-result code{flex:1;min-width:0;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
+  .inv-result{margin-top:12px;padding:15px;border:1px solid var(--glass-outline);border-radius:15px;background:linear-gradient(145deg,var(--key-hi),var(--surface-2));box-shadow:inset 0 1px 0 var(--glass-highlight)}
+  .inv-result-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:13px}.inv-result-head strong{display:block;font-size:13px}.inv-result-head span{display:block;margin-top:2px;color:var(--ink-3);font-size:10.5px;line-height:1.4}
+  .inv-credentials{display:grid;grid-template-columns:auto minmax(0,1fr);gap:7px 13px;margin:0 0 13px;padding:11px 12px;border:1px solid var(--hair);border-radius:11px;background:var(--surface)}.inv-credentials dt{color:var(--ink-3);font-size:10px;font-weight:680;text-transform:uppercase;letter-spacing:.07em}.inv-credentials dd{min-width:0;margin:0;color:var(--ink-2);font:600 12px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}.inv-result .btn{width:100%}
   /* Profil-Modal: breit + horizontal mit Reiter-Navigation */
   .modal.wide{width:min(660px,calc(100vw - 40px));max-height:calc(100vh - 80px);overflow-y:auto}
   .m-head{display:flex;align-items:center;gap:18px;margin-bottom:18px}
@@ -1838,12 +1839,13 @@
           <div class="invite-compact" id="invite-box" hidden>
             <input type="email" id="inv-email" name="invite-email" aria-label="E-Mail-Adresse" autocomplete="off" spellcheck="false" placeholder="name@unternehmen.de">
             <select class="invite-role" id="inv-role" aria-label="Rolle"><option value="member">Member</option><option value="admin">Admin</option></select>
-            <button class="btn dark" id="inv-create">Einladen</button>
+            <button class="btn dark" id="inv-create">Zugang erstellen</button>
           </div>
           <div class="err" id="inv-err"></div>
           <div class="inv-result" id="inv-result" hidden>
-            <code id="inv-link"></code>
-            <button class="btn quiet" id="inv-copy">Kopieren</button>
+            <div class="inv-result-head"><div><strong>Zugang ist bereit</strong><span>Das Startpasswort bleibt gültig, bis die Person ihr eigenes Passwort festlegt.</span></div><span class="role admin">Einmalig</span></div>
+            <dl class="inv-credentials"><dt>E-Mail</dt><dd id="inv-result-email"></dd><dt>Startpasswort</dt><dd id="inv-result-password"></dd></dl>
+            <button class="btn quiet" id="inv-copy">Login-Daten kopieren</button>
           </div>
         </div>
 
@@ -2275,7 +2277,7 @@
       <label for="onboarding-role">Genaue Rolle <span>(optional)</span></label><input type="text" id="onboarding-role" name="role" autocomplete="organization-title" placeholder="z. B. Account Executive …">
     </div>
     <div class="onboarding-step" data-onboarding-step="3" hidden>
-      <span class="onboarding-kicker">Schritt 3 von 3</span><h2>Sichere deinen Account.</h2><p>Der Einladungslink hat dich angemeldet. Jetzt legst du dein persönliches Passwort fest.</p>
+      <span class="onboarding-kicker">Schritt 3 von 3</span><h2>Sichere deinen Account.</h2><p>Ersetze jetzt dein einmaliges Startpasswort durch dein persönliches Passwort.</p>
       <label for="onboarding-password">Passwort</label><input type="password" id="onboarding-password" name="new-password" autocomplete="new-password" placeholder="Mindestens 8 Zeichen …">
       <label for="onboarding-password-confirm">Passwort wiederholen</label><input type="password" id="onboarding-password-confirm" name="new-password-confirm" autocomplete="new-password">
     </div>
