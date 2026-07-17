@@ -4808,6 +4808,49 @@ function connectionInfo(key) {
     connector,
   }
 }
+
+const canManageSpaceConnections = (space, isAdmin) => (
+  space?.created_by === session.user.id || (!space?.restricted && isAdmin)
+)
+
+function spaceConnectionRow(key, { removable = false, onRemove = null } = {}) {
+  const connection = connectionInfo(key)
+  if (!connection) return null
+  const row = document.createElement('div')
+  row.className = 'crow space-connection-row'
+  row.innerHTML = `${connection.logo ? `<span class="c-logo"><img src="${connection.logo}" alt=""></span>` : '<span class="c-logo" aria-hidden="true">⌁</span>'}
+    <div><div class="c-name">${esc(connection.name)}</div><div class="c-sub">${esc(connection.sub)}</div></div>
+    ${removable ? `<button type="button" class="c-del space-connection-remove" aria-label="${esc(connection.name)} aus diesem Space entfernen" title="Aus Space entfernen"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>` : ''}`
+  if (removable && onRemove) row.querySelector('.space-connection-remove').addEventListener('click', (event) => onRemove(event.currentTarget))
+  return row
+}
+
+async function removeSpaceConnection(space, key, button, destination = 'home') {
+  const connection = connectionInfo(key)
+  if (!space || !connection) return
+  if (!window.confirm(`„${connection.name}“ aus „${space.name}“ entfernen? Enni verliert in diesem Space sofort den Zugriff.`)) return
+  button.disabled = true
+  button.classList.add('working')
+  const { error } = await sb.from('space_connections')
+    .delete()
+    .eq('space_id', space.id)
+    .eq('connection_key', key)
+  if (error) {
+    button.disabled = false
+    button.classList.remove('working')
+    window.alert(`Connection konnte nicht entfernt werden: ${error.message}`)
+    return
+  }
+  toolCatalogCache = null
+  await loadSpacesTree()
+  const refreshed = spacesList.find((item) => item.id === space.id)
+  if (!refreshed) return
+  if (destination === 'connected') await openConnectedData(refreshed)
+  else {
+    await openSpaceHome(refreshed)
+    setSpaceHomeTab('sources')
+  }
+}
 // Inhaltsgruppen nach Slug-Prefix — jede Seite landet in GENAU einer Gruppe
 // (erste Übereinstimmung gewinnt; "Weitere" fängt unbekannte Prefixe auf).
 // Ordner = erstes Slug-Segment. Bekannte Crawl-Prefixe bekommen sprechende Labels,
@@ -4960,7 +5003,7 @@ async function openSpaceHome(space) {
       ? sb.from('space_members').select('user_id').eq('space_id', space.id)
       : Promise.resolve({ data: [] }),
   ])
-  const canManageConnections = space.created_by === session.user.id || (!space.restricted && is_admin)
+  const canManageConnections = canManageSpaceConnections(space, is_admin)
   const memberIds = [...new Set([space.created_by, ...(memberRows || []).map((row) => row.user_id)].filter(Boolean))]
   $('sh-title').textContent = space.name
   const spacePages = (wikiPages || []).filter((p) => p.space_id === space.id)
@@ -5002,10 +5045,11 @@ async function openSpaceHome(space) {
     srcBox.innerHTML = '<div class="space-empty">Noch keine Connections aktiviert. Marketplace-Verbindungen bleiben für Enni inaktiv, bis sie hier hinzugefügt werden.</div>'
   }
   for (const key of space.connections) {
-    const c = connectionInfo(key)
-    if (!c) continue
-    srcBox.insertAdjacentHTML('beforeend',
-      `<div class="crow">${c.logo ? `<span class="c-logo"><img src="${c.logo}" alt=""></span>` : '<span class="c-logo" aria-hidden="true">⌁</span>'}<div><div class="c-name">${esc(c.name)}</div><div class="c-sub">${esc(c.sub)}</div></div></div>`)
+    const row = spaceConnectionRow(key, {
+      removable: canManageConnections,
+      onRemove: (button) => removeSpaceConnection(space, key, button, 'home'),
+    })
+    if (row) srcBox.appendChild(row)
   }
   activateArea('wiki', 'space-home')
 }
@@ -5251,19 +5295,21 @@ $('iu-save').addEventListener('click', async () => {
 async function openConnectedData(space) {
   currentSpace = space
   const { is_admin } = await ownProfile()
+  const canManageConnections = canManageSpaceConnections(space, is_admin)
   $('cd-space-name').textContent = space.name
   $('cd-space-access').textContent = space.restricted ? 'Restricted · nur Mitglieder' : 'Open · alle Accounts'
-  $('cd-add').hidden = !(space.created_by === session.user.id || (!space.restricted && is_admin))
+  $('cd-add').hidden = !canManageConnections
   const list = $('cd-list')
   list.innerHTML = ''
   if (!space.connections.length) {
     list.innerHTML = '<div class="space-empty">Noch keine Connections aktiviert.</div>'
   }
   for (const key of space.connections) {
-    const c = connectionInfo(key)
-    if (!c) continue
-    list.insertAdjacentHTML('beforeend',
-      `<div class="crow">${c.logo ? `<span class="c-logo"><img src="${c.logo}" alt=""></span>` : '<span class="c-logo" aria-hidden="true">⌁</span>'}<div><div class="c-name">${esc(c.name)}</div><div class="c-sub">${esc(c.sub)}</div></div></div>`)
+    const row = spaceConnectionRow(key, {
+      removable: canManageConnections,
+      onRemove: (button) => removeSpaceConnection(space, key, button, 'connected'),
+    })
+    if (row) list.appendChild(row)
   }
   activateArea('wiki', 'connected')
 }

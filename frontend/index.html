@@ -822,9 +822,11 @@
   .crow-add{cursor:pointer}
   .crow-add:hover .c-name{color:var(--ink)!important}
   .crow .c-del{border:0;background:none;color:var(--ink-3);width:24px;height:24px;border-radius:7px;display:none;align-items:center;justify-content:center;flex:none;margin-left:6px;cursor:pointer}
-  .crow:hover .c-del{display:inline-flex}
+  .crow:hover .c-del,.crow:focus-within .c-del{display:inline-flex}
   .crow .c-del:hover{color:var(--high);background:var(--hover)}
   .crow .c-del svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round}
+  .space-connection-row>.c-del{margin-left:auto}
+  .space-connection-row>.c-del.working{display:inline-flex;opacity:.45;cursor:wait}
   .research-lab{display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;gap:14px;margin:0 auto 18px;max-width:980px;padding:13px 14px;border:1px solid var(--glass-outline);border-radius:16px;background:linear-gradient(145deg,var(--key-hi),var(--surface-2));box-shadow:inset 0 1px 0 var(--glass-highlight),0 16px 38px -30px rgba(29,30,44,.46)}
   .research-orb{width:42px;height:42px;border-radius:13px;background:url(/icons/enni.png) center/112% no-repeat;box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 8px 18px -10px rgba(71,48,142,.5)}
   .research-copy{min-width:0}.research-copy strong{display:block;font-size:13.5px;font-weight:650}.research-copy span{display:block;margin-top:2px;font-size:11.5px;color:var(--ink-3)}

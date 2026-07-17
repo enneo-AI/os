@@ -313,6 +313,23 @@ test('marketplace connections stay dormant until an accessible Space activates t
   assert.match(frontendSource, /Noch keine Connections aktiviert/)
 })
 
+test('Space owners can remove tools directly while RLS remains the authority', () => {
+  const frontendSource = readFileSync(join(here, '../../frontend/app.js'), 'utf8')
+  const frontendHtml = readFileSync(join(here, '../../frontend/index.html'), 'utf8')
+  const migration = readFileSync(
+    join(here, '../../supabase/migrations/20260717082825_space_scoped_connectors.sql'),
+    'utf8'
+  )
+
+  assert.match(frontendSource, /function spaceConnectionRow/)
+  assert.match(frontendSource, /async function removeSpaceConnection/)
+  assert.match(frontendSource, /aus diesem Space entfernen/)
+  assert.match(frontendSource, /\.from\('space_connections'\)[\s\S]*?\.delete\(\)[\s\S]*?\.eq\('space_id', space\.id\)[\s\S]*?\.eq\('connection_key', key\)/)
+  assert.match(frontendSource, /canManageSpaceConnections/)
+  assert.match(frontendHtml, /\.crow:focus-within \.c-del/)
+  assert.match(migration, /create policy sc_delete[\s\S]*?private\.can_manage_space_connections\(space_id\)/)
+})
+
 test('Space navigation is flat and Restricted owners can atomically manage members', () => {
   const frontendSource = readFileSync(join(here, '../../frontend/app.js'), 'utf8')
   const frontendHtml = readFileSync(join(here, '../../frontend/index.html'), 'utf8')
