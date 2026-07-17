@@ -982,8 +982,8 @@ document.querySelectorAll('.admin-area').forEach((b) =>
 )
 
 // Admin-Sidebar: genau einen Arbeitsbereich zeigen
-const ADMIN_TABS = new Set(['reviews', 'usage', 'members', 'knowledge', 'announcements'])
-const ADMIN_ONLY_TABS = new Set(['reviews', 'knowledge', 'announcements'])
+const ADMIN_TABS = new Set(['reviews', 'usage', 'members', 'integrations', 'knowledge', 'announcements'])
+const ADMIN_ONLY_TABS = new Set(['reviews', 'integrations', 'knowledge', 'announcements'])
 
 function setAdminTab(tab, sync = true) {
   if (!ADMIN_TABS.has(tab)) tab = 'usage'
@@ -1005,13 +1005,15 @@ async function loadAdmin() {
   const { is_admin } = await ownProfile()
   const announcementLink = document.querySelector('.admin-link[data-admin-tab="announcements"]')
   if (announcementLink) announcementLink.hidden = !is_admin
+  const integrationsLink = document.querySelector('.admin-link[data-admin-tab="integrations"]')
+  if (integrationsLink) integrationsLink.hidden = !is_admin
   const requested = new URLSearchParams(location.search).get('tab')
   const initial = ADMIN_TABS.has(requested) ? requested : is_admin ? 'reviews' : 'usage'
   setAdminTab(!is_admin && ADMIN_ONLY_TABS.has(initial) ? 'usage' : initial, false)
   await Promise.all([
     refreshCosts(), loadMembers(), loadKnowledgeUpdates(), loadLearnings(), loadSkillProposals(), loadToolProposals(),
     loadToolResearchProposals(), loadUiChangeRequests(), loadRoutineProposals(), loadWikiPageProposals(), loadKnowledgeSources(),
-    is_admin ? Promise.all([loadAnnouncements(), loadImpact()]) : Promise.resolve(),
+    is_admin ? Promise.all([loadAnnouncements(), loadImpact(), renderPlatformIntegrations()]) : Promise.resolve(),
   ])
 }
 
@@ -5665,8 +5667,10 @@ async function loadToolResearch() {
       const row = document.createElement('button')
       row.className = 'crow'
       const accessLabel = researchAccessLabel(blueprint.access_mode)
-      row.innerHTML = `${researchLogo(blueprint)}<div><div class="c-name">${esc(blueprint.display_name || item.name || 'Integration')}</div><div class="c-sub">${esc(blueprint.summary || researchTypeLabel(blueprint.integration_type))} · ${accessLabel}</div></div><span class="c-right off"><span class="connector-connect"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>${certifiedReady ? 'Verbinden' : 'Einrichten'}</span></span>`
-      row.addEventListener('click', () => certifiedReady ? openResearchedMcp(item) : openToolResearchDetail(item, toolResearchAdmin))
+      row.innerHTML = `${researchLogo(blueprint)}<div><div class="c-name">${esc(blueprint.display_name || item.name || 'Integration')}</div><div class="c-sub">${esc(blueprint.summary || researchTypeLabel(blueprint.integration_type))} · ${accessLabel}</div></div><span class="c-right off"><span class="${certifiedReady ? 'connector-connect' : 'connector-setup'}">${certifiedReady ? '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Account verbinden' : 'In Vorbereitung'}</span></span>`
+      if (certifiedReady) row.addEventListener('click', () => openResearchedMcp(item))
+      else if (toolResearchAdmin) row.addEventListener('click', () => openToolResearchDetail(item, true))
+      else row.disabled = true
       ;(blueprint.access_mode === 'read_only' ? readOnly : readWrite).appendChild(row)
     }
     applyMarketplaceFilter()
@@ -5732,7 +5736,6 @@ function renderToolResearchDetail(item, isAdmin) {
   actions.innerHTML = '<button class="btn quiet" id="trd-close">Schließen</button>'
   if (item.status === 'failed') actions.insertAdjacentHTML('beforeend', '<button class="btn dark" id="trd-retry">Erneut recherchieren</button>')
   if (isAdmin && item.status === 'review') actions.insertAdjacentHTML('beforeend', '<button class="btn quiet danger-link" id="trd-reject">Ablehnen</button><button class="btn dark" id="trd-approve">Im Marketplace veröffentlichen</button>')
-  if (item.status === 'approved' && blueprint.setup_url) actions.insertAdjacentHTML('beforeend', `<a class="btn quiet" href="${esc(blueprint.setup_url)}" target="_blank" rel="noopener">Anbieter-Portal ↗</a>`)
   if (item.status === 'approved' && isCertifiedConnectReady(blueprint)) actions.insertAdjacentHTML('beforeend', '<button class="btn dark" id="trd-connect">Verbinden</button>')
   $('trd-close').addEventListener('click', () => $('tool-research-detail-overlay').classList.remove('open'))
   $('trd-retry')?.addEventListener('click', () => retryToolResearch(item.id))
@@ -5808,7 +5811,9 @@ function renderInstalledConnections(connectors) {
     return
   }
   for (const connector of connectors) {
-    const native = NATIVE_CONNECTORS[connector.kind]
+    const native = NATIVE_CONNECTORS[connector.kind] || Object.values(NATIVE_CONNECTORS).find((cfg) => (
+      cfg.mcpUrl && normalizedMcpUrl(connector.url) === normalizedMcpUrl(cfg.mcpUrl)
+    ))
     const title = `${connector.name}${connector.external_account_name ? ` · ${connector.external_account_name}` : ''}`
     const icon = document.createElement('span')
     icon.className = 'installed-app'
@@ -5840,9 +5845,11 @@ async function loadConnectorRows() {
   marketplaceConnectorRows = visible
   loadToolResearch()
   renderInstalledConnections(visible)
-  for (const kind of Object.keys(NATIVE_CONNECTORS)) {
+  for (const [kind, cfg] of Object.entries(NATIVE_CONNECTORS)) {
     // Eigener persönlicher Connector hat Vorrang vor dem Team-Connector (wie im Tool-Loop)
-    const rows = visible.filter((x) => x.kind === kind)
+    const rows = visible.filter((x) => x.kind === kind || (
+      cfg.mcpUrl && x.kind === 'mcp' && normalizedMcpUrl(x.url) === normalizedMcpUrl(cfg.mcpUrl)
+    ))
     const conn = rows.find((x) => x.owner === me && x.visibility !== 'team') || rows.find((x) => x.visibility === 'team') || null
     renderNativeRow(kind, conn, is_admin, me, conn ? connectorSpaces(conn) : [])
   }
@@ -5850,7 +5857,8 @@ async function loadConnectorRows() {
     const box = $('dyn-tools')
     if (!box) return
     box.innerHTML = ''
-    for (const c of visible.filter((x) => x.kind === 'mcp')) {
+    const nativeMcpUrls = new Set(Object.values(NATIVE_CONNECTORS).map((cfg) => normalizedMcpUrl(cfg.mcpUrl)).filter(Boolean))
+    for (const c of visible.filter((x) => x.kind === 'mcp' && !nativeMcpUrls.has(normalizedMcpUrl(x.url)))) {
       const mine = c.owner === me
       const activeSpaces = connectorSpaces(c)
       const access = connectorAccess(activeSpaces)
@@ -5883,8 +5891,8 @@ async function loadConnectorRows() {
 const NATIVE_CONNECTORS = {
   outlook: { row: 'outlook-row', status: 'outlook-status', sub: 'outlook-sub', label: 'Outlook', icon: '/icons/outlook.svg', subConnected: 'E-Mails und Kalender · Read-only', subDefault: 'E-Mails und Kalender · Read-only' },
   google_drive: { row: 'google_drive-row', status: 'google_drive-status', sub: 'google_drive-sub', label: 'Google Drive', icon: '/icons/google-drive.svg', subConnected: 'Dokumente und Ordner · Read-only', subDefault: 'Dokumente und Ordner · Read-only' },
-  notion: { row: 'notion-row', status: 'notion-status', sub: 'notion-sub', label: 'Notion', icon: '/icons/notion.svg', subConnected: 'Seiten und Datenbanken · Read-only', subDefault: 'Seiten und Datenbanken · Read-only' },
-  attio: { row: 'attio-row', status: 'attio-status', sub: 'attio-sub', label: 'Attio', icon: '/icons/attio.ico', subConnected: 'CRM-Daten · Read-only', subDefault: 'CRM-Daten · Read-only' },
+  notion: { row: 'notion-row', status: 'notion-status', sub: 'notion-sub', label: 'Notion', icon: '/icons/notion.svg', mcpProvider: 'notion', mcpUrl: 'https://mcp.notion.com/mcp', subConnected: 'Seiten und Datenbanken · Read & Write', subDefault: 'Seiten und Datenbanken · Read & Write' },
+  attio: { row: 'attio-row', status: 'attio-status', sub: 'attio-sub', label: 'Attio', icon: '/icons/attio.ico', mcpProvider: 'attio', mcpUrl: 'https://mcp.attio.com/mcp', subConnected: 'CRM, Aufgaben und Notizen · Read & Write', subDefault: 'CRM, Aufgaben und Notizen · Read & Write' },
   slack: { row: 'slack-row', status: 'slack-status', sub: 'slack-sub', label: 'Slack', icon: '/icons/slack.svg', subConnected: 'Channels und Threads · Read-only', subDefault: 'Channels und Threads · Read-only' },
 }
 let marketplaceAccessFilter = 'all'
@@ -6009,25 +6017,38 @@ async function startProviderOAuth(provider) {
   status.className = 'c-right off'
   status.innerHTML = `<span class="connector-connect">Öffne ${esc(cfg.label)} …</span>`
   try {
-    const { is_admin } = await ownProfile()
     const res = await fetch(`${BACKEND_URL}/api/oauth/${provider}/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
       body: JSON.stringify({ scope: 'personal' }),
     })
     const data = await res.json()
-    if (res.status === 409 && is_admin) {
-      oauthTab?.close()
-      status.innerHTML = previous
-      openOAuthSetup(provider)
-      return
-    }
     if (!res.ok || !data.url) throw new Error(data.error || 'OAuth-Start fehlgeschlagen')
     sendOAuthTab(oauthTab, data.url)
   } catch (err) {
     oauthTab?.close()
     status.innerHTML = previous
     showOAuthResult('error', `${cfg.label} ist noch nicht bereit`, err.message)
+  }
+}
+
+async function renderPlatformIntegrations() {
+  const host = $('platform-integration-list')
+  if (!host) return
+  try {
+    await loadOAuthProviderStatus(true)
+    host.innerHTML = ''
+    for (const [provider, cfg] of Object.entries(NATIVE_CONNECTORS).filter(([, item]) => !item.mcpProvider)) {
+      const meta = oauthProviders.get(provider)
+      const ready = !!meta?.configured
+      const row = document.createElement('div')
+      row.className = 'platform-integration-row'
+      row.innerHTML = `<span class="c-logo"><img src="${esc(cfg.icon)}" alt=""></span><div><strong>${esc(cfg.label)}</strong><span>${ready ? 'Für Account-Logins im Marketplace freigeschaltet' : 'Einmalige OAuth-App-Freischaltung erforderlich'}</span></div><span class="access-badge ${ready ? 'open' : 'inactive'}">${ready ? 'Aktiv' : 'Nicht aktiv'}</span>${ready ? '' : '<button class="btn quiet">Freischalten</button>'}`
+      row.querySelector('button')?.addEventListener('click', () => openOAuthSetup(provider))
+      host.appendChild(row)
+    }
+  } catch (error) {
+    host.innerHTML = `<div class="err">${esc(error.message)}</div>`
   }
 }
 
@@ -6071,10 +6092,11 @@ $('oauth-setup-save').addEventListener('click', async () => {
     if (!res.ok) throw new Error(data.error || 'Einrichtung fehlgeschlagen')
     oauthProviders.clear()
     $('oauth-setup-overlay').classList.remove('open')
-    await startProviderOAuth(pendingOAuthProvider)
+    showOAuthResult('success', `${NATIVE_CONNECTORS[pendingOAuthProvider].label} ist für den Workspace freigeschaltet`, 'Nutzer können jetzt im Marketplace ihren eigenen Account verbinden.')
+    await Promise.all([loadConnectorRows(), renderPlatformIntegrations()])
   } catch (error) { err.textContent = error.message }
   $('oauth-setup-save').disabled = false
-  $('oauth-setup-save').textContent = 'Speichern & verbinden'
+  $('oauth-setup-save').textContent = 'Workspace freischalten'
 })
 
 function renderNativeRow(kind, conn, isAdmin, me, activeSpaces = []) {
@@ -6106,24 +6128,24 @@ function renderNativeRow(kind, conn, isAdmin, me, activeSpaces = []) {
     })
   } else {
     status.className = 'c-right off'
+    const selfService = !!cfg.mcpProvider
     const configured = oauthProviders.get(kind)?.configured
-    status.innerHTML = configured
-      ? '<span class="connector-connect"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Verbinden</span>'
-      : isAdmin ? '<span class="connector-setup">Einrichten</span>' : '<span class="connector-setup">Nicht verfügbar</span>'
-    sub.textContent = configured
+    status.innerHTML = selfService || configured
+      ? '<span class="connector-connect"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Account verbinden</span>'
+      : '<span class="connector-setup">Admin-Freigabe fehlt</span>'
+    sub.textContent = selfService || configured
       ? cfg.subDefault
-      : isAdmin ? `${cfg.subDefault} · App einmalig bereitstellen` : `${cfg.subDefault} · noch nicht bereitgestellt`
+      : `${cfg.subDefault} · Enneo-IT muss die App einmalig freischalten`
   }
 }
 
 for (const [kind, cfg] of Object.entries(NATIVE_CONNECTORS)) {
   $(cfg.row).addEventListener('click', async () => {
     if (nativeState[kind]) return
-    const { is_admin } = await ownProfile()
+    if (cfg.mcpProvider) return startMcpOAuth(cfg.mcpProvider, cfg.label)
     const configured = oauthProviders.get(kind)?.configured
-    if (!configured && is_admin) return openOAuthSetup(kind)
     if (!configured) {
-      showOAuthResult('error', `${cfg.label} ist noch nicht verfügbar`, 'Ein Admin muss den Anbieter zuerst einmalig für das Team einrichten. Dein Account ist nicht defekt.')
+      showOAuthResult('error', `${cfg.label} wartet auf die zentrale Freigabe`, 'Enneo-IT richtet die App einmalig ein. Danach verbindest du hier mit einem Klick deinen eigenen Account.')
       $('oauth-result').scrollIntoView({ behavior: 'smooth', block: 'center' })
       return
     }

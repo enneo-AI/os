@@ -11,6 +11,16 @@ const backendOrigin = () => process.env.BACKEND_ORIGIN || `https://${process.env
 const stateHash = (state) => crypto.createHash('sha256').update(state).digest('hex')
 
 export const MCP_OAUTH_SERVERS = {
+  notion: {
+    label: 'Notion',
+    url: 'https://mcp.notion.com/mcp',
+    category: 'connection',
+  },
+  attio: {
+    label: 'Attio',
+    url: 'https://mcp.attio.com/mcp',
+    category: 'connection',
+  },
   lemlist: {
     label: 'Lemlist',
     url: 'https://app.lemlist.com/mcp',

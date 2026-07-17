@@ -351,3 +351,22 @@ test('impact reporting labels estimates and records skill usage', () => {
   assert.match(migration, /skill_usage_events_select/)
   assert.match(migration, /active_account_only.*as restrictive/s)
 })
+
+test('Marketplace account login is separated from technical platform enablement', () => {
+  const frontendSource = readFileSync(join(here, '../../frontend/app.js'), 'utf8')
+  const frontendHtml = readFileSync(join(here, '../../frontend/index.html'), 'utf8')
+  const oauthSource = readFileSync(join(here, '../src/mcp-oauth.js'), 'utf8')
+
+  assert.match(oauthSource, /notion:[\s\S]*https:\/\/mcp\.notion\.com\/mcp/)
+  assert.match(oauthSource, /attio:[\s\S]*https:\/\/mcp\.attio\.com\/mcp/)
+  assert.match(frontendSource, /mcpProvider: 'notion'/)
+  assert.match(frontendSource, /mcpProvider: 'attio'/)
+  assert.match(frontendSource, /Account verbinden/)
+  assert.match(frontendSource, /Admin-Freigabe fehlt/)
+  assert.doesNotMatch(frontendSource, /isAdmin \? '<span class="connector-setup">Einrichten/)
+  assert.doesNotMatch(frontendSource, /res\.status === 409 && is_admin/)
+  assert.doesNotMatch(frontendSource, /Anbieter-Portal ↗/)
+  assert.match(frontendHtml, /data-admin-tab="integrations"/)
+  assert.match(frontendHtml, /data-admin-pane="integrations"/)
+  assert.match(frontendHtml, /Workspace freischalten/)
+})
