@@ -1270,7 +1270,10 @@ function wrapPersonMessage(bubble, profile, mine = false) {
   avatar.setAttribute('aria-label', `Profil von ${profile.display_name || profile.email} öffnen`)
   avatar.innerHTML = profile.avatar_url ? `<img src="${esc(profile.avatar_url)}" alt="" width="28" height="28" loading="lazy">` : esc(profileInitials(profile))
   avatar.addEventListener('click', () => openMemberProfile(profile))
-  wrap.append(bubble, avatar)
+  // Chat-Konvention: Absender anderer Personen steht links VOR der Nachricht;
+  // beim eigenen Beitrag bleibt das Profil rechts hinter der Bubble.
+  if (mine) wrap.append(bubble, avatar)
+  else wrap.append(avatar, bubble)
   return wrap
 }
 
