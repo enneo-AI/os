@@ -772,6 +772,22 @@
   .url-import-icon{width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--glass-outline);border-radius:11px;background:var(--surface);color:var(--lila-deep);box-shadow:inset 0 1px 0 var(--glass-highlight)}
   .url-import-icon svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
   .modal .url-import-input{width:100%;height:44px;margin:0;padding:0;border:0;background:transparent;color:var(--ink);font:inherit;font-size:14px;outline:0;box-shadow:none}
+  .markdown-import-modal{width:min(640px,calc(100vw - 40px))}
+  .markdown-drop{display:grid;place-items:center;min-height:142px;margin:4px 0 17px;padding:20px;border:1px dashed rgba(123,90,226,.34);border-radius:17px;background:linear-gradient(145deg,rgba(123,90,226,.045),var(--surface-2));text-align:center;transition:border-color .18s ease,background .18s ease,transform .18s ease}
+  .markdown-drop.dragging{border-color:var(--lila);background:rgba(123,90,226,.09);transform:translateY(-1px)}
+  .markdown-drop-icon{width:42px;height:42px;display:grid;place-items:center;margin-bottom:9px;border:1px solid var(--glass-outline);border-radius:13px;background:var(--surface);color:var(--lila-deep);box-shadow:inset 0 1px 0 var(--glass-highlight)}
+  .markdown-drop-icon svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .markdown-drop strong{font-size:13.5px;font-weight:650}.markdown-drop>span{margin-top:3px;color:var(--ink-3);font-size:11.5px}
+  .markdown-pick-actions{display:flex;gap:7px;margin-top:13px}.markdown-pick-actions .btn{margin:0}
+  .markdown-files-head{display:flex;align-items:center;justify-content:space-between;margin:2px 1px 6px}.markdown-files-head span{font-size:11px;color:var(--ink-3)}
+  .markdown-file-list{max-height:210px;overflow-y:auto;border-top:1px solid var(--hair);border-bottom:1px solid var(--hair)}
+  .markdown-file-list:empty{display:none}
+  .markdown-file-row{display:grid;grid-template-columns:28px minmax(0,1fr) auto 30px;align-items:center;gap:9px;min-height:44px;border-bottom:1px solid var(--hair)}.markdown-file-row:last-child{border-bottom:0}
+  .markdown-file-index{font-family:var(--mono);font-size:10px;color:var(--ink-3)}.markdown-file-copy{min-width:0}.markdown-file-copy strong,.markdown-file-copy span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.markdown-file-copy strong{font-size:12px;font-weight:600}.markdown-file-copy span{margin-top:1px;font-size:10px;color:var(--ink-3)}
+  .markdown-file-size{font-family:var(--mono);font-size:9.5px;color:var(--ink-3)}.markdown-file-remove{width:30px;height:30px;border:0;border-radius:8px;background:none;color:var(--ink-3);cursor:pointer}.markdown-file-remove:hover{background:var(--hover);color:var(--high)}
+  .markdown-import-summary{margin:10px 1px 0;color:var(--ink-3);font-size:11px}
+  .space-import-result{display:flex;align-items:center;gap:9px;margin:2px 0 13px;padding:10px 12px;border:1px solid rgba(46,158,107,.18);border-radius:12px;background:rgba(46,158,107,.07);color:var(--good);font-size:12px}.space-import-result[hidden]{display:none}.space-import-result strong{color:var(--ink);font-weight:650}
+  .wiki-proposal-group-head{display:flex;align-items:center;gap:9px;min-height:42px;padding:9px 2px 6px;border-bottom:1px solid var(--hair)}.wiki-proposal-group-head strong{font-size:12px;font-weight:650}.wiki-proposal-group-head span{color:var(--ink-3);font-size:10px}.wiki-proposal-group-head .btn{margin-left:auto;padding:5px 11px;font-size:11px}
 
   /* ---------- connector-rows (Codex-Style: Logo-Tile, ein Satz, Status rechts) ---------- */
   .crow{display:flex;align-items:center;gap:13px;padding:12px 2px;border-bottom:1px solid var(--hair)}
@@ -1680,7 +1696,8 @@
             <div class="space-head-copy"><h2 id="pl-title">Ordner</h2><p><span id="pl-crumb">Space</span> · <span id="pl-sub"></span></p></div>
           </div>
           <div class="space-actions">
-            <button class="space-action" id="pl-import-url"><svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><span>URL importieren</span></button>
+            <button class="space-action" id="pl-import-markdown"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 15h8M12 11v8"/></svg><span>Markdown</span></button>
+            <button class="space-action" id="pl-import-url"><svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><span>URL</span></button>
             <button class="space-action primary" id="pl-new-page"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>Neue Seite</span></button>
           </div>
         </header>
@@ -1710,10 +1727,12 @@
           <div class="space-identity"><span class="space-mark"><svg viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.2 3.9A2 2 0 0 0 7.5 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></svg></span><div class="space-head-copy"><h2 id="sh-title">Space</h2><div class="space-head-meta"><span class="access-badge" id="sh-access">Open</span><span id="sh-sub"></span></div></div></div>
           <div class="space-actions">
             <button class="icon-action" id="sh-members-manage" hidden aria-label="Mitglieder verwalten" title="Mitglieder verwalten"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3.5 19v-1.5A4.5 4.5 0 0 1 8 13h2a4.5 4.5 0 0 1 4.5 4.5V19"/><path d="M16 8h5M18.5 5.5v5"/></svg></button>
+            <button class="icon-action" id="sh-import-markdown" aria-label="Markdown-Dateien importieren" title="Markdown-Dateien importieren"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 15h8M12 11v8"/></svg></button>
             <button class="icon-action" id="sh-import-url" aria-label="URL importieren" title="URL importieren"><svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg></button>
             <button class="icon-action primary" id="sh-new-page" aria-label="Neue Seite" title="Neue Seite"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
           </div>
         </header>
+        <div class="space-import-result" id="space-import-result" role="status" aria-live="polite" hidden></div>
         <nav class="space-tabs" aria-label="Space-Bereiche"><button class="space-tab on" id="sh-tab-content">Wissen <span class="space-count" id="sh-page-count">0</span></button><button class="space-tab" id="sh-tab-sources">Connections <span class="space-count" id="sh-source-count">0</span></button></nav>
         <div id="sh-content-pane">
           <div class="space-toolbar"><input type="search" class="wiki-search" id="sh-search" placeholder="Seiten in diesem Space durchsuchen …"></div>
@@ -2139,6 +2158,32 @@
     <div class="m-actions">
       <button class="btn quiet" id="oauth-setup-cancel">Abbrechen</button>
       <button class="btn dark" id="oauth-setup-save">Workspace freischalten</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= MARKDOWN-MASSENIMPORT ================= -->
+<div class="overlay" id="mi-overlay">
+  <div class="modal markdown-import-modal" role="dialog" aria-modal="true" aria-labelledby="mi-title">
+    <h3 id="mi-title">Markdown-Sammlung importieren</h3>
+    <p class="pf-hint" style="margin-top:0">Ein Ordner wird zu einem Bereich im Space, jede Markdown-Datei zu einer eigenen Seite.</p>
+    <input type="file" id="mi-files" accept=".md,.markdown,text/markdown,text/plain" multiple hidden>
+    <input type="file" id="mi-directory" accept=".md,.markdown,text/markdown,text/plain" webkitdirectory directory multiple hidden>
+    <div class="markdown-drop" id="mi-drop" tabindex="0" role="button" aria-label="Markdown-Dateien auswählen oder hier ablegen">
+      <span class="markdown-drop-icon"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M5 20h14"/></svg></span>
+      <strong>Dateien oder Ordner hier ablegen</strong>
+      <span>Bis zu 50 Markdown-Dateien, insgesamt maximal 12 MB</span>
+      <div class="markdown-pick-actions"><button type="button" class="btn quiet" id="mi-pick-files">Dateien wählen</button><button type="button" class="btn quiet" id="mi-pick-directory">Ordner wählen</button></div>
+    </div>
+    <label for="mi-folder">Zielordner</label>
+    <input type="text" id="mi-folder" autocomplete="off" placeholder="z. B. Revenue Architecture / Bowtie Bible">
+    <div class="markdown-files-head"><strong id="mi-count">Noch keine Dateien</strong><span id="mi-total"></span></div>
+    <div class="markdown-file-list" id="mi-list"></div>
+    <p class="markdown-import-summary" id="mi-summary">Dateinamen bestimmen die Reihenfolge. Eine H1 wird als Seitentitel übernommen.</p>
+    <div class="err" id="mi-err"></div>
+    <div class="m-actions">
+      <button class="btn quiet" id="mi-cancel">Abbrechen</button>
+      <button class="btn dark" id="mi-save" disabled>Sammlung importieren</button>
     </div>
   </div>
 </div>

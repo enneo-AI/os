@@ -2081,14 +2081,43 @@ async function loadWikiPageProposals() {
     if (!res.ok) { window.alert((await res.json().catch(() => ({}))).error || 'Fehler'); return }
     wikiPages = null; loadWikiPageProposals(); loadSpacesTree()
   }
+  const groups = new Map()
   for (const page of proposed) {
-    const row = document.createElement('div')
-    row.className = 'row'
-    row.innerHTML = `<div><div class="r-name">${esc(page.title)}</div><div class="r-sub">${esc(page.slug)} · von ${esc(profName(profs, page.created_by))}</div></div><button class="btn quiet" style="padding:5px 13px;font-size:12px">Ablehnen</button><button class="btn dark" style="padding:5px 13px;font-size:12px">Open freigeben</button>`
-    const [reject, approve] = row.querySelectorAll('button')
-    reject.addEventListener('click', () => act(page.id, 'reject'))
-    approve.addEventListener('click', () => act(page.id, 'approve'))
-    list.appendChild(row)
+    const key = `${page.created_by}:${pageFolderPrefix(page.slug)}`
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(page)
+  }
+  for (const pagesInFolder of groups.values()) {
+    if (pagesInFolder.length > 1) {
+      const prefix = pageFolderPrefix(pagesInFolder[0].slug)
+      const head = document.createElement('div')
+      head.className = 'wiki-proposal-group-head'
+      head.innerHTML = `<strong>${esc(folderLabel(prefix) || 'Seiten-Sammlung')}</strong><span>${pagesInFolder.length} Seiten · von ${esc(profName(profs, pagesInFolder[0].created_by))}</span><button class="btn dark">Alle freigeben</button>`
+      head.querySelector('button').addEventListener('click', async (event) => {
+        const button = event.currentTarget
+        button.disabled = true
+        button.textContent = 'Indexiert …'
+        const response = await fetch(`${BACKEND_URL}/api/wiki-pages/bulk-approve`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+          body: JSON.stringify({ ids: pagesInFolder.map((page) => page.id) }),
+        })
+        const data = await response.json().catch(() => ({}))
+        if (!response.ok || data.failed?.length) {
+          window.alert(data.error || `${data.failed?.length || 0} Seiten konnten nicht freigegeben werden.`)
+        }
+        wikiPages = null; loadWikiPageProposals(); loadSpacesTree()
+      })
+      list.appendChild(head)
+    }
+    for (const page of pagesInFolder) {
+      const row = document.createElement('div')
+      row.className = 'row'
+      row.innerHTML = `<div><div class="r-name">${esc(page.title)}</div><div class="r-sub">${esc(page.slug)} · von ${esc(profName(profs, page.created_by))}</div></div><button class="btn quiet" style="padding:5px 13px;font-size:12px">Ablehnen</button><button class="btn dark" style="padding:5px 13px;font-size:12px">Open freigeben</button>`
+      const [reject, approve] = row.querySelectorAll('button')
+      reject.addEventListener('click', () => act(page.id, 'reject'))
+      approve.addEventListener('click', () => act(page.id, 'approve'))
+      list.appendChild(row)
+    }
   }
 }
 
@@ -4753,13 +4782,20 @@ const KNOWN_GROUPS = {
   'marketing-site': { label: 'enneo.ai Website', sub: 'importiert aus enneo.ai' },
   'import': { label: 'Importierte Seiten', sub: 'per URL importiert' },
 }
-const folderLabel = (prefix) =>
-  KNOWN_GROUPS[prefix]?.label || prefix.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+const folderLabel = (prefix) => KNOWN_GROUPS[prefix]?.label || prefix
+  .split('/')
+  .map((part) => part.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()))
+  .join(' / ')
+
+const pageFolderPrefix = (slug = '') => {
+  const parts = slug.split('/')
+  return parts.length > 1 ? parts.slice(0, -1).join('/') : ''
+}
 
 function groupPages(pages) {
   const map = new Map()
   for (const p of pages) {
-    const prefix = p.slug.includes('/') ? p.slug.split('/')[0] : ''
+    const prefix = pageFolderPrefix(p.slug)
     if (!map.has(prefix))
       map.set(prefix, { prefix, label: folderLabel(prefix), sub: KNOWN_GROUPS[prefix]?.sub, pages: [] })
     map.get(prefix).pages.push(p)
@@ -4774,7 +4810,7 @@ function spaceFolderPrefixes(spaceId) {
   return [...new Set(
     (wikiPages || [])
       .filter((p) => p.space_id === spaceId && p.slug.includes('/'))
-      .map((p) => p.slug.split('/')[0])
+      .map((p) => pageFolderPrefix(p.slug))
   )].sort()
 }
 
@@ -4879,6 +4915,7 @@ function spacePageRow(page) {
 
 async function openSpaceHome(space) {
   currentSpace = space
+  $('space-import-result').hidden = true
   const [{ is_admin }, { data: memberRows }] = await Promise.all([
     ownProfile(),
     space.restricted
@@ -5010,6 +5047,129 @@ $('sh-search').addEventListener('input', () => {
 $('sh-new-page').addEventListener('click', () => openPageEditor(null, ''))
 $('pl-new-page').addEventListener('click', () => openPageEditor(null, currentFolderPrefix))
 
+// ---------- Markdown-Sammlung importieren (mehrere Dateien oder ganzer Ordner)
+let markdownImportFiles = []
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+function renderMarkdownImportFiles() {
+  const list = $('mi-list')
+  list.innerHTML = ''
+  const total = markdownImportFiles.reduce((sum, file) => sum + file.size, 0)
+  $('mi-count').textContent = markdownImportFiles.length
+    ? `${markdownImportFiles.length} ${markdownImportFiles.length === 1 ? 'Datei' : 'Dateien'}`
+    : 'Noch keine Dateien'
+  $('mi-total').textContent = markdownImportFiles.length ? formatFileSize(total) : ''
+  $('mi-save').disabled = !markdownImportFiles.length
+  markdownImportFiles.forEach((file, index) => {
+    const path = file.webkitRelativePath || file.name
+    const row = document.createElement('div')
+    row.className = 'markdown-file-row'
+    row.innerHTML = `<span class="markdown-file-index">${String(index + 1).padStart(2, '0')}</span><span class="markdown-file-copy"><strong>${esc(file.name)}</strong><span>${esc(path)}</span></span><span class="markdown-file-size">${formatFileSize(file.size)}</span><button type="button" class="markdown-file-remove" aria-label="${esc(file.name)} entfernen">×</button>`
+    row.querySelector('button').addEventListener('click', () => {
+      markdownImportFiles.splice(index, 1)
+      renderMarkdownImportFiles()
+    })
+    list.appendChild(row)
+  })
+}
+
+function addMarkdownImportFiles(fileList, inferFolder = false) {
+  const incoming = [...fileList].filter((file) => /\.(md|markdown)$/i.test(file.name))
+  const merged = new Map(markdownImportFiles.map((file) => [file.webkitRelativePath || file.name, file]))
+  incoming.forEach((file) => merged.set(file.webkitRelativePath || file.name, file))
+  markdownImportFiles = [...merged.values()]
+    .sort((a, b) => (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name, undefined, { numeric: true }))
+    .slice(0, 50)
+  if (inferFolder && !$('mi-folder').value.trim()) {
+    const root = incoming[0]?.webkitRelativePath?.split('/')[0]
+    if (root) $('mi-folder').value = root
+  }
+  $('mi-err').textContent = incoming.length ? '' : 'Keine Markdown-Dateien gefunden.'
+  renderMarkdownImportFiles()
+}
+
+function openMarkdownImport(folderPrefix = '') {
+  markdownImportFiles = []
+  $('mi-folder').value = folderPrefix ? folderLabel(folderPrefix) : ''
+  $('mi-err').textContent = ''
+  $('mi-summary').textContent = 'Dateinamen bestimmen die Reihenfolge. Eine H1 wird als Seitentitel übernommen.'
+  renderMarkdownImportFiles()
+  $('mi-overlay').classList.add('open')
+}
+
+$('sh-import-markdown').addEventListener('click', () => openMarkdownImport(''))
+$('pl-import-markdown').addEventListener('click', () => openMarkdownImport(currentFolderPrefix))
+$('mi-pick-files').addEventListener('click', (event) => { event.stopPropagation(); $('mi-files').click() })
+$('mi-pick-directory').addEventListener('click', (event) => { event.stopPropagation(); $('mi-directory').click() })
+$('mi-files').addEventListener('change', (event) => { addMarkdownImportFiles(event.target.files); event.target.value = '' })
+$('mi-directory').addEventListener('change', (event) => { addMarkdownImportFiles(event.target.files, true); event.target.value = '' })
+$('mi-cancel').addEventListener('click', () => $('mi-overlay').classList.remove('open'))
+$('mi-drop').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); $('mi-files').click() }
+})
+for (const eventName of ['dragenter', 'dragover']) $('mi-drop').addEventListener(eventName, (event) => {
+  event.preventDefault(); $('mi-drop').classList.add('dragging')
+})
+for (const eventName of ['dragleave', 'drop']) $('mi-drop').addEventListener(eventName, (event) => {
+  event.preventDefault(); $('mi-drop').classList.remove('dragging')
+})
+$('mi-drop').addEventListener('drop', (event) => addMarkdownImportFiles(event.dataTransfer.files, true))
+
+function markdownPageTitle(content, filename) {
+  const heading = content.match(/^#\s+(.+)$/m)?.[1]?.replace(/\s+#+\s*$/, '').trim()
+  if (heading) return heading.slice(0, 180)
+  return filename.replace(/\.(md|markdown)$/i, '').replace(/[_-]+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()).slice(0, 180)
+}
+
+$('mi-save').addEventListener('click', async () => {
+  const errorBox = $('mi-err')
+  const folder = $('mi-folder').value.trim()
+  errorBox.textContent = ''
+  if (!currentSpace?.id) { errorBox.textContent = 'Bitte öffne zuerst einen Ziel-Space.'; return }
+  if (!folder) { errorBox.textContent = 'Bitte einen Zielordner angeben.'; $('mi-folder').focus(); return }
+  if (!markdownImportFiles.length) { errorBox.textContent = 'Bitte mindestens eine Markdown-Datei auswählen.'; return }
+  const total = markdownImportFiles.reduce((sum, file) => sum + file.size, 0)
+  if (total > 12_000_000) { errorBox.textContent = 'Die Sammlung ist größer als 12 MB.'; return }
+  const button = $('mi-save')
+  button.disabled = true
+  button.textContent = `Importiert 0/${markdownImportFiles.length} …`
+  try {
+    const files = []
+    for (let index = 0; index < markdownImportFiles.length; index++) {
+      const file = markdownImportFiles[index]
+      if (file.size > 2_000_000) throw new Error(`"${file.name}" ist größer als 2 MB.`)
+      const content = await file.text()
+      files.push({ name: file.name, relative_path: file.webkitRelativePath || file.name, title: markdownPageTitle(content, file.name), content })
+      button.textContent = `Liest ${index + 1}/${markdownImportFiles.length} …`
+    }
+    button.textContent = 'Indexiert Sammlung …'
+    const response = await fetch(`${BACKEND_URL}/api/wiki/import-markdown`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ space_id: currentSpace.id, folder, files }),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`)
+    const importedCount = data.imported?.length || files.length
+    $('mi-overlay').classList.remove('open')
+    wikiPages = null
+    await loadSpacesTree()
+    const refreshed = spacesList.find((space) => space.id === currentSpace.id)
+    if (refreshed) await openSpaceHome(refreshed)
+    $('space-import-result').hidden = false
+    $('space-import-result').innerHTML = `<strong>${importedCount} Markdown-Seiten importiert.</strong><span>${data.needs_approval ? 'Die Sammlung wartet unter Admin → Freigaben und kann dort in einem Schritt übernommen werden.' : 'Sie ist sofort für Enni indexiert.'}</span>`
+  } catch (error) {
+    errorBox.textContent = error.message
+  }
+  button.disabled = !markdownImportFiles.length
+  button.textContent = 'Sammlung importieren'
+})
+
 // ---------- Seite per URL importieren (Crawl → Markdown → Auto-Reindex)
 function openImportModal(folderPrefix = '') {
   $('iu-url').value = ''
@@ -5034,7 +5194,7 @@ $('iu-save').addEventListener('click', async () => {
     const res = await fetch(`${BACKEND_URL}/api/wiki/import-url`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
-      body: JSON.stringify({ url, space_id: currentSpace?.id || null, folder: slugify2(folderPickerValue('iu')) || undefined }),
+      body: JSON.stringify({ url, space_id: currentSpace?.id || null, folder: slugifyFolder(folderPickerValue('iu')) || undefined }),
     })
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
@@ -5231,6 +5391,7 @@ $('doc-back').addEventListener('click', () => { if (currentSpace) openSpaceHome(
 // Seite automatisch für Ennis Suche neu indexiert (Backend re-embedded die Chunks).
 let editingPage = null // null = neue Seite
 const slugify2 = (t) => t.toLowerCase().replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/ß/g,'ss').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80)
+const slugifyFolder = (value) => value.split('/').map(slugify2).filter(Boolean).join('/')
 
 async function openPageEditor(page, folderPrefix = '') {
   editingPage = page
@@ -5240,7 +5401,7 @@ async function openPageEditor(page, folderPrefix = '') {
   $('pe-title').disabled = false
   // Ordner: bei bestehender Seite fix (Slug ändert sich nicht), bei neuer Seite frei
   // wählbar — vorbefüllt mit dem Ordner, aus dem heraus man "Neue Seite" geklickt hat
-  configureFolderPicker('pe', page ? (page.slug.includes('/') ? page.slug.split('/')[0] : '') : folderPrefix, { allowRoot: true, disabled: !!page })
+  configureFolderPicker('pe', page ? pageFolderPrefix(page.slug) : folderPrefix, { allowRoot: true, disabled: !!page })
   $('pe-slug').textContent = page ? page.slug : ''
   $('pe-content').value = page ? page.content : ''
   $('pe-preview').hidden = true
@@ -5255,7 +5416,7 @@ async function openPageEditor(page, folderPrefix = '') {
 
 function updateSlugPreview() {
   if (editingPage) return
-  const folder = slugify2(folderPickerValue('pe'))
+  const folder = slugifyFolder(folderPickerValue('pe'))
   const title = slugify2($('pe-title').value)
   $('pe-slug').textContent = title ? (folder ? `${folder}/${title}` : title) : ''
 }
@@ -5302,7 +5463,7 @@ $('pe-save').addEventListener('click', async () => {
       const { error } = await sb.from('wiki_pages').update({ title, content, updated_by: session.user.id }).eq('id', editingPage.id)
       if (error) throw new Error(error.message)
     } else {
-      const folder = slugify2(folderPickerValue('pe'))
+      const folder = slugifyFolder(folderPickerValue('pe'))
       const titleSlug = slugify2(title)
       slug = folder ? `${folder}/${titleSlug}` : titleSlug
       if (!titleSlug) throw new Error('Aus dem Titel lässt sich kein Slug bilden.')

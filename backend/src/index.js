@@ -1217,11 +1217,49 @@ app.post('/api/wiki-pages/:id/:action(approve|reject|demote)', async (req, res) 
   if (!user) return
   const visibility = req.params.action === 'approve' ? 'team' : 'personal'
   const { data, error } = await db.from('wiki_pages').update({ visibility, updated_by: user.id }).eq('id', req.params.id)
-    .select('id, slug, title, visibility').maybeSingle()
+    .select('id, slug, title, content, visibility').maybeSingle()
   if (error) return res.status(400).json({ error: error.message })
   if (!data) return res.status(404).json({ error: 'Seite nicht gefunden' })
+  if (req.params.action === 'approve') {
+    try {
+      const { reindexPage } = await import('./tools/wiki.js')
+      await reindexPage(data)
+    } catch (indexError) {
+      await db.from('wiki_pages').update({ visibility: 'proposed', updated_by: user.id }).eq('id', data.id)
+      return res.status(500).json({ error: `Freigabe zurückgerollt, weil die Indexierung fehlgeschlagen ist: ${indexError.message}` })
+    }
+  }
   await logAudit(user.id, `wiki_page.${req.params.action}`, 'wiki_page', data.id, { visibility })
   res.json({ ok: true, page: data })
+})
+
+app.post('/api/wiki-pages/bulk-approve', async (req, res) => {
+  const user = await requireAdmin(req, res)
+  if (!user) return
+  const ids = [...new Set((Array.isArray(req.body?.ids) ? req.body.ids : []).map(String).filter(Boolean))].slice(0, 50)
+  if (!ids.length) return res.status(400).json({ error: 'Keine Seiten ausgewählt.' })
+  const { data: pages, error } = await db.from('wiki_pages')
+    .select('id, slug, title, content, visibility').in('id', ids).eq('visibility', 'proposed')
+  if (error) return res.status(400).json({ error: error.message })
+  if (!pages?.length) return res.status(404).json({ error: 'Keine offenen Seiten gefunden.' })
+  const { reindexPage } = await import('./tools/wiki.js')
+  const approved = []
+  const failed = []
+  for (const page of pages) {
+    const { error: updateError } = await db.from('wiki_pages').update({ visibility: 'team', updated_by: user.id }).eq('id', page.id).eq('visibility', 'proposed')
+    if (updateError) { failed.push({ id: page.id, title: page.title, error: updateError.message }); continue }
+    try {
+      await reindexPage(page)
+      approved.push({ id: page.id, slug: page.slug, title: page.title })
+    } catch (indexError) {
+      await db.from('wiki_pages').update({ visibility: 'proposed', updated_by: user.id }).eq('id', page.id)
+      failed.push({ id: page.id, title: page.title, error: indexError.message })
+    }
+  }
+  await logAudit(user.id, 'wiki_page.bulk_approve', 'wiki_page_collection', null, {
+    requested: ids.length, approved: approved.length, failed: failed.length,
+  })
+  res.status(failed.length ? 207 : 200).json({ ok: !failed.length, approved, failed })
 })
 
 app.post('/api/connectors', async (req, res) => {
@@ -1761,6 +1799,96 @@ app.post('/api/wiki/reindex', async (req, res) => {
   }
 })
 
+// Mehrere Markdown-Dateien oder einen ganzen lokalen Ordner als einzelne
+// Wiki-Seiten importieren. Nicht-Admins reichen die Sammlung als Team-Vorschlag
+// ein; erst die Admin-Freigabe indexiert sie für Enni.
+app.post('/api/wiki/import-markdown', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const files = Array.isArray(req.body?.files) ? req.body.files : []
+  const spaceId = String(req.body?.space_id || '')
+  const folderInput = String(req.body?.folder || '').trim()
+  const slugPart = (value) => String(value || '').toLowerCase()
+    .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80)
+  const folder = folderInput.split('/').map(slugPart).filter(Boolean).join('/')
+
+  if (!spaceId) return res.status(400).json({ error: 'Ziel-Space fehlt.' })
+  if (!folder) return res.status(400).json({ error: 'Zielordner fehlt.' })
+  if (!files.length || files.length > 50) return res.status(400).json({ error: 'Wähle zwischen 1 und 50 Markdown-Dateien.' })
+
+  const normalized = []
+  let totalBytes = 0
+  for (const item of files) {
+    const name = String(item?.name || '').trim()
+    const content = String(item?.content || '')
+    const title = String(item?.title || '').trim().slice(0, 180)
+    if (!/\.(md|markdown)$/i.test(name)) return res.status(400).json({ error: `"${name || 'Datei'}" ist keine Markdown-Datei.` })
+    if (!content.trim()) return res.status(400).json({ error: `"${name}" ist leer.` })
+    if (!title) return res.status(400).json({ error: `Für "${name}" konnte kein Titel bestimmt werden.` })
+    const byteLength = Buffer.byteLength(content, 'utf8')
+    if (byteLength > 2_000_000) return res.status(400).json({ error: `"${name}" ist größer als 2 MB.` })
+    totalBytes += byteLength
+    const fileSlug = slugPart(name.replace(/\.(md|markdown)$/i, ''))
+    if (!fileSlug) return res.status(400).json({ error: `Aus "${name}" lässt sich kein Seiten-Slug bilden.` })
+    normalized.push({ name, title, content, slug: `${folder}/${fileSlug}`.slice(0, 190) })
+  }
+  if (totalBytes > 12_000_000) return res.status(400).json({ error: 'Die Sammlung ist größer als 12 MB.' })
+  const duplicateSlugs = normalized.filter((item, index) => normalized.findIndex((other) => other.slug === item.slug) !== index)
+  if (duplicateSlugs.length) return res.status(409).json({ error: `Doppelte Dateinamen: ${[...new Set(duplicateSlugs.map((item) => item.name))].join(', ')}` })
+
+  try {
+    const [{ data: profile }, { data: space }] = await Promise.all([
+      db.from('profiles').select('is_admin').eq('id', user.id).maybeSingle(),
+      db.from('spaces').select('id, name, restricted, created_by').eq('id', spaceId).maybeSingle(),
+    ])
+    if (!space) return res.status(404).json({ error: 'Ziel-Space wurde nicht gefunden.' })
+    if (space.restricted && !profile?.is_admin && space.created_by !== user.id) {
+      const { data: membership } = await db.from('space_members').select('space_id').eq('space_id', spaceId).eq('user_id', user.id).maybeSingle()
+      if (!membership) return res.status(403).json({ error: 'Du hast keinen Zugriff auf diesen Restricted Space.' })
+    }
+
+    const slugs = normalized.map((item) => item.slug)
+    const { data: existing } = await db.from('wiki_pages').select('slug').in('slug', slugs)
+    if (existing?.length) {
+      return res.status(409).json({ error: `Bereits vorhanden: ${existing.map((page) => page.slug).join(', ')}` })
+    }
+
+    const visibility = profile?.is_admin ? 'team' : 'proposed'
+    const { data: pages, error } = await db.from('wiki_pages').insert(normalized.map((item) => ({
+      slug: item.slug,
+      title: item.title,
+      content: item.content,
+      space_id: spaceId,
+      created_by: user.id,
+      updated_by: user.id,
+      visibility,
+    }))).select('id, slug, title, content, visibility')
+    if (error) throw new Error(error.message)
+
+    const indexingErrors = []
+    if (visibility === 'team') {
+      const { reindexPage } = await import('./tools/wiki.js')
+      for (const page of pages || []) {
+        try { await reindexPage(page) } catch (indexError) { indexingErrors.push({ slug: page.slug, error: indexError.message }) }
+      }
+    }
+    await logAudit(user.id, 'wiki.markdown_batch_import', 'space', spaceId, {
+      folder, file_count: pages?.length || 0, visibility, indexing_errors: indexingErrors.length,
+    })
+    res.json({
+      ok: true,
+      folder,
+      visibility,
+      imported: (pages || []).map(({ id, slug, title }) => ({ id, slug, title })),
+      indexing_errors: indexingErrors,
+      needs_approval: visibility === 'proposed',
+    })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
 // Seite per URL importieren: Firecrawl-Bridge crawlt → Markdown → wiki_pages → Re-Index.
 // Bridge lebt im claude-team-Supabase (FIRECRAWL_BRIDGE_URL + FIRECRAWL_BRIDGE_TOKEN als Env).
 app.post('/api/wiki/import-url', async (req, res) => {
@@ -1791,7 +1919,7 @@ app.post('/api/wiki/import-url', async (req, res) => {
     const slugPart = (t) => t.toLowerCase()
       .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
       .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-    const folder = slugPart(String(req.body?.folder || '')) || 'import'
+    const folder = String(req.body?.folder || '').split('/').map(slugPart).filter(Boolean).join('/') || 'import'
     const slug = `${folder}/${slugPart(title)}`.slice(0, 90)
     const content = `> Quelle: ${url} · importiert am ${new Date().toLocaleDateString('de-DE')}\n\n${markdown}`
     const { data: existingPage } = await db.from('wiki_pages').select('created_by, visibility').eq('slug', slug).maybeSingle()
