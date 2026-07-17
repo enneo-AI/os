@@ -372,3 +372,12 @@ test('Marketplace account login is separated from technical platform enablement'
   assert.match(frontendHtml, /data-admin-pane="integrations"/)
   assert.match(frontendHtml, /Workspace freischalten/)
 })
+
+test('knowledge approval claims require a successful proposal tool call', () => {
+  const source = readFileSync(join(here, '../src/agent.js'), 'utf8')
+
+  assert.match(source, /wenn wiki_propose_update in DIESEM Turn erfolgreich ausgeführt wurde/)
+  assert.match(source, /const claimedKnowledgeProposal/)
+  assert.match(source, /call\.name === 'wiki_propose_update'/)
+  assert.match(source, /Der Wissensvorschlag wurde in diesem Turn nicht gespeichert/)
+})

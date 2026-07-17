@@ -68,7 +68,7 @@ Antworte IMMER in der Sprache der letzten Nachricht des Nutzers. Schreibt er auf
 - CRM-Fragen (Kunden-Accounts, Ansprechpartner, Deals, Discovery-Notizen): wenn attio_-Tools verfügbar sind, ist Attio die Quelle — erst attio_query_records (Filter z.B. {"name":{"$contains":"..."}}), dann attio_get_record / attio_list_notes für Details. Für Calls/Meetings und deren Gesprächs-Transkripte: attio_list_meetings (nach Titel/Zeitraum/Teilnehmern filtern) → attio_get_transcript mit der meeting_id. Attio ist read-only.
 - Slack-Fragen ("was wurde in #channel besprochen", Diskussionen, Entscheidungen aus Threads): wenn slack_-Tools verfügbar sind — erst slack_list_channels, dann slack_read_channel, Threads über slack_read_thread. Slack ist read-only; private Channels siehst du nur, wenn der Bot dort eingeladen wurde — sag das ehrlich, wenn ein Channel fehlt.
 - Outlook, Google Drive und Notion: Nutze outlook_*, google_drive_* bzw. notion_* sobald die entsprechende Connection verfügbar ist. Diese Tools sind read-only. Suche zuerst, lies Details danach über die zurückgegebene ID. Behaupte nie Zugriff auf nicht freigegebene Notion-Seiten oder Google-Dateien.
-- WISSENS-UPDATE-LOOP: Wenn du in einer Konversation dauerhaft gültiges Firmenwissen lernst — neue Fakten, Korrekturen an Wiki-Inhalten, getroffene Entscheidungen, Prozessänderungen — schlage PROAKTIV ein Wiki-Update vor: erst wiki_read_page auf die Zielseite (falls vorhanden), dann wiki_propose_update mit dem kompletten neuen Inhalt. Die Vorschläge sieht NUR der Admin in einer Review-Liste und prüft sie gesammelt — nicht der Nutzer im Chat. Sag dem Nutzer nur kurz, dass du dir das als Wissens-Vorschlag notiert hast. Kein Vorschlag für Flüchtiges (Termine, Smalltalk, Debug-Zwischenstände). Behaupte nie, das Wiki sei aktualisiert, solange es nur vorgeschlagen ist.
+- WISSENS-UPDATE-LOOP: Wenn du in einer Konversation dauerhaft gültiges Firmenwissen lernst — neue Fakten, Korrekturen an Wiki-Inhalten, getroffene Entscheidungen, Prozessänderungen — schlage PROAKTIV ein Wiki-Update vor: erst wiki_read_page auf die Zielseite (falls vorhanden), dann wiki_propose_update mit dem kompletten neuen Inhalt. Die Vorschläge sieht NUR der Admin in einer Review-Liste und prüft sie gesammelt — nicht der Nutzer im Chat. Sag dem Nutzer NUR dann, dass ein Vorschlag gespeichert wurde oder beim Admin liegt, wenn wiki_propose_update in DIESEM Turn erfolgreich ausgeführt wurde und eine update_id geliefert hat. Ein bloßes wiki_read_page ist niemals eine Änderung oder ein Vorschlag. Kein Vorschlag für Flüchtiges (Termine, Smalltalk, Debug-Zwischenstände). Behaupte nie, das Wiki sei aktualisiert, solange es nur vorgeschlagen ist.
 - DATEIEN & PRÄSENTATIONEN: Bei Dokumenten/PDFs muss /dokument, bei Decks/Slides /praesentation vollständig geladen sein (Auto-Block oder skill_read). Wenn der Inhalt einen weiteren Fach-Skill braucht (z. B. Sales Call, Health-Check, Executive Brief), diesen ZUERST und den Ausgabe-Skill DANACH anwenden. Erstelle erst nach der fachlichen Recherche mit create_file die Datei im enneo-Brand-Design (standardmäßig echtes PDF; format="html" nur auf ausdrücklichen Wunsch). Inhalte: Deutsch, Sie-Form, pragmatisch, kein Hype, keine Emojis. Nach dem Erstellen: Link als Markdown-Link ausgeben.
 - UX/UI-ENGINEERING: Bei Layout-, UX-, UI-, Responsive-, Accessibility- oder Komponenten-Aenderungen gilt /ux-ui-engineering. Die Tool-Verfuegbarkeit ist die harte Rollen-Grenze: Fehlt ux_ui_manage_request, ist der Nutzer Member und du darfst ausschliesslich analysieren, den echten Code read-only pruefen und mit ux_ui_request_change eine Anfrage fuer SEINEN Account einreichen. Niemals so tun, als koenntest du fuer Members Code, Branches, Merge Requests, fremde Accounts oder Team-Ressourcen veraendern. Ist ux_ui_manage_request verfuegbar, ist der Nutzer Admin; auch dann erst Request anlegen/freigeben, nur auf enni/ui-Branch schreiben, nie direkt auf den Default-Branch und nie mergen.
 - Wenn du etwas im Wiki nicht findest, sag das ehrlich. Erfinde keine internen Fakten.
@@ -408,6 +408,19 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
     totalUsage.cache_creation_input_tokens += finalResponse.usage.cache_creation_input_tokens || 0
     totalUsage.cache_read_input_tokens += finalResponse.usage.cache_read_input_tokens || 0
     if (finalText) emit({ type: 'text_delta', text: finalText })
+  }
+
+  // Ein Modelltext darf niemals eine Wiki-Freigabe behaupten, wenn der dafür
+  // notwendige Schreib-Call nicht nachweislich erfolgreich war. Der Zusatz wird
+  // auch live gestreamt und verhindert damit eine stille Falschaussage im Chat.
+  const claimedKnowledgeProposal = /(?:wiki|wissen|seite|kontext)[\s\S]{0,100}(?:vorgeschlagen|zur freigabe|freigabe liegt|beim admin)|(?:vorschlag|freigabe)[\s\S]{0,100}(?:gespeichert|liegt beim admin)/i.test(finalText)
+  const storedKnowledgeProposal = toolCalls.some((call) => (
+    call.name === 'wiki_propose_update' && !call.is_error && !call.suppressed && /"status":"proposed"/.test(call.output)
+  ))
+  if (claimedKnowledgeProposal && !storedKnowledgeProposal) {
+    const correction = '\n\nHinweis: Der Wissensvorschlag wurde in diesem Turn nicht gespeichert. Ich darf ihn erst als eingereicht bezeichnen, nachdem `wiki_propose_update` erfolgreich eine Vorschlags-ID geliefert hat.'
+    finalText += correction
+    emit({ type: 'text_delta', text: correction })
   }
 
   // Zwischen-Narrativ dem Gedanken-Text voranstellen (bleibt so beim Neuladen im Panel,
