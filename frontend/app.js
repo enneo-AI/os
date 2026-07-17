@@ -1376,6 +1376,13 @@ async function openThread(rootId) {
     box.appendChild(node)
   }
   if ((rows || []).length === 1) box.insertAdjacentHTML('beforeend', '<div class="thread-empty">Noch keine Antworten</div>')
+  const root = (rows || []).find((message) => message.id === rootId)
+  const enniActive = /@enni\b/i.test(root?.content || '') ||
+    /(?:^|\s)\/[a-z0-9][a-z0-9-]*\b/i.test(root?.content || '') ||
+    (rows || []).some((message) => message.role === 'assistant')
+  $('thread-hint').textContent = enniActive
+    ? 'Enni ist in diesem Thread aktiviert und antwortet nur, wenn es sinnvoll ist.'
+    : 'Enni ist hier nicht aktiviert — mit @enni kannst du sie hinzuholen.'
   $('thread-input').focus()
   box.scrollTop = box.scrollHeight
 }
@@ -4751,15 +4758,13 @@ async function sendThreadReply() {
   const box = $('thread-messages')
   box.querySelector('.thread-empty')?.remove()
   box.appendChild(renderUser(text, null, myProfile))
-  const pending = document.createElement('div')
-  pending.className = 'm-agent thread-pending'
-  pending.innerHTML = '<div class="who"><span class="enni-dot">E</span><b>Enni</b></div><div class="think"><button class="think-head"><span class="t-status shimmer">Liest im Thread mit …</span></button></div><div class="body"></div>'
-  box.appendChild(pending)
   box.scrollTop = box.scrollHeight
   activeStreams.add(currentConv.id)
   updateComposerState()
   let answer = ''
   let replyExpected = false
+  let enniActive = false
+  let pending = null
   try {
     const response = await fetch(`${BACKEND_URL}/api/chat`, {
       method: 'POST',
@@ -4786,8 +4791,14 @@ async function sendThreadReply() {
         const event = JSON.parse(part.slice(6))
         if (event.type === 'thread_context') {
           replyExpected = !!event.reply_expected
-          if (!replyExpected) pending.remove()
-          else pending.querySelector('.t-status').textContent = 'Enni antwortet …'
+          enniActive = !!event.enni_active
+          if (replyExpected) {
+            pending = document.createElement('div')
+            pending.className = 'm-agent thread-pending'
+            pending.innerHTML = '<div class="who"><span class="enni-dot">E</span><b>Enni</b></div><div class="think"><button class="think-head"><span class="t-status shimmer">Enni antwortet …</span></button></div><div class="body"></div>'
+            box.appendChild(pending)
+            box.scrollTop = box.scrollHeight
+          }
         } else if (event.type === 'text_delta' && replyExpected) {
           answer += event.text
           pending.querySelector('.body').innerHTML = md(answer) + '<span class="scursor"></span>'
@@ -4802,10 +4813,12 @@ async function sendThreadReply() {
     }
     $('thread-hint').textContent = replyExpected
       ? 'Enni bleibt in diesem Thread aktiviert.'
-      : 'Enni hat mitgelesen; keine Antwort war nötig.'
+      : enniActive
+        ? 'Enni hat mitgelesen; keine Antwort war nötig.'
+        : 'Enni ist in diesem Thread nicht aktiviert.'
   } catch (error) {
-    pending.querySelector('.t-status')?.classList.remove('shimmer')
-    const body = pending.querySelector('.body')
+    pending?.querySelector('.t-status')?.classList.remove('shimmer')
+    const body = pending?.querySelector('.body')
     if (body) body.innerHTML = `<p style="color:var(--high)">${esc(error.message)}</p>`
     $('thread-hint').textContent = 'Die Antwort wurde nicht vollständig verarbeitet.'
   } finally {
