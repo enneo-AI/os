@@ -5356,8 +5356,23 @@ async function fetchToolResearch() {
   return data
 }
 
-function researchIcon(name) {
-  return esc(String(name || '?').trim().charAt(0).toUpperCase() || '?')
+function researchLogoUrl(blueprint = {}) {
+  if (blueprint.logo_url) return blueprint.logo_url
+  try {
+    const origin = new URL(blueprint.website_url || blueprint.documentation_url).origin
+    return `https://www.google.com/s2/favicons?domain_url=${encodeURIComponent(origin)}&sz=128`
+  } catch { return '' }
+}
+
+function researchAccessLabel(accessMode) {
+  return accessMode === 'read_only' ? 'Read only' : 'Read & Write'
+}
+
+function researchLogo(blueprint) {
+  const url = researchLogoUrl(blueprint)
+  return url
+    ? `<span class="c-logo"><img src="${esc(url)}" alt="${esc(blueprint.display_name || '')} Logo"></span>`
+    : '<span class="c-logo" aria-hidden="true">◇</span>'
 }
 
 async function loadToolResearch() {
@@ -5379,15 +5394,18 @@ async function loadToolResearch() {
     }
 
     const approved = requests.filter((item) => item.status === 'approved')
-    const marketplace = $('researched-marketplace')
-    marketplace.innerHTML = approved.length ? '<h3 style="margin-top:22px">Von Enni recherchiert</h3>' : ''
+    const readWrite = $('researched-read-write')
+    const readOnly = $('researched-read-only')
+    readWrite.innerHTML = ''
+    readOnly.innerHTML = ''
     for (const item of approved) {
       const blueprint = item.research || {}
       const row = document.createElement('button')
       row.className = 'crow'
-      row.innerHTML = `<span class="c-logo"><strong style="font-size:13px;color:var(--ink-2)">${researchIcon(blueprint.display_name)}</strong></span><div><div class="c-name">${esc(blueprint.display_name || item.name || 'Integration')}</div><div class="c-sub">${esc(blueprint.summary || researchTypeLabel(blueprint.integration_type))}</div></div><span class="c-right off"><span class="connector-connect"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>${blueprint.connect_ready ? 'Verbinden' : 'Einrichten'}</span></span>`
+      const accessLabel = researchAccessLabel(blueprint.access_mode)
+      row.innerHTML = `${researchLogo(blueprint)}<div><div class="c-name">${esc(blueprint.display_name || item.name || 'Integration')}</div><div class="c-sub">${esc(blueprint.summary || researchTypeLabel(blueprint.integration_type))} · ${accessLabel}</div></div><span class="c-right off"><span class="connector-connect"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>${blueprint.connect_ready ? 'Verbinden' : 'Einrichten'}</span></span>`
       row.addEventListener('click', () => blueprint.connect_ready ? openResearchedMcp(item) : openToolResearchDetail(item, toolResearchAdmin))
-      marketplace.appendChild(row)
+      ;(blueprint.access_mode === 'read_only' ? readOnly : readWrite).appendChild(row)
     }
     if (requests.some((item) => ['queued', 'researching'].includes(item.status))) toolResearchPoll = setTimeout(loadToolResearch, 5000)
   } catch (error) {
@@ -5434,8 +5452,9 @@ function renderToolResearchDetail(item, isAdmin) {
   const notes = (blueprint.security_notes || []).map((note) => `<li>${esc(note)}</li>`).join('')
   const steps = (blueprint.implementation_steps || []).map((step) => `<li>${esc(step)}</li>`).join('')
   const evidence = (blueprint.evidence || []).map((source) => `<a href="${esc(source.url)}" target="_blank" rel="noopener"><span><strong>${esc(source.title || new URL(source.url).hostname)}</strong> · ${esc(source.claim || '')}</span><b>↗</b></a>`).join('')
-  $('trd-content').innerHTML = `<div class="research-detail-head"><span class="research-orb" aria-hidden="true"></span><div><div class="eyebrow">Enni Research Lab</div><h3 id="trd-title">${esc(blueprint.display_name || item.name || 'Tool-Recherche')}</h3><p>${esc(blueprint.summary || item.research_error || 'Die Recherche läuft noch.')}</p></div></div>
-    <div class="research-facts"><div class="research-fact"><span>Status</span><strong class="research-state ${stateClass}">${stateLabel}</strong></div><div class="research-fact"><span>Verbindung</span><strong>${esc(researchTypeLabel(blueprint.integration_type))}</strong></div><div class="research-fact"><span>Quellensicherheit</span><strong>${Number(blueprint.confidence || 0)} %</strong></div></div>
+  const detailLogo = researchLogoUrl(blueprint)
+  $('trd-content').innerHTML = `<div class="research-detail-head">${detailLogo ? `<span class="c-logo" style="width:42px;height:42px"><img src="${esc(detailLogo)}" alt="${esc(blueprint.display_name || '')} Logo"></span>` : '<span class="research-orb" aria-hidden="true"></span>'}<div><div class="eyebrow">Enni Research Lab</div><h3 id="trd-title">${esc(blueprint.display_name || item.name || 'Tool-Recherche')}</h3><p>${esc(blueprint.summary || item.research_error || 'Die Recherche läuft noch.')}</p></div></div>
+    <div class="research-facts"><div class="research-fact"><span>Status</span><strong class="research-state ${stateClass}">${stateLabel}</strong></div><div class="research-fact"><span>Zugriff</span><strong>${researchAccessLabel(blueprint.access_mode)}</strong></div><div class="research-fact"><span>Verbindung</span><strong>${esc(researchTypeLabel(blueprint.integration_type))}</strong></div><div class="research-fact"><span>Quellensicherheit</span><strong>${Number(blueprint.confidence || 0)} %</strong></div></div>
     ${capabilities ? `<div class="research-section"><h4>Funktionen</h4><div class="research-chips">${capabilities}</div></div>` : ''}
     ${scopes ? `<div class="research-section"><h4>Angefragte Rechte</h4><div class="research-chips">${scopes}</div></div>` : ''}
     ${notes ? `<div class="research-section"><h4>Sicherheitsprüfung</h4><ul class="pf-hint">${notes}</ul></div>` : ''}

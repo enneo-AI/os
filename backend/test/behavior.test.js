@@ -170,11 +170,26 @@ test('remote MCP research is structured and keeps provider auth headers explicit
 
   assert.match(researchSource, /tool_choice: \{ type: 'tool', name: 'submit_blueprint' \}/)
   assert.match(researchSource, /mcp_scheme/)
+  assert.match(researchSource, /fallbackLogoUrl/)
+  assert.match(researchSource, /logo_url/)
+  assert.match(researchSource, /enum: \['read_only', 'read_write'\]/)
   assert.doesNotMatch(researchSource, /function parseJson/)
   assert.match(mcpSource, /'X-API-Key': token/)
   assert.match(mcpSource, /encryptSecret\(token\.trim\(\)\)/)
   assert.match(mcpSource, /decryptSecret\(c\.token\)/)
   assert.match(migration, /mcp_bearer.*mcp_x_api_key.*mcp_none/s)
+})
+
+test('researched integrations join the existing permission sections with provider logos', () => {
+  const frontendSource = readFileSync(join(here, '../../frontend/app.js'), 'utf8')
+  const frontendHtml = readFileSync(join(here, '../../frontend/index.html'), 'utf8')
+
+  assert.match(frontendHtml, /id="researched-read-write"/)
+  assert.match(frontendHtml, /id="researched-read-only"/)
+  assert.doesNotMatch(frontendHtml, /id="researched-marketplace"/)
+  assert.match(frontendSource, /researchLogoUrl/)
+  assert.match(frontendSource, /researchAccessLabel/)
+  assert.doesNotMatch(frontendSource, /Von Enni recherchiert/)
 })
 
 test('impact reporting labels estimates and records skill usage', () => {

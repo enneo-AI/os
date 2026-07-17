@@ -1,6 +1,13 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-17 (Kontexte, privates Rollen-Onboarding und Multi-Abteilungen)
+**Zuletzt aktualisiert:** 2026-07-17 (Connector-Logos und klare Zugriffsarten)
+
+### Session 2026-07-17 — Recherchierte Connectoren im bestehenden Marketplace
+
+- **Keine Sonderrubrik:** Freigegebene Research-Connectoren erscheinen direkt unter `Read & Write` oder `Read-only`; die zusätzliche Überschrift „Von Enni recherchiert“ wurde entfernt.
+- **Echte Anbieterlogos:** Der Research-Blueprint speichert eine verifizierte HTTPS-Logo-/Favicon-URL. Metadaten der offiziellen Quellen haben Vorrang, ein Domain-Favicon dient als deterministischer Fallback. TickTick wurde live auf das TickTick-Logo von Simple Icons zurückgefüllt.
+- **Nur zwei verständliche Zugriffsarten:** Neue Blueprints erlauben ausschließlich `read_only` und `read_write`. Sobald irgendeine Capability erstellt, verändert oder löscht, landet die Integration in `Read & Write`. Marketplace-Karte und Detailansicht zeigen den Zugriff ausdrücklich.
+- **Verifiziert:** JavaScript-Syntax, Diff-Check und Backend-Tests 12/12 grün.
 
 ### Session 2026-07-17 — Context Foundation aus Tristan-Feedback
 
