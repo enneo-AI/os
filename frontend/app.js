@@ -1173,6 +1173,7 @@ $('new-chat').addEventListener('click', () => {
 })
 
 async function openConversation(c) {
+  const requestedThread = new URLSearchParams(location.search).get('thread')
   closeThread(false)
   currentConv = c
   viewSeq++
@@ -1237,7 +1238,6 @@ async function openConversation(c) {
   mountPromptQueue(c.id)
   if (promptQueues.get(c.id)?.length) setTimeout(() => drainPromptQueue(c.id), 400)
   window.scrollTo({ top: document.body.scrollHeight })
-  const requestedThread = new URLSearchParams(location.search).get('thread')
   if (requestedThread && currentMessageRows.some((message) => message.id === requestedThread && !message.thread_root_id)) {
     openThread(requestedThread)
   }
@@ -1344,6 +1344,7 @@ async function openThread(rootId) {
   $('thread-backdrop').hidden = false
   $('thread-messages').innerHTML = '<div class="skel" style="height:64px"></div><div class="skel" style="height:48px"></div>'
   const url = new URL(location.href)
+  url.pathname = `/pod/${convPod.id}`
   url.searchParams.set('tab', 'convs')
   url.searchParams.set('conversation', currentConv.id)
   url.searchParams.set('thread', rootId)
