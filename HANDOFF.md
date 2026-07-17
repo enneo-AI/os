@@ -1,6 +1,13 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-17 (Markdown-Verzeichnisimport)
+**Zuletzt aktualisiert:** 2026-07-17 (Pod-Rollen pro Mitglied)
+
+### Session 2026-07-17 — Pod-Kontext mit echten Rollen pro Mitglied
+
+- **Kontextseite neu geordnet:** `Instructions for Agents` und Teamrollen stehen nicht mehr als zwei ungleich hohe Karten nebeneinander. Instructions bilden einen eigenen, flachen Abschnitt mit kompakterer Textfläche; darunter folgt separat die Rollenverwaltung. Die visuelle Hierarchie verwendet ruhige Trennlinien statt zusätzlicher Boxen.
+- **Eine Zuordnung pro Person:** `Rollen im Pod` zeigt alle tatsächlichen Pod-Mitglieder als kompakte Auswahl mit Avatar, Name und aktueller Pod-Rolle. Ein Klick lädt exakt die Rolle und Verantwortungen dieser Person in den Editor. Die Speicherung verwendet `pod_id + user_id`, aktualisiert die gewählte Person und hält globale Profilrollen vollständig getrennt.
+- **Berechtigungen entsprechen der UI:** Pod-Owner sowie beigetretene aktive Admins können die Zuordnungen aller Mitglieder pflegen. Normale Mitglieder dürfen weiterhin den eigenen Eintrag bearbeiten, fremde Rollen jedoch nur ansehen. Migration `20260717163000_manage_pod_member_contexts.sql` erweitert dafür die RLS-Policies über den bestehenden `private.can_manage_pod_members`-Guard.
+- **Produktiv verifiziert:** Backend-Tests 20/20, Syntax und Diff-Check sind grün. Ein echter Zwei-Account-RLS-Eval bestätigte Owner→Mitglied-Schreibzugriff und blockierte Fremdänderungen durch normale Mitglieder. Im Production-Browser wurden drei Mitglieder geladen, Nina ausgewählt und ausschließlich ihre Rolle samt Verantwortungen über die echte Oberfläche gespeichert. Netlify liefert Commit `5cb2dcc`; die Migration ist live und in der Migration History. QA-Pod und alle QA-Accounts wurden anschließend vollständig entfernt.
 
 ### Session 2026-07-17 — Markdown-Verzeichnisse als Space-Wissen importieren
 
