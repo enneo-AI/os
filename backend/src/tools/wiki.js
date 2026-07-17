@@ -95,6 +95,11 @@ function contextTypeForSlug(slug) {
   return 'knowledge'
 }
 
+function contextNameForUpdate(update, page) {
+  const heading = update.new_content?.match(/^#\s+(.+)$/m)?.[1]?.trim()
+  return update.new_title || heading || page?.title || update.slug.split('/').pop().replaceAll('-', ' ')
+}
+
 async function mirrorContextProposal(update, page) {
   if (!update.slug?.startsWith('kontext/') || !update.triggered_by) return
   if (page?.id) {
@@ -103,7 +108,7 @@ async function mirrorContextProposal(update, page) {
     if (published) return
   }
   const row = {
-    name: update.new_title || page?.title || update.slug.split('/').pop().replaceAll('-', ' '),
+    name: contextNameForUpdate(update, page),
     description: update.summary,
     content: update.new_content,
     context_type: contextTypeForSlug(update.slug),
@@ -123,7 +128,7 @@ async function mirrorContextProposal(update, page) {
 async function publishContextFromKnowledgeUpdate(update, page, userId) {
   if (!update.slug?.startsWith('kontext/')) return
   const row = {
-    name: update.new_title || page.title,
+    name: contextNameForUpdate(update, page),
     description: update.summary,
     content: page.content,
     context_type: contextTypeForSlug(page.slug),
