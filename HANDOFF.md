@@ -1,6 +1,13 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-17 (zertifizierte Connectoren ohne Provider-Sondercode)
+**Zuletzt aktualisiert:** 2026-07-17 (flache Space-Navigation und Restricted-Mitgliederverwaltung)
+
+### Session 2026-07-17 — Spaces ohne Sidebar-Dropdown + Mitglieder verwalten
+
+- **Sidebar ist reine Navigation:** Jeder Space erscheint nur noch als eine kompakte klickbare Zeile. Chevron, Expand/Collapse-State, verschachtelte Bereiche und Seitenlisten wurden aus der Sidebar entfernt; Klick öffnet immer die vollständige Space-Übersicht. Restricted bleibt ausschließlich über das dezente Lock erkennbar.
+- **Mitgliederverwaltung im Restricted Space:** Der Owner sieht im Space-Header eine einzelne Personen-Aktion. Das Modal zeigt alle aktiven Accounts mit Avatar, Name und E-Mail; bestehende Mitglieder sind ausgewählt, der Owner ist sichtbar als `Besitzer:in`, zwingend ausgewählt und nicht entfernbar. Nach dem Speichern zeigt der Header sofort den aktuellen Mitgliederzähler.
+- **Atomar und ohne Admin-Bypass:** Migration `20260717131500_atomic_restricted_space_members.sql` stellt `replace_space_members` bereit. Die Funktion ersetzt die Auswahl in einer Datenbanktransaktion, akzeptiert nur aktive Accounts und ausschließlich den eingeloggten Space-Owner. Fremde Mitglieder und Account-Admins können einen Restricted Space weiterhin weder verwalten noch durch ihre Rolle sehen; Open Spaces haben bewusst keine Mitgliederliste.
+- **Produktiv verifiziert:** Backend-Tests 16/16, JavaScript-Syntax und Diff-Check grün; Migration ist live und Netlify liefert Commit `b835b42`. Ein echter Zwei-Account-RLS-Eval bestätigte Hinzufügen, Sichtbarkeit, blockierte Fremdänderung, Entfernen und Owner-Erhalt. Im Production-Browser zeigte die Sidebar nur flache Space-Zeilen; im bestehenden `Aleksa Test` öffnete die neue Mitgliederverwaltung mit 11 aktiven Accounts. Ein temporärer Restricted Space wurde über die echte UI von 1 auf 2 Mitglieder erweitert und wieder auf 1 reduziert. Testaccounts und QA-Space wurden vollständig entfernt.
 
 ### Session 2026-07-17 — Connector Certification Flow für zukünftige Tools
 
