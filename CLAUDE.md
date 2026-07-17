@@ -30,6 +30,7 @@
 - **Anhänge:** Excel/CSV/JPEG/PNG/PDF (max 4×10MB); Excel→CSV via `xlsx` in `backend/src/attachments.js`; Inhalt geht NUR im Upload-Turn ans Modell (Kosten!), Verlauf behält Marker + `messages.attachments`-Metadaten.
 - **Diktat:** Web Speech API (Chrome/Edge/Safari), DE/EN-Umschalter unterm Composer.
 - **Notifications:** Inbox, Conversation-Unread-State und Browser-Push werden über `POST /api/conversations/:id/read` gemeinsam quittiert. Ein sichtbar geöffneter Chat gilt sofort als gelesen; ein versteckter Tab erhält beim SSE-Abschluss eine lokale Service-Worker-Notification als Fallback. Der Dokumenttitel zeigt die Zahl offener Meldungen.
+- **Impact Reporting:** `/api/admin/impact` aggregiert nur Metadaten. Zeitersparnis ist eine sichtbar erklärte Näherung (3 Min./Antwort + 2 Min./erfolgreichem Tool-Call + 8 Min./Datei), keine echte Zeiterfassung. `skill_usage_events` erfasst Auto-/Slash-/Tool-Nutzung; niemals daraus individuelle Leistungsbewertung ableiten.
 
 ## Datenmodell (Migrations 0001–0006)
 

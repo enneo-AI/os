@@ -981,7 +981,7 @@ async function loadAdmin() {
   await Promise.all([
     refreshCosts(), loadMembers(), loadKnowledgeUpdates(), loadLearnings(), loadSkillProposals(), loadToolProposals(),
     loadToolResearchProposals(), loadUiChangeRequests(), loadRoutineProposals(), loadWikiPageProposals(), loadKnowledgeSources(),
-    is_admin ? loadAnnouncements() : Promise.resolve(),
+    is_admin ? Promise.all([loadAnnouncements(), loadImpact()]) : Promise.resolve(),
   ])
 }
 
@@ -5257,6 +5257,25 @@ async function refreshCosts() {
   $('k-month').innerHTML = `${sum(monthStart).toLocaleString('de-DE', { maximumFractionDigits: 2 })} <small>€</small>`
   $('k-count').textContent = rows.length
 }
+
+async function loadImpact() {
+  $('impact-shell').hidden = false
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/admin/impact?period=${encodeURIComponent($('impact-period').value)}`, { headers: { Authorization: `Bearer ${await token()}` } })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || 'Impact konnte nicht geladen werden')
+    $('impact-hours').textContent = `${Number(data.totals.estimated_hours_saved || 0).toLocaleString('de-DE')} h`
+    $('impact-fte').textContent = Number(data.totals.fte_days_saved || 0).toLocaleString('de-DE')
+    $('impact-users').textContent = data.totals.active_users || 0
+    $('impact-contrib').textContent = data.totals.contributions || 0
+    $('impact-skills').innerHTML = (data.skills || []).slice(0, 8).map((skill) => `<div class="impact-line"><span>/${esc(skill.slug)}</span><strong>${skill.uses}</strong></div>`).join('') || '<div class="empty-plain">Noch keine Skill-Nutzung im Zeitraum.</div>'
+    $('impact-people').innerHTML = (data.people || []).slice(0, 12).map((person) => `<div class="impact-line"><span>${esc(person.name)} · ${person.responses} Antworten · ${person.contributions} Beiträge</span><strong>${(person.estimated_minutes_saved / 60).toLocaleString('de-DE', { maximumFractionDigits: 1 })} h</strong></div>`).join('') || '<div class="empty-plain">Noch keine Nutzung im Zeitraum.</div>'
+    $('impact-method').textContent = `${data.methodology.label}: ${data.methodology.formula}. ${data.methodology.fte_definition}.`
+  } catch (error) {
+    $('impact-method').textContent = error.message
+  }
+}
+$('impact-period').addEventListener('change', loadImpact)
 
 // Modell-Wahl: Sonnet 5 ist Default bei jedem Chat-Start. Der sichtbare Glass-Picker
 // schreibt weiterhin in das versteckte Select, das der bestehende Send-Flow liest.

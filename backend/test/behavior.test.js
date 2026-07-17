@@ -176,3 +176,19 @@ test('remote MCP research is structured and keeps provider auth headers explicit
   assert.match(mcpSource, /decryptSecret\(c\.token\)/)
   assert.match(migration, /mcp_bearer.*mcp_x_api_key.*mcp_none/s)
 })
+
+test('impact reporting labels estimates and records skill usage', () => {
+  const indexSource = readFileSync(join(here, '../src/index.js'), 'utf8')
+  const frontendSource = readFileSync(join(here, '../../frontend/app.js'), 'utf8')
+  const frontendHtml = readFileSync(join(here, '../../frontend/index.html'), 'utf8')
+  const migration = readFileSync(join(here, '../../supabase/migrations/20260717075535_impact_reporting.sql'), 'utf8')
+
+  assert.match(indexSource, /app\.get\('\/api\/admin\/impact'/)
+  assert.match(indexSource, /3 \+ successfulTools\.length \* 2 \+ files \* 8/)
+  assert.match(indexSource, /Transparente Näherung, keine Zeiterfassung/)
+  assert.match(indexSource, /skill_usage_events/)
+  assert.match(frontendSource, /loadImpact/)
+  assert.match(frontendHtml, /Team-Impact/)
+  assert.match(migration, /skill_usage_events_select/)
+  assert.match(migration, /active_account_only.*as restrictive/s)
+})

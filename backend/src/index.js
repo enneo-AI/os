@@ -582,6 +582,22 @@ app.post('/api/chat', async (req, res) => {
       model: result.model,
       usage: result.usage,
     })
+    if (msg?.id) {
+      const skillEvents = []
+      for (const slug of result.autoSkills || []) skillEvents.push({ slug, mode: 'auto' })
+      if (slashMatch?.[1]) skillEvents.push({ slug: slashMatch[1].toLowerCase(), mode: 'explicit' })
+      for (const call of result.toolCalls || []) {
+        if (call.name === 'skill_read' && call.input?.slug) skillEvents.push({ slug: String(call.input.slug).replace(/^\//, '').toLowerCase(), mode: 'tool' })
+      }
+      const uniqueEvents = [...new Map(skillEvents.map((event) => [`${event.slug}:${event.mode}`, event])).values()]
+      if (uniqueEvents.length) {
+        const { error: skillUsageError } = await db.from('skill_usage_events').upsert(
+          uniqueEvents.map((event) => ({ user_id: user.id, conversation_id: convId, message_id: msg.id, skill_slug: event.slug, mode: event.mode })),
+          { onConflict: 'message_id,skill_slug,mode', ignoreDuplicates: true }
+        )
+        if (skillUsageError) console.error('Skill-Usage konnte nicht gespeichert werden:', skillUsageError.message)
+      }
+    }
     // unread=true → grüner Sidebar-Punkt; der Client löscht es sofort, wenn er live zuschaut
     await db
       .from('conversations')
@@ -880,6 +896,76 @@ app.get('/api/admin/announcements', async (req, res) => {
   const { data, error } = await db.from('system_announcements').select('*').order('published_at', { ascending: false }).limit(20)
   if (error) return res.status(400).json({ error: error.message })
   res.json({ announcements: data || [] })
+})
+
+app.get('/api/admin/impact', async (req, res) => {
+  const user = await requireAdmin(req, res)
+  if (!user) return
+  const period = ['week', 'month', 'ytd', 'year', 'all'].includes(req.query.period) ? req.query.period : 'month'
+  const now = new Date()
+  let start = new Date(0)
+  if (period === 'week') { start = new Date(now); start.setDate(now.getDate() - ((now.getDay() + 6) % 7)); start.setHours(0, 0, 0, 0) }
+  if (period === 'month') start = new Date(now.getFullYear(), now.getMonth(), 1)
+  if (period === 'ytd') start = new Date(now.getFullYear(), 0, 1)
+  if (period === 'year') start = new Date(now.getTime() - 365 * 86400000)
+  const since = start.toISOString()
+  const [{ data: profiles }, { data: conversations }, { data: messages }, { data: skillEvents }] = await Promise.all([
+    db.from('profiles').select('id, display_name, email').eq('account_status', 'active'),
+    db.from('conversations').select('id, user_id'),
+    db.from('messages').select('id, conversation_id, role, tool_calls, created_at').eq('role', 'assistant').gte('created_at', since).limit(10000),
+    db.from('skill_usage_events').select('user_id, skill_slug, mode, created_at').gte('created_at', since).limit(10000),
+  ])
+  const conversationOwners = new Map((conversations || []).map((conversation) => [conversation.id, conversation.user_id]))
+  const people = new Map((profiles || []).map((profile) => [profile.id, {
+    user_id: profile.id, name: profile.display_name || profile.email, responses: 0, tool_calls: 0,
+    estimated_minutes_saved: 0, active_days: new Set(), contributions: 0,
+  }]))
+  let totalResponses = 0
+  let totalTools = 0
+  let estimatedMinutes = 0
+  for (const message of messages || []) {
+    const ownerId = conversationOwners.get(message.conversation_id)
+    const person = people.get(ownerId)
+    const successfulTools = (message.tool_calls || []).filter((call) => !call.is_error && !call.suppressed)
+    const files = successfulTools.filter((call) => call.name === 'create_file').length
+    const estimate = 3 + successfulTools.length * 2 + files * 8
+    totalResponses += 1; totalTools += successfulTools.length; estimatedMinutes += estimate
+    if (person) {
+      person.responses += 1; person.tool_calls += successfulTools.length; person.estimated_minutes_saved += estimate
+      person.active_days.add(message.created_at.slice(0, 10))
+    }
+  }
+  const contributionTables = ['contexts', 'skills', 'wiki_pages', 'routines']
+  const contributions = await Promise.all(contributionTables.map((table) =>
+    db.from(table).select('created_by, created_at').gte('created_at', since).limit(10000)
+  ))
+  for (const result of contributions) for (const row of result.data || []) {
+    const person = people.get(row.created_by)
+    if (person) person.contributions += 1
+  }
+  const skillCounts = new Map()
+  for (const event of skillEvents || []) skillCounts.set(event.skill_slug, (skillCounts.get(event.skill_slug) || 0) + 1)
+  res.json({
+    period, since, generated_at: now.toISOString(),
+    totals: {
+      estimated_minutes_saved: estimatedMinutes,
+      estimated_hours_saved: Math.round(estimatedMinutes / 6) / 10,
+      fte_days_saved: Math.round(estimatedMinutes / 48) / 10,
+      annual_fte_equivalent: Math.round(estimatedMinutes / 1056) / 100,
+      responses: totalResponses, tool_calls: totalTools,
+      active_users: [...people.values()].filter((person) => person.responses > 0).length,
+      contributions: [...people.values()].reduce((sum, person) => sum + person.contributions, 0),
+    },
+    skills: [...skillCounts.entries()].map(([slug, uses]) => ({ slug, uses })).sort((a, b) => b.uses - a.uses),
+    people: [...people.values()].map((person) => ({ ...person, active_days: person.active_days.size }))
+      .filter((person) => person.responses || person.contributions)
+      .sort((a, b) => b.estimated_minutes_saved - a.estimated_minutes_saved),
+    methodology: {
+      label: 'Transparente Näherung, keine Zeiterfassung',
+      formula: '3 Min. pro Enni-Antwort + 2 Min. pro erfolgreichem Tool-Call + 8 Min. zusätzlich pro erstellter Datei',
+      fte_definition: '1 FTE-Tag = 8 Stunden; jährliches FTE-Äquivalent = 220 Arbeitstage',
+    },
+  })
 })
 
 app.post('/api/admin/announcements', async (req, res) => {
