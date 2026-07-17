@@ -1,4 +1,5 @@
 import { db } from '../db.js'
+import { CONTEXT_RELATION, loadSkillWithContexts, requiredContextsText, visibleSkillContexts } from '../contexts.js'
 
 // ============================================================ Skills (Best-Practice-Playbooks)
 // Skills sagen Enni, WIE man Dinge bei enneo richtig macht. Die Trigger-Übersicht
@@ -10,13 +11,18 @@ import { db } from '../db.js'
 export async function loadEnabledSkills(userId = null) {
   const q = db
     .from('skills')
-    .select('slug, name, category, visibility, created_by, context, workflow, tools, triggers, definition_of_done, corner_cases')
+    .select(`id, slug, name, category, visibility, created_by, context, workflow, tools, triggers, definition_of_done, corner_cases, ${CONTEXT_RELATION}`)
     .eq('enabled', true)
     .order('name')
   const { data } = await (userId
     ? q.or(`visibility.eq.team,created_by.eq.${userId}`)
     : q.eq('visibility', 'team'))
-  return data || []
+  return (data || []).filter((skill) => {
+    const required = (skill.skill_contexts || []).filter((link) => link.requirement === 'required')
+    const visibleRequired = visibleSkillContexts(skill, userId, 'required')
+    skill.skill_contexts = visibleSkillContexts(skill, userId)
+    return required.length === visibleRequired.length
+  })
 }
 
 export function skillVisibleTo(s, userId) {
@@ -85,9 +91,10 @@ export function autoSkillsPromptBlock(skills) {
   )
 }
 
-export function skillText(s) {
+export function skillText(s, userId = null) {
   return [
     `# Skill: ${s.name} (/${s.slug})`,
+    requiredContextsText(s, userId),
     `## Kontext\n${s.context}`,
     `## Workflow\n${s.workflow}`,
     s.tools?.length ? `## Verknüpfte Tools\n${s.tools.join(', ')}` : null,
@@ -163,11 +170,13 @@ export async function runSkillTool(name, input, ctx = {}) {
   }
   if (name !== 'skill_read') throw new Error(`Unbekanntes Skill-Tool: ${name}`)
   const slug = String(input.slug || '').replace(/^\//, '').trim().toLowerCase()
-  const { data: s } = await db.from('skills').select('*').eq('slug', slug).maybeSingle()
+  const s = await loadSkillWithContexts(slug, ctx.userId)
   if (!s || !skillVisibleTo(s, ctx.userId)) {
     const skills = await loadEnabledSkills(ctx.userId)
     return `Kein Skill "${slug}". Verfügbar: ${skills.map((x) => '/' + x.slug).join(', ') || 'keine'}`
   }
   if (!s.enabled) return `Skill "${slug}" ist deaktiviert.`
-  return skillText(s)
+  const visibleRequiredCount = (s.skill_contexts || []).filter((link) => link.requirement === 'required').length
+  if (visibleRequiredCount !== s.required_context_count) return `Skill "${slug}" ist für deinen Account nicht verfügbar, weil ein verbindlicher Kontext fehlt.`
+  return skillText(s, ctx.userId)
 }

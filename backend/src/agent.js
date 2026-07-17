@@ -19,6 +19,7 @@ import { productivityToolDefinitions, runProductivityTool } from './tools/produc
 import { registrationToolDefinitions, runRegistrationTool } from './tools/registration.js'
 import { uxUiToolDefinitions, runUxUiTool } from './tools/ux-ui.js'
 import { learningsPromptBlock } from './learnings.js'
+import { loadPersonalContextBlock } from './contexts.js'
 import { releaseNotesPromptBlock } from './knowledge-sync.js'
 import { capabilityPromptBlock } from './behavior.js'
 import { db } from './db.js'
@@ -188,6 +189,12 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
   } catch (err) {
     console.error('Profil-Load fehlgeschlagen:', err.message)
   }
+  let privateContextBlock = null
+  try {
+    privateContextBlock = await loadPersonalContextBlock(ctx.userId)
+  } catch (err) {
+    console.error('Persönlicher Kontext konnte nicht geladen werden:', err.message)
+  }
   let releasesBlock = null
   try {
     releasesBlock = await releaseNotesPromptBlock()
@@ -249,6 +256,7 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
     ...(learningsBlock ? [{ type: 'text', text: learningsBlock }] : []),
     ...(releasesBlock ? [{ type: 'text', text: releasesBlock }] : []),
     ...(personalBlock ? [{ type: 'text', text: personalBlock }] : []),
+    ...(privateContextBlock ? [{ type: 'text', text: privateContextBlock }] : []),
     ...(extraSystem ? [{ type: 'text', text: extraSystem }] : []),
   ]
   const messages = [...history]

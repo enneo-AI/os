@@ -12,6 +12,7 @@ import { getAttioRecordSummary, hasAttioConnection, searchAttioRecords } from '.
 import {
   createNotification, createNotifications, notifyPodMentions, pushPublicKey, startPushTicker,
 } from './notifications.js'
+import { loadSkillWithContexts, savePersonalContext } from './contexts.js'
 
 const app = express()
 app.use(express.json({ limit: '30mb' })) // Anhänge kommen als Base64 im Body
@@ -43,6 +44,18 @@ app.get('/api/tools/catalog', async (req, res) => {
     .filter((tool) => tool?.name && !seen.has(tool.name) && seen.add(tool.name))
     .map((tool) => ({ name: tool.name, description: tool.description || '' }))
   res.json({ tools })
+})
+
+app.put('/api/me/personal-context', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  try {
+    const context = await savePersonalContext(user.id, req.body || {})
+    await logAudit(user.id, 'context.personal.update', 'context', context.id, { source: context.source })
+    res.json({ context })
+  } catch (error) {
+    res.status(400).json({ error: error.message })
+  }
 })
 
 // Von Enni erstellte Dateien inline ausliefern (Supabase Storage serviert HTML
@@ -503,18 +516,14 @@ app.post('/api/chat', async (req, res) => {
     // Slash-Command: /slug an einer beliebigen Wortposition ruft einen Skill explizit auf —
     // voller Skill geht als System-Block mit, Enni startet mit einem Workflow-Overview.
     if (slashMatch) {
-      const { data: skill } = await db
-        .from('skills')
-        .select('*')
-        .eq('slug', slashMatch[1].toLowerCase())
-        .eq('enabled', true)
-        .maybeSingle()
+      const skill = await loadSkillWithContexts(slashMatch[1].toLowerCase(), user.id)
       // Persönliche Skills gelten nur für ihren Ersteller (team-weite für alle)
-      if (skill && (skill.visibility === 'team' || skill.created_by === user.id)) {
+      const visibleRequiredCount = (skill?.skill_contexts || []).filter((link) => link.requirement === 'required').length
+      if (skill?.enabled && visibleRequiredCount === skill.required_context_count && (skill.visibility === 'team' || skill.created_by === user.id)) {
         const { skillText } = await import('./tools/skills.js')
         extraSystem =
           (extraSystem ? extraSystem + '\n\n' : '') +
-          `Der Nutzer hat den Skill /${skill.slug} explizit per Slash-Command aufgerufen. Vollständiger Skill:\n\n${skillText(skill)}\n\nBeginne deine Antwort mit einem kompakten Workflow-Overview (nummerierte Schritte, je eine Zeile — was du jetzt tun wirst), dann arbeite den Workflow ab. Fehlen dir dafür nötige Inputs, stelle GENAU EINE gebündelte Rückfrage nach allen fehlenden Angaben.`
+          `Der Nutzer hat den Skill /${skill.slug} explizit per Slash-Command aufgerufen. Vollständiger Skill:\n\n${skillText(skill, user.id)}\n\nBeginne deine Antwort mit einem kompakten Workflow-Overview (nummerierte Schritte, je eine Zeile — was du jetzt tun wirst), dann arbeite den Workflow ab. Fehlen dir dafür nötige Inputs, stelle GENAU EINE gebündelte Rückfrage nach allen fehlenden Angaben.`
       }
     }
 

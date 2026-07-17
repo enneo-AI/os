@@ -142,3 +142,23 @@ test('invites use durable temporary passwords instead of expiring links', () => 
   assert.match(frontendSource, /if \(await onboardingNudge\(\)\) return/)
   assert.match(frontendSource, /await enterWorkspace\(\)/)
 })
+
+test('contexts stay private and required skill sources load deterministically', () => {
+  const contextSource = readFileSync(join(here, '../src/contexts.js'), 'utf8')
+  const skillSource = readFileSync(join(here, '../src/tools/skills.js'), 'utf8')
+  const agentSource = readFileSync(join(here, '../src/agent.js'), 'utf8')
+  const migration = readFileSync(
+    join(here, '../../supabase/migrations/20260717073201_context_foundation.sql'),
+    'utf8'
+  )
+
+  const selectPolicy = migration.match(/create policy contexts_select[\s\S]*?;\n/)?.[0] || ''
+  assert.match(selectPolicy, /visibility = 'team' or owner_id = \(select auth\.uid\(\)\)/)
+  assert.doesNotMatch(selectPolicy, /p\.is_admin/)
+  assert.match(migration, /active_account_only on public\.contexts as restrictive/)
+  assert.match(migration, /profiles_departments_check/)
+  assert.match(contextSource, /Privater persönlicher Kontext/)
+  assert.match(contextSource, /Verbindlich geladene Kontexte/)
+  assert.match(skillSource, /requiredContextsText/)
+  assert.match(agentSource, /loadPersonalContextBlock/)
+})

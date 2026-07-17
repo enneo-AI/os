@@ -458,7 +458,8 @@ const DEPARTMENTS = {
   partnerships: { label: 'Partnerships', color: '#B77428' },
   it_development: { label: 'IT & Development', color: '#6757C7' },
   sales: { label: 'Sales', color: '#278760' },
-  operations: { label: 'Operation', color: '#347AA5' },
+  finance: { label: 'Finance', color: '#9A6840' },
+  operations: { label: 'Operations', color: '#347AA5' },
   custom: { label: 'Custom Tag', color: '#7B5AE2' },
 }
 const departmentInfo = (profile = {}) => {
@@ -469,7 +470,7 @@ const departmentInfo = (profile = {}) => {
 }
 const profileInitials = (profile = {}) => ((profile.display_name || profile.email || '?').trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase())
 let onboardingStep = 1
-let onboardingDepartment = ''
+let onboardingDepartments = []
 let onboardingAvatarFile = null
 
 async function uploadAvatar(file) {
@@ -486,23 +487,23 @@ function showOnboardingStep(step) {
   onboardingStep = step
   document.querySelectorAll('[data-onboarding-step]').forEach((el) => { el.hidden = Number(el.dataset.onboardingStep) !== step })
   $('onboarding-back').hidden = step === 1
-  $('onboarding-next').textContent = step === 3 ? 'Account einrichten' : 'Weiter'
-  $('onboarding-progress-bar').style.width = `${step / 3 * 100}%`
+  $('onboarding-next').textContent = step === 5 ? 'Account einrichten' : 'Weiter'
+  $('onboarding-progress-bar').style.width = `${step / 5 * 100}%`
   $('onboarding-error').textContent = ''
 }
 
 async function onboardingNudge() {
   const profile = await ownProfile()
   if (profile.onboarding_completed_at) return false
-  onboardingDepartment = profile.department || ''
+  onboardingDepartments = profile.departments?.length ? [...profile.departments] : (profile.department ? [profile.department] : [])
   onboardingAvatarFile = null
   $('onboarding-name').value = profile.display_name || ''
   $('onboarding-role').value = profile.role_title || ''
   $('onboarding-custom-label').value = profile.department_label || ''
   $('onboarding-custom-color').value = profile.department_color || '#7B5AE2'
   $('onboarding-avatar').innerHTML = profile.avatar_url ? `<img src="${esc(profile.avatar_url)}" alt="">` : profileInitials(profile)
-  document.querySelectorAll('#onboarding-departments button').forEach((button) => button.classList.toggle('on', button.dataset.department === onboardingDepartment))
-  $('onboarding-custom').hidden = onboardingDepartment !== 'custom'
+  document.querySelectorAll('#onboarding-departments button').forEach((button) => button.classList.toggle('on', onboardingDepartments.includes(button.dataset.department)))
+  $('onboarding-custom').hidden = !onboardingDepartments.includes('custom')
   showOnboardingStep(1)
   $('app-view').inert = true
   $('onboarding-overlay').classList.add('open')
@@ -520,18 +521,22 @@ $('onboarding-avatar-file').addEventListener('change', () => {
   $('onboarding-avatar').innerHTML = `<img src="${URL.createObjectURL(file)}" alt="Vorschau">`
 })
 document.querySelectorAll('#onboarding-departments button').forEach((button) => button.addEventListener('click', () => {
-  onboardingDepartment = button.dataset.department
-  document.querySelectorAll('#onboarding-departments button').forEach((item) => item.classList.toggle('on', item === button))
-  $('onboarding-custom').hidden = onboardingDepartment !== 'custom'
+  const department = button.dataset.department
+  onboardingDepartments = onboardingDepartments.includes(department)
+    ? onboardingDepartments.filter((item) => item !== department)
+    : [...onboardingDepartments, department]
+  button.classList.toggle('on', onboardingDepartments.includes(department))
+  $('onboarding-custom').hidden = !onboardingDepartments.includes('custom')
 }))
 $('onboarding-back').addEventListener('click', () => showOnboardingStep(Math.max(1, onboardingStep - 1)))
 $('onboarding-next').addEventListener('click', async () => {
   const error = $('onboarding-error')
   error.textContent = ''
   if (onboardingStep === 1 && !$('onboarding-name').value.trim()) { error.textContent = 'Bitte gib deinen Namen ein.'; $('onboarding-name').focus(); return }
-  if (onboardingStep === 2 && !onboardingDepartment) { error.textContent = 'Bitte wähle deine Abteilung.'; document.querySelector('#onboarding-departments button').focus(); return }
-  if (onboardingStep === 2 && onboardingDepartment === 'custom' && !$('onboarding-custom-label').value.trim()) { error.textContent = 'Bitte beschreibe deine Position.'; $('onboarding-custom-label').focus(); return }
-  if (onboardingStep < 3) { showOnboardingStep(onboardingStep + 1); return }
+  if (onboardingStep === 2 && !onboardingDepartments.length) { error.textContent = 'Bitte wähle mindestens eine Abteilung.'; document.querySelector('#onboarding-departments button').focus(); return }
+  if (onboardingStep === 2 && onboardingDepartments.includes('custom') && !$('onboarding-custom-label').value.trim()) { error.textContent = 'Bitte beschreibe deine eigene Abteilung.'; $('onboarding-custom-label').focus(); return }
+  if (onboardingStep === 3 && ![$('onboarding-responsibilities'), $('onboarding-preferences'), $('onboarding-challenges')].some((field) => field.value.trim())) { error.textContent = 'Bitte beantworte mindestens eine Frage, damit Enni dich einordnen kann.'; $('onboarding-responsibilities').focus(); return }
+  if (onboardingStep < 5) { showOnboardingStep(onboardingStep + 1); return }
   const password = $('onboarding-password').value
   if (password.length < 8) { error.textContent = 'Das Passwort muss mindestens 8 Zeichen haben.'; $('onboarding-password').focus(); return }
   if (password !== $('onboarding-password-confirm').value) { error.textContent = 'Die Passwörter stimmen nicht überein.'; $('onboarding-password-confirm').focus(); return }
@@ -540,15 +545,28 @@ $('onboarding-next').addEventListener('click', async () => {
     const patch = {
       display_name: $('onboarding-name').value.trim(),
       role_title: $('onboarding-role').value.trim(),
-      department: onboardingDepartment,
-      department_label: onboardingDepartment === 'custom' ? $('onboarding-custom-label').value.trim() : null,
-      department_color: onboardingDepartment === 'custom' ? $('onboarding-custom-color').value.toUpperCase() : null,
+      department: onboardingDepartments[0],
+      departments: onboardingDepartments,
+      department_label: onboardingDepartments.includes('custom') ? $('onboarding-custom-label').value.trim() : null,
+      department_color: onboardingDepartments.includes('custom') ? $('onboarding-custom-color').value.toUpperCase() : null,
     }
     if (onboardingAvatarFile) patch.avatar_url = await uploadAvatar(onboardingAvatarFile)
     // Profil zuerst speichern, den Abschlussmarker aber erst setzen, wenn auch das
     // Passwort erfolgreich ist. So bleibt ein fehlgeschlagener Schritt wiederholbar.
     const { error: profileError } = await sb.from('profiles').update(patch).eq('id', session.user.id)
     if (profileError) throw new Error('Dein Profil konnte nicht gespeichert werden. Bitte versuche es erneut.')
+    const contextResponse = await fetch(`${BACKEND_URL}/api/me/personal-context`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({
+        responsibilities: $('onboarding-responsibilities').value,
+        preferences: $('onboarding-preferences').value,
+        challenges: $('onboarding-challenges').value,
+        goals_3_months: $('onboarding-goal-3').value,
+        goals_6_months: $('onboarding-goal-6').value,
+        goals_12_months: $('onboarding-goal-12').value,
+      }),
+    })
+    if (!contextResponse.ok) throw new Error((await contextResponse.json().catch(() => ({}))).error || 'Dein privater Kontext konnte nicht gespeichert werden.')
     const { error: passwordError } = await sb.auth.updateUser({ password })
     // Nach dem bisherigen Fehler wurde das Passwort bereits gesetzt, bevor das
     // Profil scheiterte. Derselbe Wert ist dann korrekt und darf den Retry abschließen.
@@ -644,12 +662,14 @@ async function openProfile() {
   $('pf-welcome').hidden = true // nur der Onboarding-Nudge blendet den Willkommens-Hinweis ein
   switchProfileTab('profil')
   const { data: p } = await sb
-    .from('profiles').select('display_name, avatar_url, email, role_title, about, department, department_label, department_color').eq('id', session.user.id).maybeSingle()
+    .from('profiles').select('display_name, avatar_url, email, role_title, about, department, departments, department_label, department_color').eq('id', session.user.id).maybeSingle()
   pendingAvatar = null
   $('pf-name').value = p?.display_name || ''
   $('pf-email').value = p?.email || session.user.email
   $('pf-role').value = p?.role_title || ''
   $('pf-department').value = p?.department || ''
+  const selectedDepartments = p?.departments?.length ? p.departments : (p?.department ? [p.department] : [])
+  Array.from($('pf-departments').options).forEach((option) => { option.selected = selectedDepartments.includes(option.value) })
   $('pf-custom-label').value = p?.department_label || ''
   $('pf-custom-color').value = p?.department_color || '#7B5AE2'
   $('pf-custom-row').hidden = p?.department !== 'custom'
@@ -705,7 +725,17 @@ $('pf-file').addEventListener('change', () => {
   $('pf-avatar').innerHTML = `<img src="${URL.createObjectURL(f)}" alt="">`
 })
 $('pf-avatar-btn').addEventListener('click', () => $('pf-file').click())
-$('pf-department').addEventListener('change', () => { $('pf-custom-row').hidden = $('pf-department').value !== 'custom' })
+$('pf-departments').addEventListener('change', () => {
+  const selected = Array.from($('pf-departments').selectedOptions).map((option) => option.value)
+  if (selected.length && !selected.includes($('pf-department').value)) $('pf-department').value = selected[0]
+  $('pf-custom-row').hidden = !selected.includes('custom')
+})
+$('pf-department').addEventListener('change', () => {
+  const selected = Array.from($('pf-departments').selectedOptions).map((option) => option.value)
+  if ($('pf-department').value && !selected.includes($('pf-department').value)) {
+    Array.from($('pf-departments').options).find((option) => option.value === $('pf-department').value).selected = true
+  }
+})
 $('pf-save').addEventListener('click', async () => {
   const err = $('pf-err')
   err.textContent = ''
@@ -714,13 +744,17 @@ $('pf-save').addEventListener('click', async () => {
   if (pw && pw !== $('pf-pw2').value) { err.textContent = 'Passwörter stimmen nicht überein.'; return }
   $('pf-save').disabled = true
   try {
+    const departments = Array.from($('pf-departments').selectedOptions).map((option) => option.value)
+    if (!departments.length) throw new Error('Bitte wähle mindestens eine Abteilung.')
+    const primaryDepartment = departments.includes($('pf-department').value) ? $('pf-department').value : departments[0]
     const patch = {
       display_name: $('pf-name').value.trim() || null,
       role_title: $('pf-role').value.trim(),
       about: $('pf-about').value.trim(),
-      department: $('pf-department').value || null,
-      department_label: $('pf-department').value === 'custom' ? $('pf-custom-label').value.trim() || null : null,
-      department_color: $('pf-department').value === 'custom' ? $('pf-custom-color').value.toUpperCase() : null,
+      department: primaryDepartment,
+      departments,
+      department_label: departments.includes('custom') ? $('pf-custom-label').value.trim() || null : null,
+      department_color: departments.includes('custom') ? $('pf-custom-color').value.toUpperCase() : null,
     }
     if (pendingAvatar) {
       patch.avatar_url = await uploadAvatar(pendingAvatar)
@@ -743,7 +777,7 @@ $('pf-save').addEventListener('click', async () => {
 
 // Rail-Navigation — Sidebar-Inhalt wechselt mit dem Bereich
 const views = {
-  chat: 'v-chat', wiki: 'v-wiki', team: 'v-team', admin: 'v-admin', skills: 'v-skills', routines: 'v-routines',
+  chat: 'v-chat', wiki: 'v-wiki', team: 'v-team', admin: 'v-admin', contexts: 'v-contexts', skills: 'v-skills', routines: 'v-routines',
   connected: 'v-connected', pagelist: 'v-pagelist', marketplace: 'v-marketplace', pod: 'v-pod',
   'space-home': 'v-space-home', 'page-edit': 'v-page-edit',
 }
@@ -761,6 +795,7 @@ function mobileViewTitle(area, view) {
   if (area === 'admin') return 'Administration'
   if (area === 'team') return 'Team'
   if (view === 'skills') return 'Skills'
+  if (view === 'contexts') return 'Kontexte'
   if (view === 'routines') return 'Routinen'
   if (view === 'marketplace') return 'Marketplace'
   if (SPACE_NAV_VIEWS.has(view)) return currentSpace?.name || 'Spaces'
@@ -833,7 +868,7 @@ function syncUrl(area, view) {
   let path = '/chat'
   if (view === 'pod' && activePod) path = `/pod/${activePod.id}`
   else if (area === 'chat') path = currentConv?.id ? `/chat/${currentConv.id}` : '/chat'
-  else if (area === 'wiki') path = view === 'marketplace' ? '/spaces/marketplace' : view === 'skills' ? '/spaces/skills' : view === 'routines' ? '/spaces/routinen' : '/spaces'
+  else if (area === 'wiki') path = view === 'marketplace' ? '/spaces/marketplace' : view === 'contexts' ? '/spaces/kontexte' : view === 'skills' ? '/spaces/skills' : view === 'routines' ? '/spaces/routinen' : '/spaces'
   else if (area === 'team') path = '/team'
   else if (area === 'admin') path = '/admin'
   if (location.pathname !== path) history.pushState({}, '', path)
@@ -867,9 +902,10 @@ async function route() {
     if (c) return openConversation(c)
   }
   if (p.startsWith('/spaces')) {
-    const spview = p === '/spaces/skills' ? 'skills' : p === '/spaces/routinen' ? 'routines' : 'marketplace'
+    const spview = p === '/spaces/kontexte' ? 'contexts' : p === '/spaces/skills' ? 'skills' : p === '/spaces/routinen' ? 'routines' : 'marketplace'
     activateArea('wiki', spview)
     if (spview === 'marketplace') loadConnectorRows()
+    if (spview === 'contexts') loadContexts()
     if (p === '/spaces/skills') loadSkills()
     if (p === '/spaces/routinen') loadRoutines()
     await loadSpacesTree()
@@ -909,6 +945,7 @@ document.querySelectorAll('.admin-area').forEach((b) =>
   b.addEventListener('click', () => {
     activateArea('wiki', b.dataset.view)
     if (b.dataset.view === 'skills') loadSkills()
+    if (b.dataset.view === 'contexts') loadContexts()
     if (b.dataset.view === 'routines') loadRoutines()
     if (b.dataset.view === 'marketplace') loadConnectorRows()
   })
@@ -2223,7 +2260,7 @@ let profilesCache = null
 
 async function allProfiles() {
   if (!profilesCache) {
-    const { data } = await sb.from('profiles').select('id, display_name, email, avatar_url, account_status, is_admin, role_title, about, department, department_label, department_color')
+    const { data } = await sb.from('profiles').select('id, display_name, email, avatar_url, account_status, is_admin, role_title, about, department, departments, department_label, department_color')
     profilesCache = (data || []).filter((profile) => profile.account_status !== 'disabled')
   }
   return profilesCache
@@ -3225,7 +3262,7 @@ $('pod-file-input').addEventListener('change', async () => {
 let myProfile = null
 async function ownProfile() {
   if (!myProfile) {
-    const { data } = await sb.from('profiles').select('id, email, display_name, avatar_url, role_title, about, is_admin, department, department_label, department_color, onboarding_completed_at, tour_completed_at').eq('id', session.user.id).maybeSingle()
+    const { data } = await sb.from('profiles').select('id, email, display_name, avatar_url, role_title, about, is_admin, department, departments, department_label, department_color, onboarding_completed_at, tour_completed_at').eq('id', session.user.id).maybeSingle()
     myProfile = data || { is_admin: false }
   }
   return myProfile
@@ -5728,6 +5765,95 @@ $('cn-save').addEventListener('click', async () => {
   $('cn-save').textContent = 'Verknüpfen'
 })
 
+// ============================================================ Kontexte (wiederverwendbares Wissen mit explizitem Scope)
+let editingContext = null
+let contextListCache = []
+
+async function loadContexts() {
+  const { data, error } = await sb.from('contexts').select('*').order('updated_at', { ascending: false })
+  if (error) { $('context-list').innerHTML = `<div class="empty-plain">${esc(error.message)}</div>`; return }
+  contextListCache = data || []
+  renderContextList($('context-search').value)
+}
+
+function renderContextList(filter = '') {
+  const q = filter.trim().toLowerCase()
+  const contexts = contextListCache.filter((context) => !q || `${context.name} ${context.description} ${context.context_type}`.toLowerCase().includes(q))
+  $('context-list').innerHTML = ''
+  if (!contexts.length) { $('context-list').innerHTML = '<div class="empty-plain">Noch keine passenden Kontexte.</div>'; return }
+  for (const context of contexts) {
+    const row = document.createElement('button')
+    row.className = 'crow'
+    const personalProfile = context.context_type === 'personal_profile'
+    const scope = context.visibility === 'team' ? '<span class="sk-badge team">Teamweit</span>' : context.visibility === 'proposed' ? '<span class="sk-badge prop">Freigabe angefragt</span>' : '<span class="sk-badge">Persönlich</span>'
+    row.innerHTML = `<span class="c-logo" style="background:none;border-style:dashed">${personalProfile ? '⌾' : '⌁'}</span><div><div class="c-name">${esc(context.name)}</div><div class="c-sub">${esc(context.description || context.content.split('\n').find(Boolean) || 'Ohne Beschreibung')}</div></div>${scope}<span class="c-right ${personalProfile ? 'ok' : ''}">${personalProfile ? 'Privat geschützt' : new Date(context.updated_at).toLocaleDateString('de-DE')}</span>`
+    row.addEventListener('click', () => openContext(context))
+    $('context-list').appendChild(row)
+  }
+}
+
+async function openContext(context = null) {
+  const { is_admin } = await ownProfile()
+  editingContext = context
+  const personalProfile = context?.context_type === 'personal_profile'
+  const canEdit = !context || context.owner_id === session.user.id || (is_admin && context.visibility === 'team')
+  $('cx-title').textContent = context?.name || 'Neuer Kontext'
+  $('cx-name').value = context?.name || ''
+  if (personalProfile && !$('cx-type').querySelector('option[value="personal_profile"]')) $('cx-type').insertAdjacentHTML('beforeend', '<option value="personal_profile">Persönliches Profil</option>')
+  $('cx-type').value = personalProfile ? 'personal_profile' : (context?.context_type || 'knowledge')
+  $('cx-visibility').value = context?.visibility || (is_admin ? 'team' : 'personal')
+  $('cx-visibility').querySelector('option[value="team"]').disabled = !is_admin
+  $('cx-description').value = context?.description || ''
+  $('cx-content').value = context?.content || ''
+  $('cx-err').textContent = ''
+  $('cx-import-name').textContent = personalProfile ? 'Privater Onboarding-Kontext' : 'Markdown oder Text'
+  for (const id of ['cx-name', 'cx-type', 'cx-visibility', 'cx-description', 'cx-content']) $(id).disabled = !canEdit || (personalProfile && ['cx-name', 'cx-type', 'cx-visibility'].includes(id))
+  $('cx-import').hidden = !canEdit || personalProfile
+  $('cx-save').hidden = !canEdit
+  $('cx-delete').hidden = !canEdit || !context || personalProfile
+  $('context-overlay').classList.add('open')
+}
+
+$('context-search').addEventListener('input', () => renderContextList($('context-search').value))
+$('context-add').addEventListener('click', () => openContext())
+$('cx-cancel').addEventListener('click', () => $('context-overlay').classList.remove('open'))
+$('cx-import').addEventListener('click', () => $('cx-file').click())
+$('cx-file').addEventListener('change', async () => {
+  const file = $('cx-file').files[0]
+  if (!file) return
+  if (file.size > 1024 * 1024) { $('cx-err').textContent = 'Die Datei darf maximal 1 MB groß sein.'; return }
+  $('cx-content').value = await file.text()
+  if (!$('cx-name').value) $('cx-name').value = file.name.replace(/\.(md|txt)$/i, '')
+  $('cx-import-name').textContent = file.name
+})
+$('cx-save').addEventListener('click', async () => {
+  const name = $('cx-name').value.trim()
+  const content = $('cx-content').value.trim()
+  if (!name || !content) { $('cx-err').textContent = 'Name und Inhalt sind Pflicht.'; return }
+  const { is_admin } = await ownProfile()
+  const visibility = is_admin ? $('cx-visibility').value : 'personal'
+  if (visibility === 'team' && editingContext?.context_type === 'personal_profile') { $('cx-err').textContent = 'Der persönliche Arbeitskontext bleibt immer privat.'; return }
+  const row = {
+    name, content, description: $('cx-description').value.trim(), context_type: $('cx-type').value,
+    visibility, owner_id: visibility === 'team' ? null : session.user.id,
+    source: editingContext?.source || ($('cx-file').files[0] ? 'import' : 'manual'), updated_by: session.user.id,
+  }
+  $('cx-save').disabled = true
+  const query = editingContext ? sb.from('contexts').update(row).eq('id', editingContext.id) : sb.from('contexts').insert({ ...row, created_by: session.user.id })
+  const { error } = await query
+  $('cx-save').disabled = false
+  if (error) { $('cx-err').textContent = error.message; return }
+  $('context-overlay').classList.remove('open')
+  await loadContexts()
+})
+$('cx-delete').addEventListener('click', async () => {
+  if (!editingContext || !window.confirm(`Kontext "${editingContext.name}" löschen?`)) return
+  const { error } = await sb.from('contexts').delete().eq('id', editingContext.id)
+  if (error) { $('cx-err').textContent = error.message; return }
+  $('context-overlay').classList.remove('open')
+  await loadContexts()
+})
+
 // ============================================================ Skills (Best-Practice-Playbooks)
 // Tools sagen WAS Enni kann, Skills sagen WIE man es bei enneo richtig macht.
 // Lesen: alle. Anlegen/Ändern/Löschen: nur Admins (RLS-enforced, UI read-only für Member).
@@ -5738,7 +5864,7 @@ let skillListProfs = []
 
 async function loadSkills() {
   const [{ data: skills }, { is_admin }, profs] = await Promise.all([
-    sb.from('skills').select('*').order('name'),
+    sb.from('skills').select('*, skill_contexts(context_id, requirement, position)').order('name'),
     ownProfile(),
     allProfiles(),
   ])
@@ -5980,7 +6106,7 @@ document.querySelectorAll('[data-wfview]').forEach((b) =>
   b.addEventListener('click', () => setWorkflowView(b.dataset.wfview))
 )
 
-function openSkill(s, isAdmin) {
+async function openSkill(s, isAdmin) {
   setWorkflowView('text')
   editingSkill = s
   // Bearbeiten dürfen: Admins alles; Mitglieder ihre eigenen persönlichen/vorgeschlagenen Skills
@@ -5999,6 +6125,14 @@ function openSkill(s, isAdmin) {
   }
   $('sk-enabled').checked = s ? s.enabled : true
   $('sk-context').value = s?.context || ''
+  if (!contextListCache.length) {
+    const { data } = await sb.from('contexts').select('*').order('name')
+    contextListCache = data || []
+  }
+  const selectedContextIds = new Set((s?.skill_contexts || []).filter((link) => link.requirement === 'required').map((link) => link.context_id))
+  $('sk-required-contexts').innerHTML = contextListCache
+    .filter((context) => context.context_type !== 'personal_profile')
+    .map((context) => `<option value="${context.id}"${selectedContextIds.has(context.id) ? ' selected' : ''}>${esc(context.name)} · ${context.visibility === 'team' ? 'Teamweit' : 'Persönlich'}</option>`).join('')
   $('sk-workflow').value = s?.workflow || ''
   $('sk-tools').value = (s?.tools || []).join('\n')
   skillToolsEditable = canEdit
@@ -6062,15 +6196,31 @@ $('sk-save').addEventListener('click', async () => {
     ...(is_admin ? { created_by: $('sk-owner').value || session.user.id } : {}),
   }
   $('sk-save').disabled = true
+  const requiredContextIds = Array.from($('sk-required-contexts').selectedOptions).map((option) => option.value)
+  if (row.visibility === 'team' && requiredContextIds.some((id) => contextListCache.find((context) => context.id === id)?.visibility !== 'team')) {
+    err.textContent = 'Ein teamweiter Skill darf nur teamweite verbindliche Kontexte verwenden.'
+    $('sk-save').disabled = false
+    return
+  }
   const q = editingSkill
     ? sb.from('skills').update(row).eq('id', editingSkill.id)
     : sb.from('skills').insert({ ...row, created_by: row.created_by || session.user.id })
-  const { error } = await q
-  $('sk-save').disabled = false
+  const { data: savedSkill, error } = await q.select('id').single()
   if (error) {
+    $('sk-save').disabled = false
     err.textContent = error.code === '23505' ? `Slug "/${slug}" ist schon vergeben.` : 'Fehler: ' + error.message
     return
   }
+  if (requiredContextIds.length) {
+    const { error: linkError } = await sb.from('skill_contexts').upsert(requiredContextIds.map((contextId, position) => ({ skill_id: savedSkill.id, context_id: contextId, requirement: 'required', position })), { onConflict: 'skill_id,context_id' })
+    if (linkError) { $('sk-save').disabled = false; err.textContent = 'Skill gespeichert, aber Quellen konnten nicht verknüpft werden: ' + linkError.message; return }
+  }
+  const removedContextIds = (editingSkill?.skill_contexts || []).map((link) => link.context_id).filter((id) => !requiredContextIds.includes(id))
+  if (removedContextIds.length) {
+    const { error: unlinkError } = await sb.from('skill_contexts').delete().eq('skill_id', savedSkill.id).in('context_id', removedContextIds)
+    if (unlinkError) { $('sk-save').disabled = false; err.textContent = 'Skill gespeichert, aber alte Quellen konnten nicht entfernt werden: ' + unlinkError.message; return }
+  }
+  $('sk-save').disabled = false
   $('skill-overlay').classList.remove('open')
   skillsCache = null
   loadSkills()

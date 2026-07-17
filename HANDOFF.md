@@ -1,6 +1,14 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-16 (dauerhafte Startpasswörter statt Invite-Links)
+**Zuletzt aktualisiert:** 2026-07-17 (Kontexte, privates Rollen-Onboarding und Multi-Abteilungen)
+
+### Session 2026-07-17 — Context Foundation aus Tristan-Feedback
+
+- **Multi-Abteilungen:** Profile haben jetzt `departments[]` plus eine weiterhin kompatible primäre `department`. Onboarding und Profil erlauben Mehrfachauswahl; Finance ist ein eigener Bereich. Team-Gruppierung verwendet weiterhin das primäre Label.
+- **Privates Rollen-Interview:** Das Pflicht-Onboarding umfasst fünf Schritte: Identität, Abteilungen/Rolle, Verantwortung/Arbeitspräferenzen/Engpässe, Ziele für 3/6/12 Monate und persönliches Passwort. Aus den Antworten entsteht ein geschützter `personal_profile`-Kontext, der weder anderen Mitgliedern noch Admins über RLS sichtbar ist. Enni lädt ihn serverseitig pro Turn und verwendet sensible Details nur still zur Personalisierung.
+- **Kontext-Bibliothek:** Neuer Bereich `Spaces → Kontexte` (`/spaces/kontexte`) für persönliche und teamweite Wissens-, Brand-, Persona- und Kundenkontexte. Markdown-/Text-Import, Suche, Scope-Badges und ein klar markierter privater Arbeitskontext sind enthalten.
+- **Verbindliche Skill-Quellen:** `skill_contexts` verknüpft Skills mit verpflichtenden Kontexten. Der Skill-Editor bietet Mehrfachauswahl; teamweite Skills akzeptieren ausschließlich teamweite Quellen. Backend lädt den aktuellen Inhalt deterministisch vor dem Workflow – bei Auto-Routing, `skill_read` und explizitem `/slash`. Fehlt dem Account ein Pflichtkontext, ist der Skill nicht ausführbar.
+- **Security & Verifikation:** Migration `20260717073201_context_foundation.sql` ist live auf Supabase und in der Migration History. Persönliche Kontexte haben bewusst keinen Admin-Bypass; beide neuen Tabellen besitzen restrictive `active_account_only`-Policies und explizite Grants. Echte temporäre Accounts bestätigten Multi-Abteilung, privaten Kontext, Cross-Account-RLS und Brand-Voice-vor-Workflow. Supabase Security Advisor ohne neue Findings; Performance-Hinweise für fehlende FK-Indizes behoben. Backend-Tests 9/9, JavaScript-Syntax und Desktop-/390×844-Browserprüfung grün. Temporäre Daten wurden nach der visuellen Abnahme entfernt.
 
 ### Session 2026-07-16 — Einladungen ohne Ablauf- oder Preview-Risiko
 
