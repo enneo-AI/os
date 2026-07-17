@@ -1144,7 +1144,7 @@ app.post('/api/connectors', async (req, res) => {
   if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
   const { data: prof } = await db.from('profiles').select('is_admin').eq('id', user.id).maybeSingle()
   const isAdmin = !!prof?.is_admin
-  const { name, url, token, category, kind } = req.body || {}
+  const { name, url, token, category, kind, auth_type: authType } = req.body || {}
   const personal = !isAdmin || req.body?.scope === 'personal'
   const requestedOwner = isAdmin && req.body?.owner ? String(req.body.owner) : user.id
   if (personal && requestedOwner !== user.id) {
@@ -1229,7 +1229,7 @@ app.post('/api/connectors', async (req, res) => {
   if (!/^https:\/\//.test(url.trim())) return res.status(400).json({ error: 'URL muss mit https:// beginnen' })
   try {
     const { addConnector } = await import('./tools/mcp.js')
-    res.json(await addConnector({ name, url, token, category, owner, visibility }, user.id))
+    res.json(await addConnector({ name, url, token, authType: authType || 'manual', category, owner, visibility }, user.id))
   } catch (err) {
     res.status(400).json({ error: `Verbindung fehlgeschlagen: ${err.message}` })
   }

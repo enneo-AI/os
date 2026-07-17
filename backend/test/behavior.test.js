@@ -162,3 +162,17 @@ test('contexts stay private and required skill sources load deterministically', 
   assert.match(skillSource, /requiredContextsText/)
   assert.match(agentSource, /loadPersonalContextBlock/)
 })
+
+test('remote MCP research is structured and keeps provider auth headers explicit', () => {
+  const researchSource = readFileSync(join(here, '../src/tool-research.js'), 'utf8')
+  const mcpSource = readFileSync(join(here, '../src/tools/mcp.js'), 'utf8')
+  const migration = readFileSync(join(here, '../../supabase/migrations/20260717075004_mcp_auth_schemes.sql'), 'utf8')
+
+  assert.match(researchSource, /tool_choice: \{ type: 'tool', name: 'submit_blueprint' \}/)
+  assert.match(researchSource, /mcp_scheme/)
+  assert.doesNotMatch(researchSource, /function parseJson/)
+  assert.match(mcpSource, /'X-API-Key': token/)
+  assert.match(mcpSource, /encryptSecret\(token\.trim\(\)\)/)
+  assert.match(mcpSource, /decryptSecret\(c\.token\)/)
+  assert.match(migration, /mcp_bearer.*mcp_x_api_key.*mcp_none/s)
+})

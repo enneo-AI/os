@@ -1962,10 +1962,11 @@
     <input type="text" id="cn-name" placeholder="z. B. DeepWiki">
     <label for="cn-url">Server-URL</label>
     <input type="text" id="cn-url" placeholder="https://mcp.example.com/mcp">
-    <label for="cn-token">Bearer-Token (optional)</label>
-    <input type="password" id="cn-token" autocomplete="off" placeholder="leer lassen, wenn der Server offen ist">
+    <label for="cn-auth-type">Authentifizierung</label><select id="cn-auth-type" class="sk-select"><option value="mcp_none">Keine</option><option value="mcp_bearer">Bearer-Token</option><option value="mcp_x_api_key">X-API-Key</option></select>
+    <label for="cn-token" id="cn-token-label">Token</label>
+    <input type="password" id="cn-token" autocomplete="off" placeholder="Zugangsschlüssel" hidden>
     <div id="cn-owner-wrap" hidden><label for="cn-owner">Für Account</label><select id="cn-owner" class="sk-select"></select></div>
-    <p class="pf-hint">Beim Speichern wird die Verbindung getestet und die Tool-Liste geladen. OAuth-basierte MCP-Server folgen später.</p>
+    <p class="pf-hint">Beim Speichern wird die Verbindung getestet und die Tool-Liste geladen. Zugangsschlüssel werden verschlüsselt gespeichert.</p>
     <div class="err" id="cn-err"></div>
     <div class="m-actions">
       <button class="btn quiet" id="cn-cancel">Abbrechen</button>

@@ -5,6 +5,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { db } from '../db.js'
+import { decryptSecret, encryptSecret } from '../crypto.js'
 
 const CACHE_TTL_MS = 60_000
 // Per-User-Caches: jeder Nutzer sieht Team-Connectors + seine eigenen persoenlichen
@@ -13,9 +14,15 @@ const caches = new Map() // userId||'team' -> { at, defs, routes: namespacedName
 const slugify = (name) =>
   name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 24) || 'mcp'
 
-async function connect(url, token) {
+export function mcpHeaders(token, authType = 'manual') {
+  if (!token || authType === 'mcp_none') return undefined
+  if (authType === 'mcp_x_api_key') return { 'X-API-Key': token }
+  return { Authorization: `Bearer ${token}` }
+}
+
+async function connect(url, token, authType = 'manual') {
   const transport = new StreamableHTTPClientTransport(new URL(url), {
-    requestInit: token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
+    requestInit: token ? { headers: mcpHeaders(token, authType) } : undefined,
   })
   const client = new Client({ name: 'enneo-os', version: '1.0.0' })
   await client.connect(transport)
@@ -23,8 +30,8 @@ async function connect(url, token) {
 }
 
 // Verbindungstest + Tool-Discovery — wird beim Anlegen eines Connectors aufgerufen
-export async function probeMcpServer(url, token) {
-  const client = await connect(url, token)
+export async function probeMcpServer(url, token, authType = 'manual') {
+  const client = await connect(url, token, authType)
   try {
     const { tools } = await client.listTools()
     return tools.map((t) => ({ name: t.name, description: t.description || '' }))
@@ -33,14 +40,18 @@ export async function probeMcpServer(url, token) {
   }
 }
 
-export async function addConnector({ name, url, token, category, owner = null, visibility = 'team' }, userId) {
-  const tools = await probeMcpServer(url, token) // wirft bei unerreichbar/ungültig
+export async function addConnector({ name, url, token, authType = 'manual', category, owner = null, visibility = 'team' }, userId) {
+  const allowedAuthTypes = new Set(['manual', 'mcp_bearer', 'mcp_x_api_key', 'mcp_none'])
+  if (!allowedAuthTypes.has(authType)) throw new Error('Nicht unterstützte MCP-Authentifizierung')
+  if (['mcp_bearer', 'mcp_x_api_key'].includes(authType) && !token?.trim()) throw new Error('Für diese Authentifizierung ist ein Token erforderlich')
+  const tools = await probeMcpServer(url, token, authType) // wirft bei unerreichbar/ungültig
   const { data, error } = await db
     .from('connectors')
     .insert({
       name: name.trim(),
       url: url.trim(),
-      token: token?.trim() || null,
+      token: token?.trim() ? encryptSecret(token.trim()) : null,
+      auth_type: authType,
       category: category === 'connection' ? 'connection' : 'tool',
       tool_count: tools.length,
       created_by: userId,
@@ -70,7 +81,7 @@ export async function mcpToolDefinitions(userId) {
   const cached = caches.get(key)
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.defs
   const { data: connectors } = await db
-    .from('connectors').select('id, name, url, token, owner, visibility').eq('kind', 'mcp')
+    .from('connectors').select('id, name, url, token, auth_type, owner, visibility').eq('kind', 'mcp')
   const visible = (connectors || []).filter(
     (c) => c.visibility === 'team' || (userId && c.owner === userId)
   )
@@ -78,14 +89,15 @@ export async function mcpToolDefinitions(userId) {
   const routes = new Map()
   for (const c of visible) {
     try {
-      const client = await connect(c.url, c.token)
+      const token = decryptSecret(c.token)
+      const client = await connect(c.url, token, c.auth_type)
       try {
         const { tools } = await client.listTools()
         const slug = slugify(c.name)
         for (const t of tools) {
           const nsName = `mcp__${slug}__${t.name}`.slice(0, 128).replace(/[^a-zA-Z0-9_-]/g, '_')
           if (routes.has(nsName)) continue
-          routes.set(nsName, { url: c.url, token: c.token, realName: t.name })
+          routes.set(nsName, { url: c.url, token, authType: c.auth_type, realName: t.name })
           defs.push({
             name: nsName,
             description: `[${c.name}] ${t.description || t.name}`.slice(0, 1000),
@@ -108,7 +120,7 @@ export async function runMcpTool(name, input, ctx = {}) {
   if (!caches.get(key) || Date.now() - caches.get(key).at >= CACHE_TTL_MS) await mcpToolDefinitions(ctx.userId)
   const route = caches.get(key)?.routes.get(name)
   if (!route) throw new Error(`Unbekanntes MCP-Tool: ${name} (Connector entfernt?)`)
-  const client = await connect(route.url, route.token)
+  const client = await connect(route.url, route.token, route.authType)
   try {
     const result = await client.callTool({ name: route.realName, arguments: input || {} })
     const text = (result.content || [])

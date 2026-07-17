@@ -5464,7 +5464,8 @@ async function openResearchedMcp(item) {
   const blueprint = item.research || {}
   if (!blueprint.connect_ready || !blueprint.mcp_url) return openToolResearchDetail(item, toolResearchAdmin)
   $('tool-research-detail-overlay').classList.remove('open')
-  openConnectorModal({ name: blueprint.display_name || item.name, url: blueprint.mcp_url })
+  const authType = blueprint.auth?.mcp_scheme === 'x_api_key' ? 'mcp_x_api_key' : blueprint.auth?.mcp_scheme === 'bearer' ? 'mcp_bearer' : 'mcp_none'
+  openConnectorModal({ name: blueprint.display_name || item.name, url: blueprint.mcp_url, authType })
 }
 
 // ============================================================ Connectors (MCP-Server verknüpfen)
@@ -5719,7 +5720,9 @@ async function openConnectorModal(prefill = {}) {
     $('cm-title').textContent = cnCategory === 'tool' ? 'Eigenes Tool verknüpfen' : 'Connection verknüpfen'
     $('cn-name').value = prefill.name || ''
     $('cn-url').value = prefill.url || ''
+    $('cn-auth-type').value = prefill.authType || 'mcp_none'
     $('cn-token').value = ''
+    syncConnectorAuthForm()
     const { is_admin } = await ownProfile()
     $('cn-owner-wrap').hidden = !is_admin
     if (is_admin) {
@@ -5730,6 +5733,14 @@ async function openConnectorModal(prefill = {}) {
     $('conn-overlay').classList.add('open')
     setTimeout(() => (prefill.url ? $('cn-token') : $('cn-name')).focus(), 50)
 }
+
+function syncConnectorAuthForm() {
+  const requiresToken = $('cn-auth-type').value !== 'mcp_none'
+  $('cn-token').hidden = !requiresToken
+  $('cn-token-label').hidden = !requiresToken
+  $('cn-token-label').textContent = $('cn-auth-type').value === 'mcp_x_api_key' ? 'API-Key' : 'Bearer-Token'
+}
+$('cn-auth-type').addEventListener('change', syncConnectorAuthForm)
 
 document.querySelectorAll('[data-category]').forEach((b) =>
   b.addEventListener('click', () => openConnectorModal({ category: b.dataset.category }))
@@ -5748,6 +5759,7 @@ $('cn-save').addEventListener('click', async () => {
         name: $('cn-name').value,
         url: $('cn-url').value,
         token: $('cn-token').value || undefined,
+        auth_type: $('cn-auth-type').value,
         category: cnCategory,
         scope: 'personal',
         owner: $('cn-owner-wrap').hidden ? session.user.id : $('cn-owner').value,
