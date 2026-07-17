@@ -1,6 +1,13 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-17 (kompakte Bibliothek und einheitliches Zugriffsmodell)
+**Zuletzt aktualisiert:** 2026-07-17 (TickTick-OAuth und deduplizierter Marketplace)
+
+### Session 2026-07-17 — OAuth in neuem Tab + TickTick dedupliziert
+
+- **Marketplace bleibt geöffnet:** Persönliche OAuth-Verbindungen reservieren beim Klick synchron einen separaten Browser-Tab und öffnen darin den Anbieter-Login. Der ursprüngliche enneo-OS-Tab bleibt im Marketplace; der Callback synchronisiert Erfolg oder Fehler über Browser-Storage zurück, aktualisiert Connections und Spaces und schließt den erfolgreichen Login-Tab automatisch.
+- **TickTick nur einmal:** Die drei identischen Karten entstanden durch parallel laufende `loadToolResearch()`-Aufrufe, die denselben freigegebenen Research-Eintrag mehrfach anhängten. Ein Generation-Guard verwirft veraltete Responses; kanonische Identity-Keys deduplizieren zusätzlich nach Provider, MCP-URL und Name. Research-Einträge, die bereits als kuratierter Connector existieren, werden nicht ein zweites Mal gerendert.
+- **Echter TickTick-Browserlogin:** TickTick ist als kuratierter `Read & Write`-Connector mit offizieller MCP-URL `https://mcp.ticktick.com` und provider-spezifischem OAuth-/PKCE-Callback eingebunden. Dynamic Client Registration, State-Prüfung, verschlüsselter PKCE-Verifier und späterer Token-Refresh laufen serverseitig; enneo OS erhält niemals das TickTick-Passwort.
+- **Produktiv verifiziert:** Backend-Tests 14/14, JavaScript-Syntax und Diff-Check grün. Railway-Deployment `1bdac8a9-f4d0-4499-8725-1f8c8fef0eb3` ist `SUCCESS`, `/health` grün und Netlify liefert den neuen Connector-Flow. Die echte Marketplace-Abnahme mit Aleksas Account zeigte exakt einen TickTick- und einen Lemlist-Eintrag, ließ den Marketplace beim Klick unverändert offen und erzeugte eine echte verschlüsselte TickTick-OAuth-Session für `https://mcp.ticktick.com`; der abgebrochene Test-State wurde anschließend vollständig entfernt.
 
 ### Session 2026-07-17 — Persönlicher Lemlist-OAuth statt Credential-Formular
 
