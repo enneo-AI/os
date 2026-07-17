@@ -151,6 +151,12 @@ test('contexts stay private and required skill sources load deterministically', 
     join(here, '../../supabase/migrations/20260717073201_context_foundation.sql'),
     'utf8'
   )
+  const syncMigration = readFileSync(
+    join(here, '../../supabase/migrations/20260717173000_context_knowledge_sync.sql'),
+    'utf8'
+  )
+  const wikiSource = readFileSync(join(here, '../src/tools/wiki.js'), 'utf8')
+  const frontendSource = readFileSync(join(here, '../../frontend/app.js'), 'utf8')
 
   const selectPolicy = migration.match(/create policy contexts_select[\s\S]*?;\n/)?.[0] || ''
   assert.match(selectPolicy, /visibility = 'team' or owner_id = \(select auth\.uid\(\)\)/)
@@ -159,6 +165,10 @@ test('contexts stay private and required skill sources load deterministically', 
   assert.match(migration, /profiles_departments_check/)
   assert.match(contextSource, /Privater persönlicher Kontext/)
   assert.match(contextSource, /Verbindlich geladene Kontexte/)
+  assert.match(syncMigration, /knowledge_update_id uuid references public\.knowledge_updates/)
+  assert.match(wikiSource, /mirrorContextProposal/)
+  assert.match(wikiSource, /publishContextFromKnowledgeUpdate/)
+  assert.match(frontendSource, /Wartet auf Freigabe/)
   assert.match(skillSource, /requiredContextsText/)
   assert.match(agentSource, /loadPersonalContextBlock/)
 })

@@ -1096,7 +1096,7 @@
   .installed-empty{color:var(--ink-3);font-size:12px}
   .access-badge{display:inline-flex;align-items:center;gap:6px;min-height:23px;padding:0 9px;border:1px solid var(--hair);border-radius:999px;color:var(--ink-3);font-size:10.5px;font-weight:650;white-space:nowrap}
   .crow>.access-badge{margin-left:auto}.c-right>.access-badge{margin:0}
-  .access-badge::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.72}.access-badge.open{color:var(--good);background:rgba(46,158,107,.06)}.access-badge.restricted{color:var(--warn);background:rgba(192,138,62,.07)}.access-badge.inactive{color:var(--ink-3);background:transparent}
+  .access-badge::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.72}.access-badge.open{color:var(--good);background:rgba(46,158,107,.06)}.access-badge.restricted{color:var(--warn);background:rgba(192,138,62,.07)}.access-badge.pending{color:var(--lila-deep);background:color-mix(in srgb,var(--lila) 8%,transparent)}.access-badge.inactive{color:var(--ink-3);background:transparent}
   .space-head-meta{display:flex;align-items:center;gap:8px;margin-top:5px}.space-head-meta #sh-sub{font-size:11.5px;color:var(--ink-3)}
   .space-quick-add{width:34px;height:34px}
   .nav-ico{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;opacity:.65}
@@ -2019,7 +2019,7 @@
   <div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="cx-title">
     <h3 id="cx-title">Kontext</h3>
     <div class="sk-grid"><div><label for="cx-name">Name</label><input type="text" id="cx-name" placeholder="z. B. enneo Brand Voice"></div><div><label for="cx-type">Typ</label><select id="cx-type" class="sk-select"><option value="knowledge">Wissen</option><option value="brand">Marke</option><option value="persona">Persona</option><option value="customer">Kunde</option></select></div></div>
-    <label for="cx-visibility">Zugriff</label><select id="cx-visibility" class="sk-select"><option value="personal">Restricted · nur du</option><option value="team">Open · alle Accounts</option></select>
+    <label for="cx-visibility">Zugriff</label><select id="cx-visibility" class="sk-select"><option value="personal">Restricted · nur du</option><option value="proposed" disabled>Wartet auf Freigabe</option><option value="team">Open · alle Accounts</option></select>
     <label for="cx-description">Kurzbeschreibung</label><input type="text" id="cx-description" placeholder="Wann und wofür dieser Kontext gilt">
     <label for="cx-content">Inhalt <span class="lbl-hint">— Markdown oder Klartext</span></label><textarea id="cx-content" rows="12"></textarea>
     <input type="file" id="cx-file" hidden accept=".md,.txt,text/markdown,text/plain"><button class="btn quiet" id="cx-import" type="button">Datei importieren</button><span class="pf-hint" id="cx-import-name" style="margin-left:8px">Markdown oder Text</span>

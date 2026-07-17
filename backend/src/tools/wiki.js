@@ -88,6 +88,71 @@ export async function reindexPage(page) {
   return rows.length
 }
 
+function contextTypeForSlug(slug) {
+  if (/brand|tonality|tone-of-voice/i.test(slug)) return 'brand'
+  if (/persona/i.test(slug)) return 'persona'
+  if (/customer|kunde|client/i.test(slug)) return 'customer'
+  return 'knowledge'
+}
+
+async function mirrorContextProposal(update, page) {
+  if (!update.slug?.startsWith('kontext/') || !update.triggered_by) return
+  if (page?.id) {
+    const { data: published } = await db.from('contexts').select('id')
+      .eq('wiki_page_id', page.id).eq('visibility', 'team').limit(1).maybeSingle()
+    if (published) return
+  }
+  const row = {
+    name: update.new_title || page?.title || update.slug.split('/').pop().replaceAll('-', ' '),
+    description: update.summary,
+    content: update.new_content,
+    context_type: contextTypeForSlug(update.slug),
+    visibility: 'proposed',
+    owner_id: update.triggered_by,
+    source: 'import',
+    created_by: update.triggered_by,
+    updated_by: update.triggered_by,
+    wiki_page_id: page?.id || null,
+    knowledge_update_id: update.id,
+    structured_data: { wiki_slug: update.slug, knowledge_update_id: update.id },
+  }
+  const { error } = await db.from('contexts').upsert(row, { onConflict: 'knowledge_update_id' })
+  if (error) throw new Error(`Kontext-Vorschlag konnte nicht gespiegelt werden: ${error.message}`)
+}
+
+async function publishContextFromKnowledgeUpdate(update, page, userId) {
+  if (!update.slug?.startsWith('kontext/')) return
+  const row = {
+    name: update.new_title || page.title,
+    description: update.summary,
+    content: page.content,
+    context_type: contextTypeForSlug(page.slug),
+    visibility: 'team',
+    owner_id: null,
+    source: 'import',
+    updated_by: userId,
+    wiki_page_id: page.id,
+    structured_data: { wiki_slug: page.slug, knowledge_update_id: update.id },
+  }
+  const [{ data: published }, { data: proposal }] = await Promise.all([
+    db.from('contexts').select('id').eq('wiki_page_id', page.id).eq('visibility', 'team').limit(1).maybeSingle(),
+    db.from('contexts').select('id').eq('knowledge_update_id', update.id).maybeSingle(),
+  ])
+  if (published) {
+    const { error } = await db.from('contexts').update(row).eq('id', published.id)
+    if (error) throw new Error(error.message)
+    if (proposal && proposal.id !== published.id) await db.from('contexts').delete().eq('id', proposal.id)
+    return
+  }
+  if (proposal) {
+    const { error } = await db.from('contexts').update(row).eq('id', proposal.id)
+    if (error) throw new Error(error.message)
+    return
+  }
+  const { error } = await db.from('contexts').insert({ ...row, created_by: userId, knowledge_update_id: update.id })
+  if (error) throw new Error(error.message)
+}
+
 // Kompakter Zeilen-Diff für die Learn-Karte (gemeinsamer Prefix/Suffix raus, Mitte als -/+)
 function lineDiff(oldText, newText) {
   const a = (oldText || '').split('\n')
@@ -217,9 +282,10 @@ export async function runWikiTool(name, input, ctx = {}) {
         triggered_by: ctx.userId || null,
         source_conversation_id: ctx.conversationId || null,
       })
-      .select('id')
+      .select('id, triggered_by, slug, new_title, new_content, summary, wiki_page_id')
       .single()
     if (error) throw new Error(error.message)
+    await mirrorContextProposal(data, page)
     return JSON.stringify({
       update_id: data.id,
       status: 'proposed',
@@ -335,6 +401,7 @@ export async function applyKnowledgeUpdate(updateId, userId) {
     }
     // RAG sofort aktuell halten — sonst antwortet die Semantik-Suche mit altem Stand
     const n = await reindexPage(page)
+    await publishContextFromKnowledgeUpdate(u, page, userId)
     result = `Seite "${page.slug}" aktualisiert, ${n} RAG-Chunks neu indexiert.`
   } catch (err) {
     // Enum kennt nur proposed/approved/rejected → bei Apply-Fehler bleibt der Vorschlag proposed,
@@ -360,6 +427,9 @@ export async function rejectKnowledgeUpdate(updateId, userId) {
   const { data: u } = await db.from('knowledge_updates').select('status').eq('id', updateId).maybeSingle()
   if (!u) throw new Error('Vorschlag nicht gefunden')
   if (u.status !== 'proposed') throw new Error(`Vorschlag ist bereits ${u.status}`)
+  const { error: contextError } = await db.from('contexts').delete()
+    .eq('knowledge_update_id', updateId).eq('visibility', 'proposed')
+  if (contextError) throw new Error(contextError.message)
   await db
     .from('knowledge_updates')
     .update({ status: 'rejected', reviewed_by: userId, reviewed_at: new Date().toISOString() })

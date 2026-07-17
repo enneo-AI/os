@@ -6437,7 +6437,9 @@ function renderContextList(filter = '') {
     const personalProfile = context.context_type === 'personal_profile'
     const scope = context.visibility === 'team'
       ? '<span class="access-badge open">Open</span>'
-      : '<span class="access-badge restricted">Restricted · nur du</span>'
+      : context.visibility === 'proposed'
+        ? '<span class="access-badge pending">Wartet auf Freigabe</span>'
+        : '<span class="access-badge restricted">Restricted · nur du</span>'
     row.innerHTML = `<span class="c-logo" style="background:none;border-style:dashed">${personalProfile ? '⌾' : '⌁'}</span><div><div class="c-name">${esc(context.name)}</div><div class="c-sub">${esc(context.description || context.content.split('\n').find(Boolean) || 'Ohne Beschreibung')}</div></div>${scope}`
     row.addEventListener('click', () => openContext(context))
     $('context-list').appendChild(row)
@@ -6448,12 +6450,13 @@ async function openContext(context = null) {
   const { is_admin } = await ownProfile()
   editingContext = context
   const personalProfile = context?.context_type === 'personal_profile'
-  const canEdit = !context || context.owner_id === session.user.id || (is_admin && context.visibility === 'team')
+  const pendingReview = context?.visibility === 'proposed' && !!context.knowledge_update_id
+  const canEdit = !pendingReview && (!context || context.owner_id === session.user.id || (is_admin && context.visibility === 'team'))
   $('cx-title').textContent = context?.name || 'Neuer Kontext'
   $('cx-name').value = context?.name || ''
   if (personalProfile && !$('cx-type').querySelector('option[value="personal_profile"]')) $('cx-type').insertAdjacentHTML('beforeend', '<option value="personal_profile">Persönliches Profil</option>')
   $('cx-type').value = personalProfile ? 'personal_profile' : (context?.context_type || 'knowledge')
-  $('cx-visibility').value = context?.visibility || (is_admin ? 'team' : 'personal')
+  $('cx-visibility').value = pendingReview ? 'proposed' : (context?.visibility || (is_admin ? 'team' : 'personal'))
   $('cx-visibility').querySelector('option[value="team"]').disabled = !is_admin
   $('cx-description').value = context?.description || ''
   $('cx-content').value = context?.content || ''
