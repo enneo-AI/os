@@ -7,7 +7,7 @@
 - **Keine Sonderrubrik:** Freigegebene Research-Connectoren erscheinen direkt unter `Read & Write` oder `Read-only`; die zusätzliche Überschrift „Von Enni recherchiert“ wurde entfernt.
 - **Echte Anbieterlogos:** Der Research-Blueprint speichert eine verifizierte HTTPS-Logo-/Favicon-URL. Metadaten der offiziellen Quellen haben Vorrang, ein Domain-Favicon dient als deterministischer Fallback. TickTick wurde live auf das TickTick-Logo von Simple Icons zurückgefüllt.
 - **Nur zwei verständliche Zugriffsarten:** Neue Blueprints erlauben ausschließlich `read_only` und `read_write`. Sobald irgendeine Capability erstellt, verändert oder löscht, landet die Integration in `Read & Write`. Marketplace-Karte und Detailansicht zeigen den Zugriff ausdrücklich.
-- **Verifiziert:** JavaScript-Syntax, Diff-Check und Backend-Tests 12/12 grün.
+- **Verifiziert und live:** JavaScript-Syntax, Diff-Check und Backend-Tests 12/12 grün. Production-Browserprüfung bestätigt TickTick unter `Read & Write`, geladenes Logo (`150 px` intrinsische Breite) und keine alte Sonderüberschrift. Railway-Deployment `eab43eba-8f57-4caf-b25d-8eef9c6e6c2f` ist `SUCCESS`; Netlify liefert Commit `c9a5d82`. Temporärer Testaccount wurde entfernt.
 
 ### Session 2026-07-17 — Context Foundation aus Tristan-Feedback
 
