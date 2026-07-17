@@ -7,7 +7,7 @@
 - **Kuratierter Connector:** Lemlist erscheint ohne Research-Sonderrubrik direkt unter `Read & Write`, mit offiziellem Lemlist-Favicon, dem offiziellen Remote-MCP-Endpunkt `https://app.lemlist.com/mcp` und vorgewählter `X-API-Key`-Authentifizierung.
 - **Einrichtungsweg:** Jeder Nutzer kann in Lemlist unter Settings → Team → Integrations einen API-Key erzeugen und im enneo-OS-Dialog eintragen. Der Key wird ausschließlich verschlüsselt gespeichert. Die Connection bleibt für Enni inaktiv, bis sie einem Open oder Restricted Space zugeordnet wird.
 - **Reconnect-sicher:** Erneutes Verbinden desselben MCP-Endpunkts im selben Account-Scope ersetzt die vorherige Connection und übernimmt deren Space-Zuordnungen, statt Duplikate zu erzeugen.
-- **Offiziell verifiziert:** Lemlists `/mcp/health` antwortet mit HTTP 200; offizielle Developer- und Help-Center-Dokumentation bestätigt Remote MCP, `X-API-Key` und schreibende Campaign-/Lead-/Inbox-/Webhook-Funktionen. JavaScript-Syntax, Diff-Check und Backend-Tests 14/14 grün.
+- **Offiziell und produktiv verifiziert:** Lemlists `/mcp/health` antwortet mit HTTP 200; offizielle Developer- und Help-Center-Dokumentation bestätigt Remote MCP, `X-API-Key` und schreibende Campaign-/Lead-/Inbox-/Webhook-Funktionen. JavaScript-Syntax, Diff-Check und Backend-Tests 14/14 grün. Commit `1fb1035` ist auf `main`, Railway-Deployment `efb42e71-f4ed-404d-a601-8167b1daa50f` ist `SUCCESS` und `/health` grün. Der Browser-Smoke auf `os.enneo.ai` bestätigte genau einen Lemlist-Eintrag unter `Read & Write`, das offizielle Logo sowie den mit MCP-URL und `X-API-Key` vorausgefüllten Verbindungsdialog; der temporäre QA-Account wurde anschließend gelöscht.
 
 ### Session 2026-07-17 — Kompakte Bibliothek + Team-Zugänge
 
