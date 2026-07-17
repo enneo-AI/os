@@ -419,6 +419,24 @@ test('Pod conversations use real threads and keep Enni active selectively', () =
   assert.match(frontendSource, /attachments: attachments\.length \? attachments : undefined/)
 })
 
+test('Pod members can delete only their own messages', () => {
+  const frontendSource = readFileSync(join(here, '../../frontend/app.js'), 'utf8')
+  const frontendHtml = readFileSync(join(here, '../../frontend/index.html'), 'utf8')
+  const migration = readFileSync(
+    join(here, '../../supabase/migrations/20260717200000_delete_own_pod_messages.sql'),
+    'utf8'
+  )
+
+  assert.match(migration, /author_id = \(select auth\.uid\(\)\)/)
+  assert.match(migration, /c\.pod_id is not null/)
+  assert.match(migration, /public\.is_pod_visible\(c\.pod_id\)/)
+  assert.match(migration, /replica identity full/)
+  assert.match(frontendSource, /function attachOwnMessageDelete/)
+  assert.match(frontendSource, /async function deleteOwnPodMessage/)
+  assert.match(frontendSource, /Hauptnachricht löschen\? Dadurch werden auch/)
+  assert.match(frontendHtml, /\.message-delete/)
+})
+
 test('impact reporting labels estimates and records skill usage', () => {
   const indexSource = readFileSync(join(here, '../src/index.js'), 'utf8')
   const frontendSource = readFileSync(join(here, '../../frontend/app.js'), 'utf8')

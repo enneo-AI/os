@@ -1295,6 +1295,52 @@ function renderUser(text, attachments, profile = myProfile) {
   return wrapPersonMessage(el, profile, true)
 }
 
+const DELETE_MESSAGE_ICON = '<svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="m7 7 1 13h8l1-13"/><path d="M10 11v5M14 11v5"/></svg>'
+
+function attachOwnMessageDelete(node, message, replyCount = 0) {
+  if (!convPod || message.author_id !== session.user.id || message.role !== 'user') return node
+  const bubble = node.classList.contains('m-user') ? node : node.querySelector('.m-user')
+  if (!bubble || bubble.querySelector('.message-delete')) return node
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = 'message-delete'
+  button.title = 'Eigene Nachricht löschen'
+  button.setAttribute('aria-label', 'Eigene Nachricht löschen')
+  button.innerHTML = DELETE_MESSAGE_ICON
+  button.addEventListener('click', (event) => {
+    event.stopPropagation()
+    deleteOwnPodMessage(message, replyCount)
+  })
+  bubble.appendChild(button)
+  return node
+}
+
+async function deleteOwnPodMessage(message, replyCount = 0) {
+  if (!convPod || message.author_id !== session.user.id) return
+  if (activeStreams.has(currentConv?.id) || currentConv?.working) {
+    window.alert('Während Enni in dieser Konversation arbeitet, kann die Nachricht noch nicht gelöscht werden.')
+    return
+  }
+  const isRoot = !message.thread_root_id
+  const question = isRoot && replyCount
+    ? `Hauptnachricht löschen? Dadurch werden auch ${replyCount} Thread-Antwort${replyCount === 1 ? '' : 'en'} gelöscht.`
+    : 'Diese eigene Nachricht wirklich löschen?'
+  if (!window.confirm(question)) return
+  const { error } = await sb.from('messages').delete().eq('id', message.id).eq('author_id', session.user.id)
+  if (error) {
+    window.alert('Nachricht konnte nicht gelöscht werden: ' + error.message)
+    return
+  }
+  currentMessageRows = currentMessageRows.filter((item) => item.id !== message.id && item.thread_root_id !== message.id)
+  if (isRoot) {
+    document.querySelector(`.thread-root-wrap[data-message-id="${message.id}"]`)?.remove()
+    if (activeThreadRootId === message.id) closeThread()
+  } else {
+    await refreshThreadSummary(message.thread_root_id)
+    if (activeThreadRootId === message.thread_root_id) await openThread(message.thread_root_id)
+  }
+}
+
 function renderPeer(profile, text, attachments) {
   const el = document.createElement('div')
   el.className = 'm-peer'
@@ -1333,6 +1379,7 @@ function decorateThreadRoot(node, message, replies = []) {
   button.innerHTML = `${THREAD_ICON}<span>${replies.length ? `${replies.length} Antwort${replies.length === 1 ? '' : 'en'}` : 'Antworten'}</span>${people ? `<span class="thread-count">· ${people} Team</span>` : ''}`
   button.setAttribute('aria-label', replies.length ? `Thread mit ${replies.length} Antworten öffnen` : 'Auf diese Nachricht antworten')
   button.addEventListener('click', () => openThread(message.id))
+  attachOwnMessageDelete(node, message, replies.length)
   outer.append(node, button)
   return outer
 }
@@ -1372,6 +1419,8 @@ async function openThread(rootId) {
       node = renderAgent(message.content, message.thinking, message.tool_calls || [], costs[message.id], message.duration_ms)
     }
     if (!node) continue
+    node.dataset.messageId = message.id
+    if (message.role === 'user') attachOwnMessageDelete(node, message, message.id === rootId ? Math.max(0, (rows || []).length - 1) : 0)
     if (message.id === rootId) node.classList.add('thread-root')
     box.appendChild(node)
   }
@@ -4631,7 +4680,7 @@ async function send() {
               author_id: session.user.id,
               thread_root_id: null,
             }
-            currentMessageRows.push(rootMessage)
+            if (!currentMessageRows.some((item) => item.id === rootMessage.id)) currentMessageRows.push(rootMessage)
             const decorated = decorateThreadRoot(optimisticNode, rootMessage, [])
             optimisticNode.replaceWith(decorated)
             optimisticNode = decorated
@@ -7515,10 +7564,23 @@ function subscribeConvMessages(convId) {
     .channel('msgs-' + convId)
     .on(
       'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${convId}` },
+      { event: '*', schema: 'public', table: 'messages', filter: `conversation_id=eq.${convId}` },
       async (p) => {
-        const m = p.new
+        const m = p.new?.id ? p.new : p.old
         if (currentConv?.id !== convId) return
+        if (p.eventType === 'DELETE') {
+          const cached = currentMessageRows.find((item) => item.id === m.id)
+          currentMessageRows = currentMessageRows.filter((item) => item.id !== m.id && item.thread_root_id !== m.id)
+          if (cached?.thread_root_id) {
+            refreshThreadSummary(cached.thread_root_id)
+            if (activeThreadRootId === cached.thread_root_id) openThread(cached.thread_root_id)
+          } else {
+            document.querySelector(`.thread-root-wrap[data-message-id="${m.id}"]`)?.remove()
+            if (activeThreadRootId === m.id) closeThread()
+          }
+          return
+        }
+        if (!currentMessageRows.some((item) => item.id === m.id)) currentMessageRows.push(m)
         if (m.thread_root_id) {
           refreshThreadSummary(m.thread_root_id)
           if (activeThreadRootId === m.thread_root_id && !activeStreams.has(convId)) openThread(m.thread_root_id)
