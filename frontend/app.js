@@ -5378,6 +5378,7 @@ let toolResearchAdmin = false
 let toolResearchPoll = null
 let currentToolResearch = null
 let marketplaceConnectorRows = []
+let toolResearchLoadVersion = 0
 
 // Official Remote-MCP integrations that enneo OS supports directly. Lemlist
 // documents browser OAuth with discovery, PKCE and token refresh as the
@@ -5390,7 +5391,29 @@ const CURATED_MCP_CONNECTORS = [{
   auth_type: 'mcp_oauth',
   oauth_provider: 'lemlist',
   access_mode: 'read_write',
+}, {
+  display_name: 'TickTick',
+  summary: 'Tasks, Listen, Habits, Fokus & Countdowns',
+  logo_url: 'https://cdn.simpleicons.org/ticktick/4772FA',
+  mcp_url: 'https://mcp.ticktick.com',
+  auth_type: 'mcp_oauth',
+  oauth_provider: 'ticktick',
+  access_mode: 'read_write',
 }]
+
+function normalizedMcpUrl(value) {
+  try {
+    const url = new URL(value)
+    return `${url.origin}${url.pathname.replace(/\/+$/, '')}`.toLowerCase()
+  } catch { return '' }
+}
+
+function blueprintIdentityKeys(blueprint = {}, fallbackName = '') {
+  const name = String(blueprint.display_name || fallbackName).trim().toLowerCase()
+  const slug = String(blueprint.slug || '').trim().toLowerCase()
+  const url = normalizedMcpUrl(blueprint.mcp_url)
+  return [url && `url:${url}`, slug && `slug:${slug}`, name && `name:${name}`].filter(Boolean)
+}
 
 const researchTypeLabel = (type) => ({
   remote_mcp: 'Remote MCP', oauth2: 'OAuth 2.0', api_key: 'API-Key', webhook: 'Webhook', unsupported: 'Kein sicherer Weg gefunden',
@@ -5444,6 +5467,7 @@ function renderCuratedMcpConnector(blueprint, target) {
 }
 
 async function loadToolResearch() {
+  const loadVersion = ++toolResearchLoadVersion
   clearTimeout(toolResearchPoll)
   const readWrite = $('researched-read-write')
   const readOnly = $('researched-read-only')
@@ -5454,6 +5478,7 @@ async function loadToolResearch() {
   }
   try {
     const { requests } = await fetchToolResearch()
+    if (loadVersion !== toolResearchLoadVersion) return
     const activity = $('tool-research-activity')
     const active = requests.filter((item) => item.status !== 'approved').slice(0, 8)
     activity.innerHTML = ''
@@ -5468,7 +5493,17 @@ async function loadToolResearch() {
       activity.appendChild(row)
     }
 
-    const approved = requests.filter((item) => item.status === 'approved')
+    const curatedKeys = new Set(CURATED_MCP_CONNECTORS.flatMap((item) => blueprintIdentityKeys(item, item.display_name)))
+    const seenApproved = new Set()
+    const approved = requests.filter((item) => {
+      if (item.status !== 'approved') return false
+      const keys = blueprintIdentityKeys(item.research, item.name)
+      if (keys.some((key) => curatedKeys.has(key))) return false
+      const primary = keys[0] || `id:${item.id}`
+      if (seenApproved.has(primary)) return false
+      seenApproved.add(primary)
+      return true
+    })
     for (const item of approved) {
       const blueprint = item.research || {}
       const row = document.createElement('button')
@@ -5716,27 +5751,64 @@ function showOAuthResult(type, title, detail = '') {
   box.innerHTML = `<span class="oauth-result-icon">${icon}</span><span><strong>${esc(title)}</strong>${detail ? ` · ${esc(detail)}` : ''}</span>`
 }
 
+const OAUTH_RESULT_STORAGE_KEY = 'enneo-oauth-result'
+
+function oauthProviderLabel(provider) {
+  return NATIVE_CONNECTORS[provider]?.label
+    || CURATED_MCP_CONNECTORS.find((item) => item.oauth_provider === provider)?.display_name
+    || null
+}
+
+function showOAuthReturnPayload({ provider, status, workspace, reason }) {
+  const label = oauthProviderLabel(provider)
+  if (!label) return false
+  if (status === 'connected') {
+    showOAuthResult('success', `${label} ist verbunden`, `${workspace ? workspace + ' · ' : ''}Noch keinem Space zugeordnet und deshalb für Enni inaktiv.`)
+  } else {
+    const detail = reason === 'cancelled' ? 'Die Verbindung wurde abgebrochen.' : 'Bitte versuche die Verbindung erneut.'
+    showOAuthResult('error', `${label} konnte nicht verbunden werden`, detail)
+  }
+  return true
+}
+
+function openOAuthBrowserTab(provider) {
+  const oauthTab = window.open('about:blank', `enneo-oauth-${provider}`)
+  if (!oauthTab) return null
+  try { oauthTab.opener = null } catch {}
+  return oauthTab
+}
+
+function sendOAuthTab(oauthTab, url) {
+  if (oauthTab && !oauthTab.closed) oauthTab.location.replace(url)
+  else location.assign(url)
+}
+
 function handleOAuthReturn() {
   const params = new URLSearchParams(location.search)
   const provider = params.get('oauth')
-  const label = NATIVE_CONNECTORS[provider]?.label || (provider === 'lemlist' ? 'Lemlist' : null)
-  if (!provider || !label) return
-  if (params.get('status') === 'connected') {
-    const workspace = params.get('workspace')
-    showOAuthResult('success', `${label} ist verbunden`, `${workspace ? workspace + ' · ' : ''}Noch keinem Space zugeordnet und deshalb für Enni inaktiv.`)
-  } else {
-    const detail = params.get('reason') === 'cancelled'
-      ? 'Die Verbindung wurde abgebrochen.'
-      : 'Bitte versuche die Verbindung erneut.'
-    showOAuthResult('error', `${label} konnte nicht verbunden werden`, detail)
-  }
+  if (!provider) return
+  const payload = { provider, status: params.get('status'), workspace: params.get('workspace'), reason: params.get('reason') }
+  if (!showOAuthReturnPayload(payload)) return
+  localStorage.setItem(OAUTH_RESULT_STORAGE_KEY, JSON.stringify({ ...payload, completedAt: Date.now(), nonce: crypto.randomUUID?.() || Math.random() }))
   const clean = new URL(location.href)
   for (const key of ['oauth', 'status', 'workspace', 'reason']) clean.searchParams.delete(key)
   history.replaceState({}, '', clean)
+  if (payload.status === 'connected' && window.name === `enneo-oauth-${provider}`) setTimeout(() => window.close(), 1200)
 }
 
+window.addEventListener('storage', async (event) => {
+  if (event.key !== OAUTH_RESULT_STORAGE_KEY || !event.newValue) return
+  try {
+    const payload = JSON.parse(event.newValue)
+    if (!showOAuthReturnPayload(payload)) return
+    toolCatalogCache = null
+    await Promise.all([loadConnectorRows(), loadSpacesTree()])
+  } catch {}
+})
+
 async function startMcpOAuth(provider, label) {
-  showOAuthResult('success', `${label}-Login wird geöffnet`, 'Du meldest dich direkt beim Anbieter an. enneo OS erhält niemals dein Passwort.')
+  const oauthTab = openOAuthBrowserTab(provider)
+  showOAuthResult('success', `${label}-Login im neuen Tab geöffnet`, 'Du meldest dich direkt beim Anbieter an. enneo OS erhält niemals dein Passwort.')
   try {
     const res = await fetch(`${BACKEND_URL}/api/mcp/oauth/${provider}/start`, {
       method: 'POST',
@@ -5744,14 +5816,16 @@ async function startMcpOAuth(provider, label) {
     })
     const data = await res.json().catch(() => ({}))
     if (!res.ok || !data.url) throw new Error(data.error || 'Anbieter-Login konnte nicht gestartet werden')
-    location.assign(data.url)
+    sendOAuthTab(oauthTab, data.url)
   } catch (err) {
+    oauthTab?.close()
     showOAuthResult('error', `${label} konnte nicht verbunden werden`, err.message)
   }
 }
 
 async function startProviderOAuth(provider) {
   const cfg = NATIVE_CONNECTORS[provider]
+  const oauthTab = openOAuthBrowserTab(provider)
   const status = $(cfg.status)
   const previous = status.innerHTML
   status.className = 'c-right off'
@@ -5765,13 +5839,15 @@ async function startProviderOAuth(provider) {
     })
     const data = await res.json()
     if (res.status === 409 && is_admin) {
+      oauthTab?.close()
       status.innerHTML = previous
       openOAuthSetup(provider)
       return
     }
     if (!res.ok || !data.url) throw new Error(data.error || 'OAuth-Start fehlgeschlagen')
-    location.assign(data.url)
+    sendOAuthTab(oauthTab, data.url)
   } catch (err) {
+    oauthTab?.close()
     status.innerHTML = previous
     showOAuthResult('error', `${cfg.label} ist noch nicht bereit`, err.message)
   }

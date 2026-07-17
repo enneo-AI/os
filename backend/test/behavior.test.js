@@ -192,7 +192,7 @@ test('researched integrations join the existing permission sections with provide
   assert.doesNotMatch(frontendSource, /Von Enni recherchiert/)
 })
 
-test('Lemlist uses personal OAuth and keeps safe reconnects', () => {
+test('curated MCPs use personal OAuth, new tabs and deduplicated rendering', () => {
   const frontendSource = readFileSync(join(here, '../../frontend/app.js'), 'utf8')
   const frontendHtml = readFileSync(join(here, '../../frontend/index.html'), 'utf8')
   const indexSource = readFileSync(join(here, '../src/index.js'), 'utf8')
@@ -204,6 +204,9 @@ test('Lemlist uses personal OAuth and keeps safe reconnects', () => {
   assert.match(frontendSource, /https:\/\/app\.lemlist\.com\/mcp/)
   assert.match(frontendSource, /auth_type: 'mcp_oauth'/)
   assert.match(frontendSource, /oauth_provider: 'lemlist'/)
+  assert.match(frontendSource, /display_name: 'TickTick'/)
+  assert.match(frontendSource, /https:\/\/mcp\.ticktick\.com/)
+  assert.match(frontendSource, /oauth_provider: 'ticktick'/)
   assert.match(frontendSource, /startMcpOAuth/)
   assert.match(frontendSource, /access_mode: 'read_write'/)
   assert.match(frontendSource, /https:\/\/www\.lemlist\.com\/favicon\.ico/)
@@ -212,7 +215,9 @@ test('Lemlist uses personal OAuth and keeps safe reconnects', () => {
   assert.doesNotMatch(frontendSource, /cn-owner/)
   assert.match(indexSource, /const owner = personal \? user\.id : null/)
   assert.match(indexSource, /\/api\/mcp\/oauth\/:provider\/start/)
+  assert.match(indexSource, /\/api\/mcp\/oauth\/:provider\/callback/)
   assert.match(oauthSource, /token_endpoint_auth_method: 'none'/)
+  assert.match(oauthSource, /ticktick:/)
   assert.match(oauthSource, /saveClientInformation/)
   assert.match(oauthSource, /visibility: 'personal'/)
   assert.match(mcpSource, /oauthProviderForConnector/)
@@ -221,6 +226,11 @@ test('Lemlist uses personal OAuth and keeps safe reconnects', () => {
   assert.match(migration, /mcp_oauth_sessions/)
   assert.match(migration, /oauth_client_information/)
   assert.match(migration, /revoke all.*authenticated/s)
+  assert.match(frontendSource, /window\.open\('about:blank'/)
+  assert.match(frontendSource, /OAUTH_RESULT_STORAGE_KEY/)
+  assert.match(frontendSource, /window\.addEventListener\('storage'/)
+  assert.match(frontendSource, /toolResearchLoadVersion/)
+  assert.match(frontendSource, /curatedKeys/)
 })
 
 test('marketplace connections stay dormant until an accessible Space activates them', () => {

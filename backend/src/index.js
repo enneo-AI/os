@@ -1541,10 +1541,13 @@ app.post('/api/mcp/oauth/:provider/start', async (req, res) => {
   }
 })
 
-app.get('/api/mcp/oauth/callback', async (req, res) => {
+app.get('/api/mcp/oauth/:provider/callback', async (req, res) => {
   try {
-    const { completeMcpOAuth } = await import('./mcp-oauth.js')
+    const { MCP_OAUTH_SERVERS, completeMcpOAuth } = await import('./mcp-oauth.js')
+    const provider = req.params.provider
+    if (!MCP_OAUTH_SERVERS[provider]) return res.status(404).send('OAuth-MCP nicht gefunden')
     const url = await completeMcpOAuth({
+      provider,
       code: String(req.query.code || ''),
       state: String(req.query.state || ''),
       deniedError: String(req.query.error || ''),
@@ -1553,7 +1556,7 @@ app.get('/api/mcp/oauth/callback', async (req, res) => {
   } catch (err) {
     console.error('MCP OAuth Callback:', err.message)
     const { mcpOAuthErrorUrl } = await import('./mcp-oauth.js')
-    res.redirect(303, mcpOAuthErrorUrl('lemlist', 'callback_failed'))
+    res.redirect(303, mcpOAuthErrorUrl(req.params.provider, 'callback_failed'))
   }
 })
 

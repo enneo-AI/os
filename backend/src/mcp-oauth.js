@@ -16,9 +16,14 @@ export const MCP_OAUTH_SERVERS = {
     url: 'https://app.lemlist.com/mcp',
     category: 'tool',
   },
+  ticktick: {
+    label: 'TickTick',
+    url: 'https://mcp.ticktick.com',
+    category: 'tool',
+  },
 }
 
-export const mcpOAuthRedirectUri = () => `${backendOrigin()}/api/mcp/oauth/callback`
+export const mcpOAuthRedirectUri = (provider) => `${backendOrigin()}/api/mcp/oauth/${provider}/callback`
 
 function parseEncryptedJson(value) {
   const raw = decryptSecret(value)
@@ -37,6 +42,8 @@ class PersistentMcpOAuthProvider {
     this._state = state
     this._session = session
     this._connector = connector
+    this._provider = session?.provider || Object.entries(MCP_OAUTH_SERVERS)
+      .find(([, meta]) => meta.url.replace(/\/$/, '') === connector?.url?.replace(/\/$/, ''))?.[0]
     this._authorizationUrl = null
     this._codeVerifier = session?.code_verifier ? decryptSecret(session.code_verifier) : null
     this._clientInformation = parseEncryptedJson(session?.client_information || connector?.oauth_client_information)
@@ -47,7 +54,10 @@ class PersistentMcpOAuthProvider {
     } : undefined
   }
 
-  get redirectUrl() { return mcpOAuthRedirectUri() }
+  get redirectUrl() {
+    if (!this._provider) throw new Error('OAuth-MCP-Anbieter konnte nicht bestimmt werden')
+    return mcpOAuthRedirectUri(this._provider)
+  }
 
   get clientMetadata() {
     return {
@@ -173,9 +183,10 @@ async function loadOAuthSession(state) {
   return data
 }
 
-export async function completeMcpOAuth({ code, state, deniedError }) {
+export async function completeMcpOAuth({ provider, code, state, deniedError }) {
   const session = await loadOAuthSession(state)
   try {
+    if (session.provider !== provider) throw new Error('OAuth-Anbieter stimmt nicht mit dem State überein')
     if (deniedError) return resultUrl(session.provider, 'error', { reason: deniedError === 'access_denied' ? 'cancelled' : 'provider_error' })
     if (!code) return resultUrl(session.provider, 'error', { reason: 'missing_code' })
     const oauthProvider = new PersistentMcpOAuthProvider({ state, session })
