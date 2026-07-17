@@ -361,6 +361,8 @@ test('Marketplace account login is separated from technical platform enablement'
   assert.match(oauthSource, /attio:[\s\S]*https:\/\/mcp\.attio\.com\/mcp/)
   assert.match(frontendSource, /mcpProvider: 'notion'/)
   assert.match(frontendSource, /mcpProvider: 'attio'/)
+  assert.match(frontendSource, /nativeSubConnected: 'CRM-Daten und Meetings · Read-only'/)
+  assert.match(frontendSource, /const targetMode = legacyNative \? cfg\.nativeAccessMode : cfg\.accessMode/)
   assert.match(frontendSource, /Account verbinden/)
   assert.match(frontendSource, /Admin-Freigabe fehlt/)
   assert.doesNotMatch(frontendSource, /isAdmin \? '<span class="connector-setup">Einrichten/)

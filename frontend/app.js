@@ -5891,8 +5891,8 @@ async function loadConnectorRows() {
 const NATIVE_CONNECTORS = {
   outlook: { row: 'outlook-row', status: 'outlook-status', sub: 'outlook-sub', label: 'Outlook', icon: '/icons/outlook.svg', subConnected: 'E-Mails und Kalender · Read-only', subDefault: 'E-Mails und Kalender · Read-only' },
   google_drive: { row: 'google_drive-row', status: 'google_drive-status', sub: 'google_drive-sub', label: 'Google Drive', icon: '/icons/google-drive.svg', subConnected: 'Dokumente und Ordner · Read-only', subDefault: 'Dokumente und Ordner · Read-only' },
-  notion: { row: 'notion-row', status: 'notion-status', sub: 'notion-sub', label: 'Notion', icon: '/icons/notion.svg', mcpProvider: 'notion', mcpUrl: 'https://mcp.notion.com/mcp', subConnected: 'Seiten und Datenbanken · Read & Write', subDefault: 'Seiten und Datenbanken · Read & Write' },
-  attio: { row: 'attio-row', status: 'attio-status', sub: 'attio-sub', label: 'Attio', icon: '/icons/attio.ico', mcpProvider: 'attio', mcpUrl: 'https://mcp.attio.com/mcp', subConnected: 'CRM, Aufgaben und Notizen · Read & Write', subDefault: 'CRM, Aufgaben und Notizen · Read & Write' },
+  notion: { row: 'notion-row', status: 'notion-status', sub: 'notion-sub', label: 'Notion', icon: '/icons/notion.svg', mcpProvider: 'notion', mcpUrl: 'https://mcp.notion.com/mcp', accessMode: 'read_write', nativeAccessMode: 'read_only', nativeSubConnected: 'Seiten und Datenbanken · Read-only', subConnected: 'Seiten und Datenbanken · Read & Write', subDefault: 'Seiten und Datenbanken · Read & Write' },
+  attio: { row: 'attio-row', status: 'attio-status', sub: 'attio-sub', label: 'Attio', icon: '/icons/attio.ico', mcpProvider: 'attio', mcpUrl: 'https://mcp.attio.com/mcp', accessMode: 'read_write', nativeAccessMode: 'read_only', nativeSubConnected: 'CRM-Daten und Meetings · Read-only', subConnected: 'CRM, Aufgaben und Notizen · Read & Write', subDefault: 'CRM, Aufgaben und Notizen · Read & Write' },
   slack: { row: 'slack-row', status: 'slack-status', sub: 'slack-sub', label: 'Slack', icon: '/icons/slack.svg', subConnected: 'Channels und Threads · Read-only', subDefault: 'Channels und Threads · Read-only' },
 }
 let marketplaceAccessFilter = 'all'
@@ -6102,6 +6102,13 @@ $('oauth-setup-save').addEventListener('click', async () => {
 function renderNativeRow(kind, conn, isAdmin, me, activeSpaces = []) {
   const cfg = NATIVE_CONNECTORS[kind]
   nativeState[kind] = conn
+  const legacyNative = !!(conn && cfg.mcpProvider && conn.kind === kind)
+  if (cfg.accessMode && cfg.nativeAccessMode) {
+    const targetMode = legacyNative ? cfg.nativeAccessMode : cfg.accessMode
+    const target = document.querySelector(`#v-marketplace [data-market-access="${targetMode}"] .market-grid`)
+    const marker = target?.querySelector(targetMode === 'read_write' ? '#researched-read-write' : '#researched-read-only')
+    if (target && marker) target.insertBefore($(cfg.row), marker)
+  }
   const status = $(cfg.status)
   const sub = $(cfg.sub)
   if (!status) return
@@ -6111,9 +6118,10 @@ function renderNativeRow(kind, conn, isAdmin, me, activeSpaces = []) {
     status.className = `c-right`
     status.innerHTML = `<span class="access-badge ${access.cls}">${access.label}</span>` +
       (isAdmin || mine ? `<button class="c-del" data-native-del="${kind}" title="Trennen" style="display:inline-flex;margin-left:8px"><svg viewBox="0 0 24 24"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg></button>` : '')
+    const connectedDescription = legacyNative ? cfg.nativeSubConnected : cfg.subConnected
     const base = conn.external_account_name
-      ? `${conn.external_account_name} · ${cfg.subConnected}`
-      : cfg.subConnected
+      ? `${conn.external_account_name} · ${connectedDescription}`
+      : connectedDescription
     sub.textContent = `${base}${activeSpaces.length ? ` · ${activeSpaces.map((space) => space.name).join(', ')}` : ''}`
     status.querySelector('[data-native-del]')?.addEventListener('click', async (e) => {
       e.stopPropagation()
