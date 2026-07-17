@@ -1,6 +1,14 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-17 (Marketplace-Connections werden erst durch Spaces aktiv)
+**Zuletzt aktualisiert:** 2026-07-17 (kompakte Bibliothek und einheitliches Zugriffsmodell)
+
+### Session 2026-07-17 — Kompakte Bibliothek + Team-Zugänge
+
+- **Eine Sprache für Zugriff:** Die Oberflächen für Spaces, Marketplace, Kontexte, Skills und Routinen verwenden nur noch `Open` und `Restricted`. Persönliche Inhalte sind kein dritter Modus, sondern `Restricted · nur du`; geteilte Restricted-Inhalte sind auf die ausgewählten Mitglieder begrenzt.
+- **Codex-inspirierte Bibliothek:** Der frühere Bereich „Enni konfigurieren“ heißt `Bibliothek`. Marketplace, Kontexte, Skills und Routinen verwenden kompakte Header, Icon-Aktionen, Suche, Access-Filter und zweispaltige Listen statt langer Erklärblöcke und rein vertikaler Karten.
+- **Provider, Account und Enni-Zugriff getrennt:** Ein Admin kann eine App wie Outlook organisationsweit bereitstellen, jeder Nutzer verbindet darin seinen eigenen Account, und erst die Zuordnung der konkreten Connection zu einem Open oder Restricted Space aktiviert sie für Enni. Der Marketplace zeigt verbundene Accounts kompakt, vergibt aber selbst keine Ausführungsrechte.
+- **Team-Rollout:** Die bestehenden Accounts von Murat Alkan, Diana Schröter und Mehmet Caliskan erhielten neue einmalige Startpasswörter; Christ Kilchling wurde neu angelegt. Alle vier sind aktive Nicht-Admins mit zurückgesetztem Onboarding und Produkttour. Startpasswörter werden bewusst nicht in Git oder Handoff gespeichert.
+- **Verifikation:** Backend-Tests 13/13, JavaScript-Syntax und Diff-Check grün. Der neue Marketplace wurde mit einem echten temporären Account gegen die Production-Daten geprüft; der Testaccount wurde anschließend entfernt.
 
 ### Session 2026-07-17 — Marketplace speichert, Spaces autorisieren
 

@@ -696,9 +696,9 @@ async function loadMyLearnings() {
     return
   }
   const badge = (l) =>
-    l.share_status === 'approved' ? '<span class="pl-badge team">Team-weit aktiv</span>'
-    : l.share_status === 'proposed' ? '<span class="pl-badge prop">Team-weit vorgeschlagen</span>'
-    : '<span class="pl-badge">Persönlich</span>'
+    l.share_status === 'approved' ? '<span class="pl-badge team">Open</span>'
+    : l.share_status === 'proposed' ? '<span class="pl-badge prop">Open angefragt</span>'
+    : '<span class="pl-badge">Restricted</span>'
   for (const l of data) {
     const row = document.createElement('div')
     row.className = 'pl-item'
@@ -1622,7 +1622,7 @@ function renderConnectCards(wrap, toolCalls) {
         el.querySelector('.wp-state').textContent = '✓ Verbunden'
         el.querySelector('.wp-state').className = 'wp-state ok'
         result.hidden = false
-        result.textContent = 'Als dein persönliches Tool angelegt — teilen kannst du es unter Spaces → Tools. Enni kann es ab der nächsten Nachricht nutzen.'
+        result.textContent = 'Connection gespeichert. Ordne sie einem Open oder Restricted Space zu, damit Enni sie nutzen kann.'
         loadConnectorRows()
       } catch (err) {
         result.hidden = false
@@ -1773,23 +1773,23 @@ async function loadLearnings() {
     row.innerHTML = `<div><div class="r-name">${esc(l.content)}</div>
       <div class="r-sub">von ${esc(profName(profs, l.user_id))} · ${l.source === 'feedback' ? 'Feedback' : 'Konversations-Learning'} · ${new Date(l.created_at).toLocaleDateString('de-DE')} · bei ihm/ihr schon aktiv</div></div>
       <button class="btn quiet" style="padding:5px 13px;font-size:12px">Ablehnen</button>
-      <button class="btn dark" style="padding:5px 13px;font-size:12px">Für alle übernehmen</button>`
+      <button class="btn dark" style="padding:5px 13px;font-size:12px">Open freigeben</button>`
     const [rejectBtn, approveBtn] = row.querySelectorAll('button')
     approveBtn.addEventListener('click', () => act(l.id, 'approve'))
     rejectBtn.addEventListener('click', () => act(l.id, 'reject'))
     list.appendChild(row)
   }
   if (approved.length) {
-    list.insertAdjacentHTML('beforeend', '<div class="sb-time" style="margin-top:14px">Team-weit aktiv</div>')
+    list.insertAdjacentHTML('beforeend', '<div class="sb-time" style="margin-top:14px">Open</div>')
     for (const l of approved) {
       const row = document.createElement('div')
       row.className = 'row'
       row.innerHTML = `<div><div class="r-name">${esc(l.content)}</div>
         <div class="r-sub">von ${esc(profName(profs, l.user_id))} · seit ${new Date(l.reviewed_at || l.created_at).toLocaleDateString('de-DE')}</div></div>
         <div></div>
-        <button class="btn quiet" style="padding:5px 13px;font-size:12px" title="Gilt danach nur noch persönlich beim Urheber">Deaktivieren</button>`
+        <button class="btn quiet" style="padding:5px 13px;font-size:12px" title="Danach wieder Restricted">Deaktivieren</button>`
       row.querySelector('button').addEventListener('click', () => {
-        if (window.confirm('Team-weit deaktivieren? Bleibt persönlich beim Urheber aktiv.')) act(l.id, 'demote')
+        if (window.confirm('Open deaktivieren? Der Eintrag bleibt für den Urheber Restricted verfügbar.')) act(l.id, 'demote')
       })
       list.appendChild(row)
     }
@@ -1832,12 +1832,12 @@ async function loadSkillProposals() {
       <div class="r-sub">${esc(s.category || 'Allgemein')} · von ${esc(profName(profs, s.created_by))} · ${esc((s.context || '').split('\n')[0].slice(0, 80))}</div></div>
       <button class="btn quiet" style="padding:5px 13px;font-size:12px">Ansehen</button>
       <button class="btn quiet" style="padding:5px 13px;font-size:12px">Ablehnen</button>
-      <button class="btn dark" style="padding:5px 13px;font-size:12px">Für alle freischalten</button>`
+      <button class="btn dark" style="padding:5px 13px;font-size:12px">Open freigeben</button>`
     const [viewBtn, rejectBtn, approveBtn] = row.querySelectorAll('button')
     viewBtn.addEventListener('click', () => openSkill(s, is_admin))
     approveBtn.addEventListener('click', () => act(s.id, 'approve'))
     rejectBtn.addEventListener('click', () => {
-      if (window.confirm(`"${s.name}" ablehnen? Bleibt persönlich beim Ersteller aktiv, wird aber nicht Team-weit.`)) act(s.id, 'reject')
+      if (window.confirm(`"${s.name}" ablehnen? Der Skill bleibt Restricted.`)) act(s.id, 'reject')
     })
     list.appendChild(row)
   }
@@ -1877,7 +1877,7 @@ async function loadToolProposals() {
     row.innerHTML = `<div><div class="r-name">${esc(c.name)}</div>
       <div class="r-sub">${esc(c.kind.toUpperCase())}${c.tool_count ? ` · ${c.tool_count} Tools` : ''} · von ${esc(profName(profs, c.owner))} · mit dessen Zugangsdaten</div></div>
       <button class="btn quiet" style="padding:5px 13px;font-size:12px">Ablehnen</button>
-      <button class="btn dark" style="padding:5px 13px;font-size:12px">Für alle freischalten</button>`
+      <button class="btn dark" style="padding:5px 13px;font-size:12px">Open freigeben</button>`
     const [rejectBtn, approveBtn] = row.querySelectorAll('button')
     approveBtn.addEventListener('click', () => act(c.id, 'approve'))
     rejectBtn.addEventListener('click', () => act(c.id, 'reject'))
@@ -2023,7 +2023,7 @@ async function loadRoutineProposals() {
   for (const routine of proposed) {
     const row = document.createElement('div')
     row.className = 'row'
-    row.innerHTML = `<div><div class="r-name">${esc(routine.name)}</div><div class="r-sub">${esc(routine.schedule_label || routine.cron)} · von ${esc(profName(profs, routine.created_by))} · persönlich bereits aktiv</div></div><button class="btn quiet" style="padding:5px 13px;font-size:12px">Ablehnen</button><button class="btn dark" style="padding:5px 13px;font-size:12px">Für alle freischalten</button>`
+    row.innerHTML = `<div><div class="r-name">${esc(routine.name)}</div><div class="r-sub">${esc(routine.schedule_label || routine.cron)} · von ${esc(profName(profs, routine.created_by))} · aktuell Restricted</div></div><button class="btn quiet" style="padding:5px 13px;font-size:12px">Ablehnen</button><button class="btn dark" style="padding:5px 13px;font-size:12px">Open freigeben</button>`
     const [reject, approve] = row.querySelectorAll('button')
     reject.addEventListener('click', () => act(routine.id, 'reject'))
     approve.addEventListener('click', () => act(routine.id, 'approve'))
@@ -2052,7 +2052,7 @@ async function loadWikiPageProposals() {
   for (const page of proposed) {
     const row = document.createElement('div')
     row.className = 'row'
-    row.innerHTML = `<div><div class="r-name">${esc(page.title)}</div><div class="r-sub">${esc(page.slug)} · von ${esc(profName(profs, page.created_by))}</div></div><button class="btn quiet" style="padding:5px 13px;font-size:12px">Ablehnen</button><button class="btn dark" style="padding:5px 13px;font-size:12px">Für alle freischalten</button>`
+    row.innerHTML = `<div><div class="r-name">${esc(page.title)}</div><div class="r-sub">${esc(page.slug)} · von ${esc(profName(profs, page.created_by))}</div></div><button class="btn quiet" style="padding:5px 13px;font-size:12px">Ablehnen</button><button class="btn dark" style="padding:5px 13px;font-size:12px">Open freigeben</button>`
     const [reject, approve] = row.querySelectorAll('button')
     reject.addEventListener('click', () => act(page.id, 'reject'))
     approve.addEventListener('click', () => act(page.id, 'approve'))
@@ -3309,7 +3309,7 @@ async function renderPodTeam() {
     ? profiles.map((profile) => profile.id)
     : [...new Set([activePod.created_by, ...(activePod.members || [])])]
   const members = memberIds.map((id) => profiles.find((profile) => profile.id === id)).filter(Boolean)
-  $('pset-team-state').textContent = activePod.open ? 'Teamweit' : `${members.length} ${members.length === 1 ? 'Mitglied' : 'Mitglieder'}`
+  $('pset-team-state').textContent = activePod.open ? 'Open' : `Restricted · ${members.length} ${members.length === 1 ? 'Mitglied' : 'Mitglieder'}`
   $('pset-team-state').className = `pod-customer-state${activePod.open ? ' on' : ''}`
   $('pset-team-copy').textContent = activePod.open
     ? 'Offener Pod: Alle aktiven Mitglieder haben automatisch Zugriff.'
@@ -4790,14 +4790,13 @@ async function openSpaceHome(space) {
   currentSpace = space
   const { is_admin } = await ownProfile()
   const canManageConnections = space.created_by === session.user.id || (!space.restricted && is_admin)
-  // Kleines Lock inline — LOCK_SVG ist nur für Sidebar-Items gestylt (sonst riesig/schwarz)
-  const miniLock = '<svg viewBox="0 0 24 24" style="width:18px;height:18px;stroke:var(--ink-3);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;vertical-align:-2px;margin-left:6px"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'
-  $('sh-title').innerHTML = esc(space.name) + (space.restricted ? miniLock : '')
+  $('sh-title').textContent = space.name
   const spacePages = (wikiPages || []).filter((p) => p.space_id === space.id)
-  $('sh-sub').textContent = space.restricted ? 'Privater Wissensraum für ausgewählte Mitglieder' : 'Gemeinsamer Wissensraum für Enni'
+  $('sh-access').className = `access-badge ${space.restricted ? 'restricted' : 'open'}`
+  $('sh-access').textContent = space.restricted ? 'Restricted' : 'Open'
+  $('sh-sub').textContent = space.restricted ? 'nur Mitglieder' : 'alle Accounts'
   $('sh-page-count').textContent = spacePages.length
   $('sh-source-count').textContent = space.connections.length
-  $('sh-connection-access').textContent = space.restricted ? 'nur für Space-Mitglieder' : 'für alle aktiven Accounts'
   $('sh-src-edit').hidden = !canManageConnections
   $('sh-search').value = ''
   $('sh-results-panel').hidden = true
@@ -4831,7 +4830,7 @@ async function openSpaceHome(space) {
     const c = connectionInfo(key)
     if (!c) continue
     srcBox.insertAdjacentHTML('beforeend',
-      `<div class="crow">${c.logo ? `<span class="c-logo"><img src="${c.logo}" alt=""></span>` : '<span class="c-logo" aria-hidden="true">⌁</span>'}<div><div class="c-name">${esc(c.name)}</div><div class="c-sub">${esc(c.sub)}</div></div><span class="c-right ok"><span class="dot-s"></span>${space.restricted ? 'Restricted' : 'Für alle'}</span></div>`)
+      `<div class="crow">${c.logo ? `<span class="c-logo"><img src="${c.logo}" alt=""></span>` : '<span class="c-logo" aria-hidden="true">⌁</span>'}<div><div class="c-name">${esc(c.name)}</div><div class="c-sub">${esc(c.sub)}</div></div></div>`)
   }
   activateArea('wiki', 'space-home')
 }
@@ -4905,6 +4904,7 @@ async function openConnectedData(space) {
   currentSpace = space
   const { is_admin } = await ownProfile()
   $('cd-space-name').textContent = space.name
+  $('cd-space-access').textContent = space.restricted ? 'Restricted · nur Mitglieder' : 'Open · alle Accounts'
   $('cd-add').hidden = !(space.created_by === session.user.id || (!space.restricted && is_admin))
   const list = $('cd-list')
   list.innerHTML = ''
@@ -4915,7 +4915,7 @@ async function openConnectedData(space) {
     const c = connectionInfo(key)
     if (!c) continue
     list.insertAdjacentHTML('beforeend',
-      `<div class="crow">${c.logo ? `<span class="c-logo"><img src="${c.logo}" alt=""></span>` : '<span class="c-logo" aria-hidden="true">⌁</span>'}<div><div class="c-name">${esc(c.name)}</div><div class="c-sub">${esc(c.sub)}</div></div><span class="c-right ok"><span class="dot-s"></span>${space.restricted ? 'Restricted' : 'Für alle'}</span></div>`)
+      `<div class="crow">${c.logo ? `<span class="c-logo"><img src="${c.logo}" alt=""></span>` : '<span class="c-logo" aria-hidden="true">⌁</span>'}<div><div class="c-name">${esc(c.name)}</div><div class="c-sub">${esc(c.sub)}</div></div></div>`)
   }
   activateArea('wiki', 'connected')
 }
@@ -4925,8 +4925,8 @@ $('cd-add').addEventListener('click', () => {
   if (!currentSpace) return
   $('cdm-space').textContent = `„${currentSpace.name}“`
   $('cdm-access-hint').textContent = currentSpace.restricted
-    ? 'Nur der Ersteller und ausdrücklich ausgewählte Space-Mitglieder können Enni mit diesen Connections verwenden.'
-    : 'Alle aktiven Accounts können Enni mit diesen Connections verwenden.'
+    ? 'Restricted · nur Mitglieder dieses Space'
+    : 'Open · alle aktiven Accounts'
   const list = $('cdm-list')
   list.innerHTML = ''
   const entries = [
@@ -5014,8 +5014,8 @@ function openSpaceModal(restricted) {
 }
 function updateSmHint() {
   $('sm-hint').textContent = smRestricted
-    ? 'Nur ausgewählte Mitglieder haben Zugriff — zusätzlich zum Wissen aus den Open Spaces.'
-    : 'Alle in der Organisation können auf diesen Space zugreifen.'
+    ? 'Restricted · nur ausgewählte Mitglieder.'
+    : 'Open · alle aktiven Accounts.'
   $('sm-members-wrap').style.display = smRestricted ? '' : 'none'
 }
 document.querySelectorAll('#sm-seg button').forEach((b) =>
@@ -5447,6 +5447,7 @@ async function loadToolResearch() {
       row.addEventListener('click', () => blueprint.connect_ready ? openResearchedMcp(item) : openToolResearchDetail(item, toolResearchAdmin))
       ;(blueprint.access_mode === 'read_only' ? readOnly : readWrite).appendChild(row)
     }
+    applyMarketplaceFilter()
     if (requests.some((item) => ['queued', 'researching'].includes(item.status))) toolResearchPoll = setTimeout(loadToolResearch, 5000)
   } catch (error) {
     $('tool-research-activity').innerHTML = `<div class="err">${esc(error.message)}</div>`
@@ -5462,7 +5463,7 @@ function openToolResearchRequest() {
   setTimeout(() => $('tr-name').focus(), 50)
 }
 
-for (const id of ['tool-research-open', 'tool-research-open-inline']) $(id).addEventListener('click', openToolResearchRequest)
+for (const id of ['tool-research-open', 'tool-research-open-inline']) $(id)?.addEventListener('click', openToolResearchRequest)
 $('tr-cancel').addEventListener('click', () => $('tool-research-overlay').classList.remove('open'))
 $('tr-start').addEventListener('click', async () => {
   const err = $('tr-err')
@@ -5549,20 +5550,32 @@ async function openResearchedMcp(item) {
 // ============================================================ Connectors (MCP-Server verknüpfen)
 let cnCategory = 'tool'
 
-// Teilen-Antrag eines eigenen Tools (personal → proposed, Admin entscheidet)
-async function shareConnector(id) {
-  const res = await fetch(`${BACKEND_URL}/api/connectors/${id}/share`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${await token()}` },
-  })
-  if (!res.ok) { window.alert((await res.json().catch(() => ({}))).error || 'Fehler'); return }
-  loadConnectorRows()
+function connectorAccess(activeSpaces = []) {
+  if (!activeSpaces.length) return { label: 'Nicht zugeordnet', cls: 'inactive' }
+  if (activeSpaces.some((space) => !space.restricted)) return { label: 'Open', cls: 'open' }
+  return { label: 'Restricted', cls: 'restricted' }
 }
 
-const connScopeBadge = (c, me) => {
-  if (c.visibility === 'team') return '<span class="sk-badge team">Im Teamkatalog</span>'
-  if (c.visibility === 'proposed') return '<span class="sk-badge prop">Katalogfreigabe angefragt</span>'
-  return c.owner === me ? '<span class="sk-badge">Deine Connection</span>' : ''
+function renderInstalledConnections(connectors) {
+  const box = $('installed-connections')
+  if (!box) return
+  box.innerHTML = ''
+  if (!connectors.length) {
+    box.innerHTML = '<span class="installed-empty">Noch keine Accounts verbunden.</span>'
+    return
+  }
+  for (const connector of connectors) {
+    const native = NATIVE_CONNECTORS[connector.kind]
+    const title = `${connector.name}${connector.external_account_name ? ` · ${connector.external_account_name}` : ''}`
+    const icon = document.createElement('span')
+    icon.className = 'installed-app'
+    icon.title = title
+    icon.setAttribute('aria-label', title)
+    icon.innerHTML = native?.icon
+      ? `<img src="${native.icon}" alt="">`
+      : '<svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></svg>'
+    box.appendChild(icon)
+  }
 }
 
 async function loadConnectorRows() {
@@ -5582,6 +5595,7 @@ async function loadConnectorRows() {
     .filter(Boolean)
   // Sichtbar: team-weite + eigene (personal/proposed)
   const visible = (data || []).filter((c) => c.visibility === 'team' || c.owner === me)
+  renderInstalledConnections(visible)
   for (const kind of Object.keys(NATIVE_CONNECTORS)) {
     // Eigener persönlicher Connector hat Vorrang vor dem Team-Connector (wie im Tool-Loop)
     const rows = visible.filter((x) => x.kind === kind)
@@ -5595,17 +5609,14 @@ async function loadConnectorRows() {
     for (const c of visible.filter((x) => x.kind === 'mcp')) {
       const mine = c.owner === me
       const activeSpaces = connectorSpaces(c)
-      const active = activeSpaces.length > 0
+      const access = connectorAccess(activeSpaces)
       const activeNames = activeSpaces.map((space) => space.name).join(', ')
       const row = document.createElement('div')
       row.className = 'crow'
       row.innerHTML = `<span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:var(--lila-deep);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></span>
-        <div><div class="c-name">${esc(c.name)}</div><div class="c-sub">${esc(new URL(c.url).hostname)} · ${c.tool_count ?? '?'} Tools · MCP${active ? ` · ${esc(activeNames)}` : ' · noch keinem Space zugeordnet'}</div></div>
-        ${connScopeBadge(c, me)}
-        ${mine && c.visibility === 'personal' ? '<button class="btn quiet c-share" style="padding:4px 12px;font-size:11.5px" title="Team-weite Nutzung beantragen — der Admin entscheidet">Teilen</button>' : ''}
-        <span class="c-right ${active ? 'ok' : 'off'}"><span class="dot-s"></span>${active ? `Aktiv in ${activeSpaces.length} Space${activeSpaces.length === 1 ? '' : 's'}` : 'Für Enni inaktiv'}</span>` +
+        <div><div class="c-name">${esc(c.name)}</div><div class="c-sub">${esc(new URL(c.url).hostname)} · ${c.tool_count ?? '?'} Tools${activeNames ? ` · ${esc(activeNames)}` : ''}</div></div>
+        <span class="access-badge ${access.cls}">${access.label}</span>` +
         (is_admin || mine ? '<button class="c-del" title="Trennen"><svg viewBox="0 0 24 24"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg></button>' : '')
-      row.querySelector('.c-share')?.addEventListener('click', () => shareConnector(c.id))
       row.querySelector('.c-del')?.addEventListener('click', async () => {
         if (!window.confirm(`"${c.name}" trennen? Enni verliert sofort den Zugriff auf diese Tools.`)) return
         const res = await fetch(`${BACKEND_URL}/api/connectors/${c.id}`, {
@@ -5618,18 +5629,38 @@ async function loadConnectorRows() {
       })
       box.appendChild(row)
     }
+    $('mcp-connections-section').hidden = !box.children.length
   }
+  setTimeout(applyMarketplaceFilter, 0)
 }
 
 // Native OAuth-Connectoren: identischer Einrichtungs-, Login- und Trenn-Flow.
 // Neue Anbieter benötigen nur einen Registry-Eintrag im Backend und eine Zeile hier.
 const NATIVE_CONNECTORS = {
-  outlook: { row: 'outlook-row', status: 'outlook-status', sub: 'outlook-sub', label: 'Outlook', subConnected: 'E-Mails und Kalender · read-only', subDefault: 'E-Mails und Kalender · read-only' },
-  google_drive: { row: 'google_drive-row', status: 'google_drive-status', sub: 'google_drive-sub', label: 'Google Drive', subConnected: 'Dokumente und Ordner · read-only', subDefault: 'Dokumente und Ordner · read-only' },
-  notion: { row: 'notion-row', status: 'notion-status', sub: 'notion-sub', label: 'Notion', subConnected: 'Freigegebene Seiten und Datenbanken · read-only', subDefault: 'Seiten und Datenbanken · read-only' },
-  attio: { row: 'attio-row', status: 'attio-status', sub: 'attio-sub', label: 'Attio', subConnected: 'Accounts, Kontakte, Deals und Notizen · read-only', subDefault: 'CRM-Daten · read-only' },
-  slack: { row: 'slack-row', status: 'slack-status', sub: 'slack-sub', label: 'Slack', subConnected: 'Channels lesen: öffentlich automatisch, privat nach Bot-Einladung', subDefault: 'Channels und Threads · read-only' },
+  outlook: { row: 'outlook-row', status: 'outlook-status', sub: 'outlook-sub', label: 'Outlook', icon: '/icons/outlook.svg', subConnected: 'E-Mails und Kalender · Read-only', subDefault: 'E-Mails und Kalender · Read-only' },
+  google_drive: { row: 'google_drive-row', status: 'google_drive-status', sub: 'google_drive-sub', label: 'Google Drive', icon: '/icons/google-drive.svg', subConnected: 'Dokumente und Ordner · Read-only', subDefault: 'Dokumente und Ordner · Read-only' },
+  notion: { row: 'notion-row', status: 'notion-status', sub: 'notion-sub', label: 'Notion', icon: '/icons/notion.svg', subConnected: 'Seiten und Datenbanken · Read-only', subDefault: 'Seiten und Datenbanken · Read-only' },
+  attio: { row: 'attio-row', status: 'attio-status', sub: 'attio-sub', label: 'Attio', icon: '/icons/attio.ico', subConnected: 'CRM-Daten · Read-only', subDefault: 'CRM-Daten · Read-only' },
+  slack: { row: 'slack-row', status: 'slack-status', sub: 'slack-sub', label: 'Slack', icon: '/icons/slack.svg', subConnected: 'Channels und Threads · Read-only', subDefault: 'Channels und Threads · Read-only' },
 }
+let marketplaceAccessFilter = 'all'
+function applyMarketplaceFilter() {
+  const query = ($('marketplace-search')?.value || '').trim().toLowerCase()
+  document.querySelectorAll('#v-marketplace [data-market-access]').forEach((section) => {
+    section.hidden = marketplaceAccessFilter !== 'all' && section.dataset.marketAccess !== marketplaceAccessFilter
+  })
+  document.querySelectorAll('#v-marketplace .market-grid .crow, #dyn-tools .crow').forEach((row) => {
+    row.hidden = !!query && !row.textContent.toLowerCase().includes(query)
+  })
+}
+$('marketplace-search')?.addEventListener('input', applyMarketplaceFilter)
+$('marketplace-filter')?.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-market-filter]')
+  if (!button) return
+  marketplaceAccessFilter = button.dataset.marketFilter
+  $('marketplace-filter').querySelectorAll('button').forEach((item) => item.classList.toggle('on', item === button))
+  applyMarketplaceFilter()
+})
 const nativeState = {} // kind -> connector-Row oder null
 let oauthProviders = new Map()
 let pendingOAuthProvider = null
@@ -5753,19 +5784,14 @@ function renderNativeRow(kind, conn, isAdmin, me, activeSpaces = []) {
   if (!status) return
   if (conn) {
     const mine = conn.owner === me
-    const active = activeSpaces.length > 0
-    status.className = `c-right ${active ? 'ok' : 'off'}`
-    status.innerHTML = `<span class="dot-s"></span>${active ? `Aktiv in ${activeSpaces.length} Space${activeSpaces.length === 1 ? '' : 's'}` : 'Für Enni inaktiv'}` +
-      (mine && conn.visibility === 'personal' ? `<button class="btn quiet" data-native-share="${kind}" style="padding:3px 10px;font-size:11px;margin-left:8px" title="Team-weite Nutzung beantragen">Teilen</button>` : '') +
+    const access = connectorAccess(activeSpaces)
+    status.className = `c-right`
+    status.innerHTML = `<span class="access-badge ${access.cls}">${access.label}</span>` +
       (isAdmin || mine ? `<button class="c-del" data-native-del="${kind}" title="Trennen" style="display:inline-flex;margin-left:8px"><svg viewBox="0 0 24 24"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg></button>` : '')
     const base = conn.external_account_name
       ? `${conn.external_account_name} · ${cfg.subConnected}`
       : cfg.subConnected
-    sub.textContent = `${base}${active ? ` · ${activeSpaces.map((space) => space.name).join(', ')}` : ' · im Marketplace gespeichert, noch keinem Space zugeordnet'}`
-    status.querySelector('[data-native-share]')?.addEventListener('click', (e) => {
-      e.stopPropagation()
-      shareConnector(conn.id)
-    })
+    sub.textContent = `${base}${activeSpaces.length ? ` · ${activeSpaces.map((space) => space.name).join(', ')}` : ''}`
     status.querySelector('[data-native-del]')?.addEventListener('click', async (e) => {
       e.stopPropagation()
       if (!window.confirm(`${cfg.label} trennen? Enni verliert sofort den Zugriff.`)) return
@@ -5781,11 +5807,11 @@ function renderNativeRow(kind, conn, isAdmin, me, activeSpaces = []) {
     status.className = 'c-right off'
     const configured = oauthProviders.get(kind)?.configured
     status.innerHTML = configured
-      ? '<span class="connector-connect"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Persönlich verbinden</span>'
-      : isAdmin ? '<span class="connector-setup">Admin-Einrichtung</span>' : '<span class="connector-setup">Admin erforderlich</span>'
+      ? '<span class="connector-connect"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Verbinden</span>'
+      : isAdmin ? '<span class="connector-setup">Einrichten</span>' : '<span class="connector-setup">Nicht verfügbar</span>'
     sub.textContent = configured
-      ? `${cfg.subDefault} · nur mit deinem Account verbunden`
-      : isAdmin ? `${cfg.subDefault} · Anbieterzugang einmalig fürs Team einrichten` : `${cfg.subDefault} · noch nicht vom Team-Admin bereitgestellt`
+      ? cfg.subDefault
+      : isAdmin ? `${cfg.subDefault} · App einmalig bereitstellen` : `${cfg.subDefault} · noch nicht bereitgestellt`
   }
 }
 
@@ -5870,6 +5896,7 @@ $('cn-save').addEventListener('click', async () => {
 // ============================================================ Kontexte (wiederverwendbares Wissen mit explizitem Scope)
 let editingContext = null
 let contextListCache = []
+let contextAccessFilter = 'all'
 
 async function loadContexts() {
   const { data, error } = await sb.from('contexts').select('*').order('updated_at', { ascending: false })
@@ -5880,15 +5907,21 @@ async function loadContexts() {
 
 function renderContextList(filter = '') {
   const q = filter.trim().toLowerCase()
-  const contexts = contextListCache.filter((context) => !q || `${context.name} ${context.description} ${context.context_type}`.toLowerCase().includes(q))
+  const contexts = contextListCache.filter((context) => {
+    const access = context.visibility === 'team' ? 'open' : 'restricted'
+    return (contextAccessFilter === 'all' || access === contextAccessFilter)
+      && (!q || `${context.name} ${context.description} ${context.context_type}`.toLowerCase().includes(q))
+  })
   $('context-list').innerHTML = ''
   if (!contexts.length) { $('context-list').innerHTML = '<div class="empty-plain">Noch keine passenden Kontexte.</div>'; return }
   for (const context of contexts) {
     const row = document.createElement('button')
     row.className = 'crow'
     const personalProfile = context.context_type === 'personal_profile'
-    const scope = context.visibility === 'team' ? '<span class="sk-badge team">Teamweit</span>' : context.visibility === 'proposed' ? '<span class="sk-badge prop">Freigabe angefragt</span>' : '<span class="sk-badge">Persönlich</span>'
-    row.innerHTML = `<span class="c-logo" style="background:none;border-style:dashed">${personalProfile ? '⌾' : '⌁'}</span><div><div class="c-name">${esc(context.name)}</div><div class="c-sub">${esc(context.description || context.content.split('\n').find(Boolean) || 'Ohne Beschreibung')}</div></div>${scope}<span class="c-right ${personalProfile ? 'ok' : ''}">${personalProfile ? 'Privat geschützt' : new Date(context.updated_at).toLocaleDateString('de-DE')}</span>`
+    const scope = context.visibility === 'team'
+      ? '<span class="access-badge open">Open</span>'
+      : '<span class="access-badge restricted">Restricted · nur du</span>'
+    row.innerHTML = `<span class="c-logo" style="background:none;border-style:dashed">${personalProfile ? '⌾' : '⌁'}</span><div><div class="c-name">${esc(context.name)}</div><div class="c-sub">${esc(context.description || context.content.split('\n').find(Boolean) || 'Ohne Beschreibung')}</div></div>${scope}`
     row.addEventListener('click', () => openContext(context))
     $('context-list').appendChild(row)
   }
@@ -5917,6 +5950,13 @@ async function openContext(context = null) {
 }
 
 $('context-search').addEventListener('input', () => renderContextList($('context-search').value))
+$('context-access-filter').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-access]')
+  if (!button) return
+  contextAccessFilter = button.dataset.access
+  $('context-access-filter').querySelectorAll('button').forEach((item) => item.classList.toggle('on', item === button))
+  renderContextList($('context-search').value)
+})
 $('context-add').addEventListener('click', () => openContext())
 $('cx-cancel').addEventListener('click', () => $('context-overlay').classList.remove('open'))
 $('cx-import').addEventListener('click', () => $('cx-file').click())
@@ -5963,6 +6003,7 @@ let editingSkill = null
 let skillListCache = [] // zuletzt geladene Skills (für die clientseitige Suche)
 let skillListAdmin = false
 let skillListProfs = []
+let skillAccessFilter = 'all'
 
 async function loadSkills() {
   const [{ data: skills }, { is_admin }, profs] = await Promise.all([
@@ -5989,40 +6030,38 @@ function renderSkillList(filter = '') {
     return
   }
   const q = filter.trim().toLowerCase()
-  const matches = skillListCache.filter(
-    (s) => !q || s.name.toLowerCase().includes(q) || s.slug.includes(q) || (s.category || '').toLowerCase().includes(q)
-  )
+  const matches = skillListCache.filter((s) => {
+    const access = s.visibility === 'team' ? 'open' : 'restricted'
+    return (skillAccessFilter === 'all' || access === skillAccessFilter)
+      && (!q || s.name.toLowerCase().includes(q) || s.slug.includes(q) || (s.category || '').toLowerCase().includes(q))
+  })
   if (!matches.length) {
     list.innerHTML = `<div class="empty-plain">Keine Skills für „${esc(filter)}".</div>`
     return
   }
-  // Nach Kategorie gruppieren ("Meta" ans Ende)
-  const groups = new Map()
   for (const s of matches) {
-    const c = s.category || 'Allgemein'
-    if (!groups.has(c)) groups.set(c, [])
-    groups.get(c).push(s)
-  }
-  const cats = [...groups.keys()].sort((a, b) => (a === 'Meta') - (b === 'Meta') || a.localeCompare(b, 'de'))
-  for (const cat of cats) {
-    list.insertAdjacentHTML('beforeend', `<div class="skill-cat">${esc(cat)}</div>`)
-    for (const s of groups.get(cat)) {
       const row = document.createElement('button')
       row.className = 'crow'
       const vis = s.visibility === 'personal'
-        ? '<span class="sk-badge">Persönlich</span>'
+        ? '<span class="access-badge restricted">Restricted · nur du</span>'
         : s.visibility === 'proposed'
-          ? `<span class="sk-badge prop">Freigabe angefragt${skillListAdmin ? ' · ' + esc(profName(skillListProfs, s.created_by)) : ''}</span>`
-          : '<span class="sk-badge team">Teamweit</span>'
+          ? '<span class="access-badge restricted">Restricted · Open angefragt</span>'
+          : '<span class="access-badge open">Open</span>'
       row.innerHTML = `<span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:var(--lila-deep);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
-        <div><div class="c-name">${esc(s.name)}</div><div class="c-sub">/${esc(s.slug)}${s.tools?.length ? ` · ${s.tools.length} Tools` : ''} · ${esc((s.context || '').split('\n')[0].slice(0, 80))}</div></div>
-        ${vis}<span class="c-right ${s.enabled ? 'ok' : 'off'}"><span class="dot-s"></span>${s.enabled ? 'Aktiv' : 'Aus'}</span>`
+        <div><div class="c-name">${esc(s.name)}</div><div class="c-sub">${esc(s.category || 'Allgemein')} · /${esc(s.slug)}${s.tools?.length ? ` · ${s.tools.length} Tools` : ''}</div></div>
+        ${vis}`
       row.addEventListener('click', () => openSkill(s, skillListAdmin))
       list.appendChild(row)
-    }
   }
 }
 $('skill-search').addEventListener('input', () => renderSkillList($('skill-search').value))
+$('skill-access-filter').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-access]')
+  if (!button) return
+  skillAccessFilter = button.dataset.access
+  $('skill-access-filter').querySelectorAll('button').forEach((item) => item.classList.toggle('on', item === button))
+  renderSkillList($('skill-search').value)
+})
 
 // ============================================================ Workflow-Diagramm
 // EINE einheitliche Visualisierung für alle Skill-Workflows: der Text (nummerierte
@@ -6234,7 +6273,7 @@ async function openSkill(s, isAdmin) {
   const selectedContextIds = new Set((s?.skill_contexts || []).filter((link) => link.requirement === 'required').map((link) => link.context_id))
   $('sk-required-contexts').innerHTML = contextListCache
     .filter((context) => context.context_type !== 'personal_profile')
-    .map((context) => `<option value="${context.id}"${selectedContextIds.has(context.id) ? ' selected' : ''}>${esc(context.name)} · ${context.visibility === 'team' ? 'Teamweit' : 'Persönlich'}</option>`).join('')
+    .map((context) => `<option value="${context.id}"${selectedContextIds.has(context.id) ? ' selected' : ''}>${esc(context.name)} · ${context.visibility === 'team' ? 'Open' : 'Restricted'}</option>`).join('')
   $('sk-workflow').value = s?.workflow || ''
   $('sk-tools').value = (s?.tools || []).join('\n')
   skillToolsEditable = canEdit
@@ -6343,6 +6382,7 @@ $('sk-delete').addEventListener('click', async () => {
 // auf ausgewählte Accounts beschränkte Routinen verwalten. Der Ticker läuft im Backend.
 let editingRoutine = null
 let routineAudience = 'personal'
+let routineAccessFilter = 'all'
 
 function setRoutineAudience(audience, isAdmin = false) {
   routineAudience = isAdmin && ['all', 'restricted'].includes(audience) ? audience : 'personal'
@@ -6354,12 +6394,10 @@ function setRoutineAudience(audience, isAdmin = false) {
   $('rt-pod-wrap').hidden = routineAudience !== 'personal'
   if (routineAudience !== 'personal') $('rt-pod').value = ''
   $('rt-audience-hint').textContent = routineAudience === 'all'
-    ? 'Standard-Enni: Die Routine läuft separat für jeden aktiven Account mit dessen persönlichen Tools und Learnings.'
+    ? 'Open: Die Routine läuft separat für jeden aktiven Account.'
     : routineAudience === 'restricted'
-      ? 'Die Routine läuft nur für die unten ausgewählten Accounts — jeweils in deren persönlichem Enni.'
-      : isAdmin
-        ? 'Diese Routine läuft nur für deinen Account.'
-        : 'Diese Routine läuft nur für deinen Account. Du kannst sie anschließend für alle vorschlagen.'
+      ? 'Restricted: Nur die ausgewählten Accounts erhalten den Lauf.'
+      : 'Restricted: Nur dein Account erhält den Lauf.'
 }
 
 document.querySelectorAll('#rt-audience-seg button').forEach((button) => {
@@ -6401,18 +6439,24 @@ async function loadRoutines() {
   ])
   const list = $('routine-list')
   list.innerHTML = ''
-  if (!(routines || []).length) list.innerHTML = '<div class="empty-plain">Noch keine Routinen.</div>'
-  for (const r of routines || []) {
+  const visibleRoutines = (routines || []).filter((routine) => {
+    const audience = routine.audience || (routine.visibility === 'team' && !routine.pod_id ? 'all' : 'personal')
+    const access = audience === 'all' ? 'open' : 'restricted'
+    return routineAccessFilter === 'all' || routineAccessFilter === access
+  })
+  if (!visibleRoutines.length) list.innerHTML = '<div class="empty-plain">Noch keine passenden Routinen.</div>'
+  for (const r of visibleRoutines) {
     const mine = r.created_by === session.user.id
     const editable = is_admin || (mine && r.visibility !== 'team')
     const pod = podsList.find((p) => p.id === r.pod_id)
     const audience = r.audience || (r.visibility === 'team' && !r.pod_id ? 'all' : 'personal')
     const audienceLabel = audience === 'all'
-      ? 'Alle Accounts'
+      ? 'alle Accounts'
       : audience === 'restricted'
-        ? (is_admin ? `${r.routine_accounts?.length || 0} Accounts` : 'Für dich freigegeben')
-        : (pod ? `Pod „${pod.name}“` : mine ? 'Nur ich' : `Nur ${profName(profs, r.created_by)}`)
-    const scopeLabel = audience === 'all' ? 'Teamweit' : audience === 'restricted' || pod ? 'Ausgewählt' : 'Persönlich'
+        ? (is_admin ? `${r.routine_accounts?.length || 0} Accounts` : 'für dich')
+        : (pod ? `Pod „${pod.name}“` : mine ? 'nur du' : `nur ${profName(profs, r.created_by)}`)
+    const accessClass = audience === 'all' ? 'open' : 'restricted'
+    const accessLabel = audience === 'all' ? 'Open' : audience === 'restricted' || pod ? 'Restricted' : 'Restricted · nur du'
     const last = r.last_run_at
       ? ` · zuletzt ${new Date(r.last_run_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}${r.last_result === 'ok' ? '' : ' ⚠'}`
       : ''
@@ -6420,17 +6464,10 @@ async function loadRoutines() {
     row.className = 'crow routine-row'
     row.style.cursor = 'pointer'
     row.innerHTML = `<span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:var(--lila-deep);fill:none;stroke-width:1.7;stroke-linecap:round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg></span>
-      <div><div class="c-name">${esc(r.name)}</div><div class="c-sub">${esc(r.schedule_label || r.cron)} · ${esc(audienceLabel)} · erstellt von ${esc(profName(profs, r.created_by))}${last}</div></div>
-      ${r.visibility === 'proposed' ? '<span class="sk-badge prop">Freigabe angefragt</span>' : `<span class="sk-badge${audience === 'all' ? ' team' : audience === 'restricted' || pod ? ' prop' : ''}">${esc(scopeLabel)}</span>`}
-      ${mine && r.visibility === 'personal' ? '<button class="btn quiet rt-share" style="padding:4px 12px;font-size:11.5px">Teilen</button>' : ''}
-      <span class="c-right ${r.enabled ? 'ok' : 'off'}"><span class="dot-s"></span>${r.enabled ? 'Aktiv' : 'Aus'}</span>
+      <div><div class="c-name">${esc(r.name)}</div><div class="c-sub">${esc(r.schedule_label || r.cron)} · ${esc(audienceLabel)}${last}</div></div>
+      <span class="access-badge ${accessClass}">${esc(accessLabel)}</span>
       ${editable ? '<button class="c-del rt-run" title="Jetzt ausführen" style="display:inline-flex"><svg viewBox="0 0 24 24" style="fill:none"><polygon points="6 4 20 12 6 20 6 4"/></svg></button>' : ''}`
-    row.addEventListener('click', (e) => { if (editable && !e.target.closest('.rt-run,.rt-share')) openRoutine(r) })
-    row.querySelector('.rt-share')?.addEventListener('click', async () => {
-      const { error } = await sb.from('routines').update({ visibility: 'proposed' }).eq('id', r.id)
-      if (error) { window.alert(error.message); return }
-      loadRoutines()
-    })
+    row.addEventListener('click', (e) => { if (editable && !e.target.closest('.rt-run')) openRoutine(r) })
     row.querySelector('.rt-run')?.addEventListener('click', async (ev) => {
       if (audience !== 'personal' && !window.confirm(`Routine jetzt für ${audienceLabel} ausführen? Für jeden Ziel-Account entsteht ein eigener Enni-Lauf.`)) return
       const btn = ev.currentTarget
@@ -6449,6 +6486,14 @@ async function loadRoutines() {
   }
 }
 
+$('routine-access-filter').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-access]')
+  if (!button) return
+  routineAccessFilter = button.dataset.access
+  $('routine-access-filter').querySelectorAll('button').forEach((item) => item.classList.toggle('on', item === button))
+  loadRoutines()
+})
+
 async function openRoutine(r) {
   editingRoutine = r
   const { is_admin } = await ownProfile()
@@ -6460,7 +6505,7 @@ async function openRoutine(r) {
   $('rt-model').value = r?.model || 'claude-haiku-4-5'
   $('rt-enabled').checked = r ? r.enabled : true
   const podSel = $('rt-pod')
-  podSel.innerHTML = '<option value="">Privat (nur ich)</option>' +
+  podSel.innerHTML = '<option value="">Restricted · nur du</option>' +
     podsList.map((p) => `<option value="${p.id}">Pod: ${esc(p.name)}</option>`).join('')
   podSel.value = r?.pod_id || ''
   const selectedAccounts = new Set((r?.routine_accounts || []).map((assignment) => assignment.user_id))
