@@ -286,6 +286,27 @@ test('marketplace connections stay dormant until an accessible Space activates t
   assert.match(frontendSource, /Noch keine Connections aktiviert/)
 })
 
+test('Space navigation is flat and Restricted owners can atomically manage members', () => {
+  const frontendSource = readFileSync(join(here, '../../frontend/app.js'), 'utf8')
+  const frontendHtml = readFileSync(join(here, '../../frontend/index.html'), 'utf8')
+  const migration = readFileSync(
+    join(here, '../../supabase/migrations/20260717131500_atomic_restricted_space_members.sql'),
+    'utf8'
+  )
+
+  const renderTree = frontendSource.match(/function renderSpaceTree\(\)[\s\S]*?\n}\n\n\/\/ ---------- Space-Übersicht/)?.[0] || ''
+  assert.doesNotMatch(frontendSource, /const expanded = new Set/)
+  assert.doesNotMatch(renderTree, /tree-chev|tree-kids|groupPages/)
+  assert.match(renderTree, /row\.addEventListener\('click', \(\) => openSpaceHome\(s\)\)/)
+  assert.match(frontendHtml, /id="sh-members-manage"/)
+  assert.match(frontendHtml, /id="space-members-overlay"/)
+  assert.match(frontendSource, /sb\.rpc\('replace_space_members'/)
+  assert.match(migration, /owner_id is distinct from auth\.uid\(\)/)
+  assert.match(migration, /Only the owning active account/)
+  assert.doesNotMatch(migration, /is_admin/)
+  assert.match(migration, /values \(target_space_id, owner_id\)/)
+})
+
 test('impact reporting labels estimates and records skill usage', () => {
   const indexSource = readFileSync(join(here, '../src/index.js'), 'utf8')
   const frontendSource = readFileSync(join(here, '../../frontend/app.js'), 'utf8')

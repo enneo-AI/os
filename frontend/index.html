@@ -1117,6 +1117,14 @@
   .check-row input{width:16px;height:16px;accent-color:var(--lila)}
   .check-row .cr-sub{font-size:11.5px;color:var(--ink-3)}
   .check-row.disabled{opacity:.5}
+  .space-members-intro{margin:-7px 0 16px;color:var(--ink-3);font-size:12px;line-height:1.5}
+  .space-members-list{max-height:min(410px,52vh);overflow-y:auto;border-top:1px solid var(--hair);border-bottom:1px solid var(--hair)}
+  .space-member-option{display:grid;grid-template-columns:18px 36px minmax(0,1fr);align-items:center;gap:10px;min-height:58px;padding:7px 2px;border-bottom:1px solid var(--hair);cursor:pointer}
+  .space-member-option:last-child{border-bottom:0}.space-member-option:hover{background:var(--hover)}
+  .space-member-option.owner{cursor:default}.space-member-option.owner:hover{background:transparent}
+  .space-member-option input{width:16px;height:16px;accent-color:var(--lila)}
+  .space-member-copy{min-width:0}.space-member-copy strong,.space-member-copy small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .space-member-copy strong{font-size:12.5px;font-weight:620;color:var(--ink)}.space-member-copy small{margin-top:2px;color:var(--ink-3);font-size:10.5px}
   #rt-accounts .check-row{display:grid;grid-template-columns:18px 32px minmax(0,1fr);grid-template-rows:auto auto;column-gap:9px;row-gap:1px;min-height:52px;padding:7px 4px}
   #rt-accounts .check-row input{grid-column:1;grid-row:1/3;align-self:center}
   #rt-accounts .check-row .t-av{grid-column:2;grid-row:1/3;align-self:center;width:30px;height:30px}
@@ -1667,6 +1675,7 @@
         <header class="space-head">
           <div class="space-identity"><span class="space-mark"><svg viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.2 3.9A2 2 0 0 0 7.5 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></svg></span><div class="space-head-copy"><h2 id="sh-title">Space</h2><div class="space-head-meta"><span class="access-badge" id="sh-access">Open</span><span id="sh-sub"></span></div></div></div>
           <div class="space-actions">
+            <button class="icon-action" id="sh-members-manage" hidden aria-label="Mitglieder verwalten" title="Mitglieder verwalten"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3.5 19v-1.5A4.5 4.5 0 0 1 8 13h2a4.5 4.5 0 0 1 4.5 4.5V19"/><path d="M16 8h5M18.5 5.5v5"/></svg></button>
             <button class="icon-action" id="sh-import-url" aria-label="URL importieren" title="URL importieren"><svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg></button>
             <button class="icon-action primary" id="sh-new-page" aria-label="Neue Seite" title="Neue Seite"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
           </div>
@@ -2314,6 +2323,20 @@
     <div class="m-actions">
       <button class="btn quiet" id="sm-cancel">Abbrechen</button>
       <button class="btn dark" id="sm-create">Erstellen</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= SPACE MEMBERS ================= -->
+<div class="overlay" id="space-members-overlay">
+  <div class="modal space-members-modal" role="dialog" aria-modal="true" aria-labelledby="space-members-title">
+    <h3 id="space-members-title">Space-Mitglieder</h3>
+    <p class="space-members-intro" id="space-members-copy"></p>
+    <div class="space-members-list" id="space-members-list"></div>
+    <div class="err" id="space-members-err" role="status" aria-live="polite"></div>
+    <div class="m-actions">
+      <button class="btn quiet" id="space-members-cancel" type="button">Abbrechen</button>
+      <button class="btn dark" id="space-members-save" type="button">Speichern</button>
     </div>
   </div>
 </div>

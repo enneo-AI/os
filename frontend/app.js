@@ -4697,7 +4697,6 @@ function folderPickerValue(prefix) {
 let spacesList = []
 let wikiPages = null
 let currentSpace = null
-const expanded = new Set()
 
 // Gecrawlte Seiten haben teils URLs als Titel — dann lesbaren Namen aus dem Slug bauen
 function pageLabel(p) {
@@ -4719,7 +4718,6 @@ async function loadSpacesTree() {
     ...s,
     connections: (conns || []).filter((c) => c.space_id === s.id).map((c) => c.connection_key),
   }))
-  if (!expanded.size && spacesList.length) expanded.add(spacesList[0].id)
   renderSpaceTree()
 }
 
@@ -4734,37 +4732,14 @@ function renderSpaceTree() {
   const tree = $('space-tree')
   tree.innerHTML = ''
 
-  // Eine Liste für alle Spaces — Restricted trägt nur das Lock, keine eigene Sektion
+  // Spaces sind Navigation, kein zweiter Seitenbaum. Ein Klick öffnet die
+  // vollständige Übersicht; Bereiche und Seiten leben ausschließlich dort.
   for (const s of spacesList) {
-    const isOpen = expanded.has(s.id)
-    const row = treeItem({ chev: true, label: s.name, lock: s.restricted })
+    const row = treeItem({ label: s.name, lock: s.restricted })
     row.dataset.space = s.id
     row.classList.toggle('on', activeArea === 'wiki' && SPACE_NAV_VIEWS.has(activeView) && currentSpace?.id === s.id)
-    if (isOpen) row.classList.add('open')
-    row.addEventListener('click', () => {
-      expanded.add(s.id)
-      renderSpaceTree()
-      openSpaceHome(s) // Klick auf den Space öffnet die Übersicht
-    })
-    row.querySelector('.tree-chev')?.addEventListener('click', (e) => {
-      e.stopPropagation() // Chevron klappt nur auf/zu, ohne Navigation
-      isOpen ? expanded.delete(s.id) : expanded.add(s.id)
-      renderSpaceTree()
-    })
+    row.addEventListener('click', () => openSpaceHome(s))
     tree.appendChild(row)
-    if (!isOpen) continue
-
-    const kids = document.createElement('div')
-    kids.className = 'tree-kids'
-    const spacePages = (wikiPages || []).filter((p) => p.space_id === s.id)
-    for (const g of groupPages(spacePages)) {
-      const item = treeItem({ label: `${g.label} · ${g.pages.length}` })
-      item.addEventListener('click', () => openPagelist(s, g.label, g.pages, g.prefix))
-      kids.appendChild(item)
-    }
-    if (!spacePages.length)
-      kids.insertAdjacentHTML('beforeend', '<div class="sb-item" style="cursor:default;color:var(--ink-3)"><span class="txt">Noch keine Seiten</span></div>')
-    tree.appendChild(kids)
   }
 }
 
@@ -4788,16 +4763,25 @@ function spacePageRow(page) {
 
 async function openSpaceHome(space) {
   currentSpace = space
-  const { is_admin } = await ownProfile()
+  const [{ is_admin }, { data: memberRows }] = await Promise.all([
+    ownProfile(),
+    space.restricted
+      ? sb.from('space_members').select('user_id').eq('space_id', space.id)
+      : Promise.resolve({ data: [] }),
+  ])
   const canManageConnections = space.created_by === session.user.id || (!space.restricted && is_admin)
+  const memberIds = [...new Set([space.created_by, ...(memberRows || []).map((row) => row.user_id)].filter(Boolean))]
   $('sh-title').textContent = space.name
   const spacePages = (wikiPages || []).filter((p) => p.space_id === space.id)
   $('sh-access').className = `access-badge ${space.restricted ? 'restricted' : 'open'}`
   $('sh-access').textContent = space.restricted ? 'Restricted' : 'Open'
-  $('sh-sub').textContent = space.restricted ? 'nur Mitglieder' : 'alle Accounts'
+  $('sh-sub').textContent = space.restricted
+    ? `${memberIds.length} ${memberIds.length === 1 ? 'Mitglied' : 'Mitglieder'}`
+    : 'alle Accounts'
   $('sh-page-count').textContent = spacePages.length
   $('sh-source-count').textContent = space.connections.length
   $('sh-src-edit').hidden = !canManageConnections
+  $('sh-members-manage').hidden = !(space.restricted && space.created_by === session.user.id)
   $('sh-search').value = ''
   $('sh-results-panel').hidden = true
   $('sh-main').hidden = false
@@ -4837,6 +4821,56 @@ async function openSpaceHome(space) {
 $('sh-tab-content').addEventListener('click', () => setSpaceHomeTab('content'))
 $('sh-tab-sources').addEventListener('click', () => setSpaceHomeTab('sources'))
 $('sh-src-edit').addEventListener('click', () => { if (currentSpace) openConnectedData(currentSpace) })
+
+let editingSpaceMemberIds = new Set()
+
+async function openSpaceMemberManager() {
+  if (!currentSpace?.restricted || currentSpace.created_by !== session.user.id) return
+  const [profiles, { data: rows, error }] = await Promise.all([
+    allProfiles(),
+    sb.from('space_members').select('user_id').eq('space_id', currentSpace.id),
+  ])
+  if (error) return alert(`Mitglieder konnten nicht geladen werden: ${error.message}`)
+  editingSpaceMemberIds = new Set([currentSpace.created_by, ...(rows || []).map((row) => row.user_id)])
+  $('space-members-title').textContent = `${currentSpace.name} · Mitglieder`
+  $('space-members-copy').textContent = 'Nur ausgewählte Accounts können diesen Restricted Space und seine Connections verwenden.'
+  $('space-members-err').textContent = ''
+  $('space-members-list').innerHTML = profiles.map((profile) => {
+    const owner = profile.id === currentSpace.created_by
+    const name = profile.display_name || profile.email
+    return `<label class="space-member-option${owner ? ' owner' : ''}">
+      <input type="checkbox" value="${esc(profile.id)}" ${editingSpaceMemberIds.has(profile.id) ? 'checked' : ''} ${owner ? 'disabled' : ''}>
+      <span class="pod-member-avatar">${profile.avatar_url ? `<img src="${esc(profile.avatar_url)}" alt="" width="36" height="36">` : esc(profileInitials(profile))}</span>
+      <span class="space-member-copy"><strong>${esc(name)}${owner ? ' · Besitzer:in' : ''}</strong><small>${esc(profile.email)}</small></span>
+    </label>`
+  }).join('')
+  $('space-members-overlay').classList.add('open')
+}
+
+$('sh-members-manage').addEventListener('click', openSpaceMemberManager)
+$('space-members-cancel').addEventListener('click', () => $('space-members-overlay').classList.remove('open'))
+$('space-members-save').addEventListener('click', async () => {
+  if (!currentSpace?.restricted || currentSpace.created_by !== session.user.id) return
+  const selected = [...document.querySelectorAll('#space-members-list input:checked')].map((input) => input.value)
+  const save = $('space-members-save')
+  save.disabled = true
+  save.textContent = 'Speichert …'
+  $('space-members-err').textContent = ''
+  const { error } = await sb.rpc('replace_space_members', {
+    target_space_id: currentSpace.id,
+    member_ids: [...new Set([currentSpace.created_by, ...selected])],
+  })
+  save.disabled = false
+  save.textContent = 'Speichern'
+  if (error) {
+    $('space-members-err').textContent = error.message
+    return
+  }
+  $('space-members-overlay').classList.remove('open')
+  await loadSpacesTree()
+  const refreshed = spacesList.find((space) => space.id === currentSpace.id)
+  if (refreshed) await openSpaceHome(refreshed)
+})
 
 // Live-Suche über ALLE Seiten des Space (Titel + Slug)
 $('sh-search').addEventListener('input', () => {
@@ -5042,8 +5076,8 @@ $('sm-create').addEventListener('click', async () => {
   if (memberIds.length)
     await sb.from('space_members').insert(memberIds.map((uid) => ({ space_id: data.id, user_id: uid })))
   $('space-overlay').classList.remove('open')
-  expanded.add(data.id)
   await loadSpacesTree()
+  openSpaceHome(spacesList.find((space) => space.id === data.id) || data)
 })
 
 // ---------- Einzelseite lesen
