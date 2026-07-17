@@ -307,6 +307,35 @@ test('Space navigation is flat and Restricted owners can atomically manage membe
   assert.match(migration, /values \(target_space_id, owner_id\)/)
 })
 
+test('Pods separate discovery from membership and always load team context', () => {
+  const frontendSource = readFileSync(join(here, '../../frontend/app.js'), 'utf8')
+  const frontendHtml = readFileSync(join(here, '../../frontend/index.html'), 'utf8')
+  const indexSource = readFileSync(join(here, '../src/index.js'), 'utf8')
+  const contextSource = readFileSync(join(here, '../src/pod-context.js'), 'utf8')
+  const notificationSource = readFileSync(join(here, '../src/notifications.js'), 'utf8')
+  const migration = readFileSync(
+    join(here, '../../supabase/migrations/20260717143000_pod_membership_context_and_invitations.sql'),
+    'utf8'
+  )
+
+  assert.match(frontendHtml, /data-tab="context"/)
+  assert.match(frontendHtml, /id="pctx-instructions"/)
+  assert.match(frontendHtml, /id="pctx-responsibilities"/)
+  assert.doesNotMatch(frontendHtml.match(/id="ptab-settings"[\s\S]*?<\/div>\n      <\/div>\n    <\/section>/)?.[0] || '', /pset-instructions/)
+  assert.match(frontendSource, /sb\.rpc\('join_open_pod'/)
+  assert.match(frontendSource, /sb\.rpc\('invite_to_pod'/)
+  assert.match(frontendSource, /sb\.rpc\('respond_to_pod_invitation'/)
+  assert.match(indexSource, /extraSystem \+= await podContextPrompt\(pod\)/)
+  assert.match(contextSource, /POD-KONTEXT \(in jedem Turn verbindlich berücksichtigen\)/)
+  assert.match(contextSource, /Teamrollen und Verantwortungen/)
+  assert.doesNotMatch(notificationSource, /pod\.open\s*\?\s*Promise\.resolve/)
+  assert.match(migration, /Open only controls discoverability/)
+  assert.match(migration, /create table public\.pod_member_contexts/)
+  assert.match(migration, /create table public\.pod_invitations/)
+  assert.match(migration, /create or replace function public\.join_open_pod/)
+  assert.match(migration, /create or replace function public\.respond_to_pod_invitation/)
+})
+
 test('impact reporting labels estimates and records skill usage', () => {
   const indexSource = readFileSync(join(here, '../src/index.js'), 'utf8')
   const frontendSource = readFileSync(join(here, '../../frontend/app.js'), 'utf8')

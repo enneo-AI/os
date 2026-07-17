@@ -13,6 +13,7 @@ import {
   createNotification, createNotifications, notifyPodMentions, pushPublicKey, startPushTicker,
 } from './notifications.js'
 import { loadSkillWithContexts, savePersonalContext } from './contexts.js'
+import { podContextPrompt } from './pod-context.js'
 
 const app = express()
 app.use(express.json({ limit: '30mb' })) // Anhänge kommen als Base64 im Body
@@ -79,12 +80,12 @@ app.get('/files', async (req, res) => {
   }
 })
 
-// Pod laden, wenn der User ihn sehen darf (open / Mitglied / Ersteller).
-// Restricted Pods bleiben auch für Account-Admins invitation-only.
+// Pod-Inhalte sind nur für Ersteller oder akzeptierte Mitglieder zugänglich.
+// `open` macht den Pod auffindbar, erteilt aber keinen Datenzugriff.
 async function podIfVisible(podId, userId) {
   const { data: pod } = await db.from('pods').select('*').eq('id', podId).maybeSingle()
   if (!pod) return null
-  if (pod.open || pod.created_by === userId) return pod
+  if (pod.created_by === userId) return pod
   const { data: member } = await db
     .from('pod_members').select('user_id').eq('pod_id', podId).eq('user_id', userId).maybeSingle()
   if (member) return pod
@@ -509,8 +510,8 @@ app.post('/api/chat', async (req, res) => {
         `Diese Konversation läuft im Pod "${pod.name}" — ein geteilter Projekt-Raum (Team-Chat, mehrere Personen lesen und schreiben mit). ` +
         `Du wurdest gerade mit @enni gerufen; die aktuelle Nachricht kommt von ${senderName}. User-Nachrichten sind mit dem Absender-Namen geprefixt. ` +
         `Du hast Zugriff auf den GESAMTEN Pod über die pod_-Tools: Aufgabenliste (pod_list_tasks), geteilte Dateien (pod_list_files / pod_read_file) und die anderen Konversationen (pod_list_conversations / pod_read_conversation). Nutze sie, wenn die Frage Pod-Kontext braucht.` +
-        (pod.description ? `\nPod-Beschreibung: ${pod.description}` : '') +
-        (pod.instructions ? `\n\nInstructions for Agents (gelten in diesem Pod):\n${pod.instructions}` : '')
+        (pod.description ? `\nPod-Beschreibung: ${pod.description}` : '')
+      extraSystem += await podContextPrompt(pod)
       extraSystem += await podAttioPrompt(pod.id)
     }
     // Slash-Command: /slug an einer beliebigen Wortposition ruft einen Skill explizit auf —

@@ -2,6 +2,7 @@ import { db } from './db.js'
 import { runEnniTurn, ALLOWED_MODELS } from './agent.js'
 import { logUsage } from './usage.js'
 import { createNotification } from './notifications.js'
+import { podContextPrompt } from './pod-context.js'
 
 // ============================================================ Routinen-Ticker
 // Läuft im Railway-Prozess: alle 30s prüfen, welche Routine in der aktuellen
@@ -103,10 +104,10 @@ async function runRoutineForAccount(r, userId) {
   if (r.audience === 'all') extraSystem += '\nDiese Routine gilt für alle Accounts; verwende die persönlichen Tools und Learnings des aktuellen Ziel-Accounts.'
   if (r.audience === 'restricted') extraSystem += '\nDiese Routine gilt für ausgewählte Accounts; verwende die persönlichen Tools und Learnings des aktuellen Ziel-Accounts.'
   if (r.pod_id) {
-    const { data: pod } = await db.from('pods').select('name, instructions').eq('id', r.pod_id).maybeSingle()
+    const { data: pod } = await db.from('pods').select('*').eq('id', r.pod_id).maybeSingle()
     if (pod) {
-      extraSystem += `\nDas Ergebnis erscheint als Konversation im Pod "${pod.name}" — das Team liest es dort.` +
-        (pod.instructions ? `\n\nInstructions for Agents (gelten in diesem Pod):\n${pod.instructions}` : '')
+      extraSystem += `\nDas Ergebnis erscheint als Konversation im Pod "${pod.name}" — das Team liest es dort.`
+      extraSystem += await podContextPrompt(pod)
     }
   }
 

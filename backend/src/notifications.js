@@ -46,11 +46,9 @@ export async function notifyPodMentions({ pod, actorId, messageId, conversationI
 
   const [{ data: profiles }, { data: members }] = await Promise.all([
     db.from('profiles').select('id, email, display_name, account_status').eq('account_status', 'active'),
-    pod.open ? Promise.resolve({ data: [] }) : db.from('pod_members').select('user_id').eq('pod_id', pod.id),
+    db.from('pod_members').select('user_id').eq('pod_id', pod.id),
   ])
-  const allowed = pod.open
-    ? new Set((profiles || []).map((profile) => profile.id))
-    : new Set([pod.created_by, ...(members || []).map((member) => member.user_id)])
+  const allowed = new Set([pod.created_by, ...(members || []).map((member) => member.user_id)])
   const participants = (profiles || []).filter((profile) => profile.id !== actorId && allowed.has(profile.id))
   const recipients = new Map()
   if (hasTeam) participants.forEach((profile) => recipients.set(profile.id, 'team_mention'))

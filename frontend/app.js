@@ -203,7 +203,7 @@ function notificationAge(value) {
 
 const notificationMarks = {
   mention: '@', team_mention: '@', task_assignment: '✓', task_comment: '↳',
-  agent_complete: 'E', routine_complete: '↻', system_update: '↑',
+  agent_complete: 'E', routine_complete: '↻', system_update: '↑', pod_invitation: '+',
 }
 
 function paintNotificationBadges() {
@@ -255,11 +255,40 @@ function renderNotifications() {
   const visible = notificationFilter === 'unread' ? notificationItems.filter((item) => !item.read_at) : notificationItems
   list.innerHTML = ''
   for (const item of visible) {
+    const wrapper = item.type === 'pod_invitation' ? document.createElement('div') : null
+    if (wrapper) wrapper.className = 'notification-invite'
     const row = document.createElement('button')
     row.className = `notification-row${item.read_at ? '' : ' unread'}`
     row.innerHTML = `<span class="notification-icon">${esc(notificationMarks[item.type] || '·')}</span><span class="notification-copy"><span class="notification-title">${esc(item.title)}</span><span class="notification-body">${esc(item.body)}</span></span><span class="notification-time">${esc(notificationAge(item.created_at))}</span>`
     row.addEventListener('click', () => openNotification(item))
-    list.appendChild(row)
+    if (wrapper) wrapper.appendChild(row)
+    if (item.type === 'pod_invitation' && item.metadata?.invitation_id && !item.metadata?.status) {
+      const actions = document.createElement('div')
+      actions.className = 'notification-invite-actions'
+      actions.innerHTML = '<button class="accept" type="button">Annehmen</button><button type="button">Ablehnen</button>'
+      const buttons = actions.querySelectorAll('button')
+      buttons.forEach((button) => button.addEventListener('click', async () => {
+        const accept = button.classList.contains('accept')
+        buttons.forEach((candidate) => { candidate.disabled = true })
+        const { error } = await sb.rpc('respond_to_pod_invitation', {
+          target_invitation_id: item.metadata.invitation_id,
+          accept_invitation: accept,
+        })
+        if (error) {
+          buttons.forEach((candidate) => { candidate.disabled = false })
+          window.alert(`Einladung konnte nicht beantwortet werden: ${error.message}`)
+          return
+        }
+        await Promise.all([loadNotifications(), loadPods()])
+        if (accept) {
+          const pod = podsList.find((candidate) => candidate.id === item.pod_id)
+          closeNotifications()
+          if (pod) openPod(pod)
+        }
+      }))
+      wrapper.appendChild(actions)
+    }
+    list.appendChild(wrapper || row)
   }
   if (!visible.length) list.innerHTML = `<div class="notification-empty">${notificationFilter === 'unread' ? 'Alles gelesen.' : 'Hier erscheinen Erwähnungen, Aufgaben und Enni-Ergebnisse.'}</div>`
 }
@@ -352,7 +381,8 @@ async function loadNotificationPreferences() {
 function renderMutedPods() {
   const host = $('muted-pods')
   const muted = new Set(notificationPreferences?.muted_pod_ids || [])
-  host.innerHTML = podsList.length ? podsList.map((pod) => `<label class="muted-pod-row"><input type="checkbox" value="${esc(pod.id)}"${muted.has(pod.id) ? ' checked' : ''}>${esc(pod.name)}</label>`).join('') : '<div class="notification-setting-copy"><span>Keine Pods vorhanden.</span></div>'
+  const joinedPods = podsList.filter(isPodMember)
+  host.innerHTML = joinedPods.length ? joinedPods.map((pod) => `<label class="muted-pod-row"><input type="checkbox" value="${esc(pod.id)}"${muted.has(pod.id) ? ' checked' : ''}>${esc(pod.name)}</label>`).join('') : '<div class="notification-setting-copy"><span>Keine beigetretenen Pods vorhanden.</span></div>'
   host.querySelectorAll('input').forEach((input) => input.addEventListener('change', saveNotificationPreferences))
 }
 
@@ -881,7 +911,7 @@ async function route() {
     const pod = podsList.find((x) => x.id === p.slice(5))
     const params = new URLSearchParams(location.search)
     const requestedTab = params.get('tab')
-    const tab = ['overview', 'convs', 'tasks', 'board', 'files', 'settings'].includes(requestedTab) ? requestedTab : 'overview'
+    const tab = ['overview', 'convs', 'tasks', 'board', 'files', 'context', 'settings'].includes(requestedTab) ? requestedTab : 'overview'
     if (pod) {
       await openPod(pod, tab)
       const conversationId = params.get('conversation')
@@ -2339,6 +2369,10 @@ function podInitials(name) {
   return ((w[0]?.[0] || '') + (w[1]?.[0] || '')).toUpperCase() || '·'
 }
 
+function isPodMember(pod) {
+  return !!pod && (pod.created_by === session.user.id || (pod.members || []).includes(session.user.id))
+}
+
 async function loadPods() {
   const [{ data: pods }, { data: members }, { data: podConvs }] = await Promise.all([
     sb.from('pods').select('*').order('created_at'),
@@ -2369,7 +2403,8 @@ async function loadPods() {
     const tile = p.logo_url
       ? `<span class="pod-tile logo"><img src="${esc(p.logo_url)}" alt=""></span>`
       : `<span class="pod-tile">${esc(podInitials(p.name))}</span>`
-    btn.innerHTML = `${tile}<span class="txt">${esc(p.name)}</span><span class="sb-right">${ind}${p.open ? '' : LOCK_SVG}</span>`
+    const discovery = p.open && !isPodMember(p) ? '<span class="pod-discovery-mark">Beitreten</span>' : ''
+    btn.innerHTML = `${tile}<span class="txt">${esc(p.name)}</span><span class="sb-right">${ind}${discovery}${p.open ? '' : LOCK_SVG}</span>`
     btn.addEventListener('click', () => openPod(p))
     list.appendChild(btn)
   }
@@ -2388,10 +2423,32 @@ async function openPod(pod, tab = 'overview') {
   sidebarPodId = pod.id
   paintPodHighlight()
   document.querySelectorAll('#conv-list .sb-item').forEach((x) => x.classList.remove('on'))
-  refreshPodCounts(pod.id)
   activateArea('chat', 'pod')
-  switchPodTab(tab)
+  const joined = isPodMember(pod)
+  $('pod-access-gate').hidden = joined
+  $('pod-tabs').hidden = !joined
+  document.querySelectorAll('.pod-tab').forEach((panel) => { panel.hidden = true })
+  if (joined) {
+    refreshPodCounts(pod.id)
+    switchPodTab(tab)
+  } else {
+    history.replaceState({}, '', `/pod/${activePod.id}`)
+  }
 }
+
+$('pod-join').addEventListener('click', async () => {
+  if (!activePod?.open) return
+  const button = $('pod-join')
+  button.disabled = true
+  button.textContent = 'Beitritt läuft …'
+  const { error } = await sb.rpc('join_open_pod', { target_pod_id: activePod.id })
+  button.disabled = false
+  button.textContent = 'Pod beitreten'
+  if (error) return window.alert(`Beitritt fehlgeschlagen: ${error.message}`)
+  await loadPods()
+  const joinedPod = podsList.find((pod) => pod.id === activePod.id)
+  if (joinedPod) openPod(joinedPod)
+})
 
 async function refreshPodCounts(podId) {
   const [convs, tasks, files] = await Promise.all([
@@ -2416,12 +2473,13 @@ function switchPodTab(tab) {
   if (selectedTab && window.matchMedia('(max-width: 900px)').matches) {
     selectedTab.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'nearest', inline: 'center' })
   }
-  for (const t of ['overview', 'convs', 'tasks', 'board', 'files', 'settings']) $('ptab-' + t).hidden = t !== tab
+  for (const t of ['overview', 'convs', 'tasks', 'board', 'files', 'context', 'settings']) $('ptab-' + t).hidden = t !== tab
   if (tab === 'overview') loadPodOverview()
   if (tab === 'convs') loadPodConvs()
   if (tab === 'tasks') loadPodTasks()
   if (tab === 'board') loadPodBoard()
   if (tab === 'files') loadPodFiles()
+  if (tab === 'context') loadPodContext()
   if (tab === 'settings') fillPodSettings()
   if (activeView === 'pod' && activePod) history.replaceState({}, '', `/pod/${activePod.id}?tab=${tab}`)
 }
@@ -2942,9 +3000,7 @@ async function openTaskDetail(task, profiles = null) {
   $('task-detail-section').value = task.section || ''
   $('task-detail-description').value = task.description || ''
   const assignee = $('task-detail-assignee')
-  const candidates = activePod.open
-    ? taskDetailProfiles
-    : taskDetailProfiles.filter((p) => activePod.members.includes(p.id) || p.id === activePod.created_by)
+  const candidates = taskDetailProfiles.filter((p) => activePod.members.includes(p.id) || p.id === activePod.created_by)
   assignee.innerHTML = '<option value="">Niemand</option>' + candidates.map((p) => `<option value="${esc(p.id)}">${esc(p.display_name || p.email)}</option>`).join('')
   assignee.value = task.assignee || ''
   $('task-detail-conversation').hidden = !task.conversation_id
@@ -3104,9 +3160,7 @@ $('tasks-show-done').addEventListener('change', () => {
 // Aufgabe einem Pod-Mitglied zuweisen (kleines Popover am Personen-Icon/Avatar)
 function openAssignMenu(anchor, t, profs) {
   document.querySelector('.assign-menu')?.remove()
-  const candidates = activePod.open
-    ? profs
-    : profs.filter((p) => activePod.members.includes(p.id) || p.id === activePod.created_by)
+  const candidates = profs.filter((p) => activePod.members.includes(p.id) || p.id === activePod.created_by)
   const menu = document.createElement('div')
   menu.className = 'assign-menu'
   const entry = (html, val) => {
@@ -3258,6 +3312,60 @@ $('pod-file-input').addEventListener('change', async () => {
   loadPodFiles()
 })
 
+// --- Tab: Kontext
+async function loadPodContext() {
+  if (!activePod || !isPodMember(activePod)) return
+  const podId = activePod.id
+  const [{ data: contexts }, profiles] = await Promise.all([
+    sb.from('pod_member_contexts').select('*').eq('pod_id', podId).order('updated_at'),
+    allProfiles(),
+  ])
+  if (activePod?.id !== podId) return
+  const contextByUser = new Map((contexts || []).map((context) => [context.user_id, context]))
+  const own = contextByUser.get(session.user.id)
+  $('pctx-instructions').value = activePod.instructions || ''
+  $('pctx-role').value = own?.role_title || ''
+  $('pctx-responsibilities').value = own?.responsibilities || ''
+  const memberIds = [...new Set([activePod.created_by, ...(activePod.members || [])])]
+  $('pctx-team').innerHTML = memberIds.map((userId) => {
+    const profile = profiles.find((candidate) => candidate.id === userId)
+    if (!profile) return ''
+    const context = contextByUser.get(userId)
+    const role = context?.role_title || profile.role_title || 'Rolle noch nicht beschrieben'
+    const responsibilities = context?.responsibilities || 'Verantwortungen noch nicht beschrieben.'
+    return `<div class="pod-context-person"><button class="pod-member-avatar" type="button" data-profile="${esc(userId)}">${profile.avatar_url ? `<img src="${esc(profile.avatar_url)}" alt="" width="30" height="30" loading="lazy">` : esc(profileInitials(profile))}</button><div><strong>${esc(profile.display_name || profile.email)} · ${esc(role)}</strong><span class="${context?.responsibilities ? '' : 'pod-context-empty'}">${esc(responsibilities)}</span></div></div>`
+  }).join('')
+  $('pctx-team').querySelectorAll('[data-profile]').forEach((button) => button.addEventListener('click', () => openMemberProfile(button.dataset.profile)))
+}
+
+$('pctx-instructions-save').addEventListener('click', async () => {
+  const button = $('pctx-instructions-save')
+  const instructions = $('pctx-instructions').value.trim()
+  button.disabled = true
+  const { error } = await sb.from('pods').update({ instructions }).eq('id', activePod.id)
+  button.disabled = false
+  if (error) return window.alert(`Instructions konnten nicht gespeichert werden: ${error.message}`)
+  activePod.instructions = instructions
+  button.textContent = 'Gespeichert'
+  setTimeout(() => { button.textContent = 'Instructions speichern' }, 1200)
+})
+
+$('pctx-role-save').addEventListener('click', async () => {
+  const button = $('pctx-role-save')
+  button.disabled = true
+  const { error } = await sb.from('pod_member_contexts').upsert({
+    pod_id: activePod.id,
+    user_id: session.user.id,
+    role_title: $('pctx-role').value.trim(),
+    responsibilities: $('pctx-responsibilities').value.trim(),
+  })
+  button.disabled = false
+  if (error) return window.alert(`Rolle konnte nicht gespeichert werden: ${error.message}`)
+  button.textContent = 'Gespeichert'
+  await loadPodContext()
+  setTimeout(() => { button.textContent = 'Rolle speichern' }, 1200)
+})
+
 // --- Tab: Einstellungen
 let myProfile = null
 async function ownProfile() {
@@ -3289,7 +3397,6 @@ async function fillPodSettings() {
   $('pset-status').value = activePod.project_status || 'on_track'
   $('pset-target').value = activePod.target_date || ''
   $('pset-focus').value = activePod.current_focus || ''
-  $('pset-instructions').value = activePod.instructions || ''
   $('pset-open').checked = activePod.open
   pendingPodLogo = null
   paintPodLogoTile()
@@ -3302,29 +3409,37 @@ async function fillPodSettings() {
 }
 
 async function renderPodTeam() {
-  const profiles = await allProfiles()
+  const [profiles, { data: invitations }] = await Promise.all([
+    allProfiles(),
+    sb.from('pod_invitations').select('id, invitee_id, status, created_at').eq('pod_id', activePod.id).eq('status', 'pending'),
+  ])
   const { is_admin: isAdmin } = await ownProfile()
-  const canManage = isAdmin || activePod.created_by === session.user.id
-  const memberIds = activePod.open
-    ? profiles.map((profile) => profile.id)
-    : [...new Set([activePod.created_by, ...(activePod.members || [])])]
+  const canManage = activePod.created_by === session.user.id || (isAdmin && isPodMember(activePod))
+  const memberIds = [...new Set([activePod.created_by, ...(activePod.members || [])])]
   const members = memberIds.map((id) => profiles.find((profile) => profile.id === id)).filter(Boolean)
-  $('pset-team-state').textContent = activePod.open ? 'Open' : `Restricted · ${members.length} ${members.length === 1 ? 'Mitglied' : 'Mitglieder'}`
+  $('pset-team-state').textContent = `${activePod.open ? 'Open' : 'Restricted'} · ${members.length} ${members.length === 1 ? 'Mitglied' : 'Mitglieder'}`
   $('pset-team-state').className = `pod-customer-state${activePod.open ? ' on' : ''}`
   $('pset-team-copy').textContent = activePod.open
-    ? 'Open: Alle aktiven Accounts haben automatisch Zugriff.'
-    : canManage ? 'Restricted: Nur ausgewählte Mitglieder haben Zugriff.' : 'Restricted: Nur Pod-Besitzer und eingeladene Admins können Mitglieder verwalten.'
+    ? 'Open: Für alle sichtbar; Zugriff erhält man erst durch Beitritt oder Einladung.'
+    : canManage ? 'Restricted: Nur Mitglieder mit angenommener Einladung haben Zugriff.' : 'Restricted: Nur Pod-Besitzer und eingeladene Admins können Mitglieder verwalten.'
   const host = $('pset-team-content')
   host.innerHTML = `<div class="pod-member-list">${members.map((profile) => {
     const department = departmentInfo(profile)
     const owner = profile.id === activePod.created_by
-    return `<div class="pod-member"><button class="pod-member-avatar" type="button" data-profile="${esc(profile.id)}" aria-label="Profil von ${esc(profile.display_name || profile.email)} öffnen">${profile.avatar_url ? `<img src="${esc(profile.avatar_url)}" alt="" width="36" height="36" loading="lazy">` : esc(profileInitials(profile))}</button><button class="pod-member-profile" type="button" data-profile="${esc(profile.id)}"><span><span class="pod-member-name">${esc(profile.display_name || profile.email)}${owner ? ' · Besitzer:in' : ''}</span><span class="pod-member-label">${esc(profile.role_title || department.label)}</span></span></button>${canManage && !activePod.open && !owner ? `<button class="pod-member-remove" type="button" data-remove-member="${esc(profile.id)}">Entfernen</button>` : ''}</div>`
+    return `<div class="pod-member"><button class="pod-member-avatar" type="button" data-profile="${esc(profile.id)}" aria-label="Profil von ${esc(profile.display_name || profile.email)} öffnen">${profile.avatar_url ? `<img src="${esc(profile.avatar_url)}" alt="" width="36" height="36" loading="lazy">` : esc(profileInitials(profile))}</button><button class="pod-member-profile" type="button" data-profile="${esc(profile.id)}"><span><span class="pod-member-name">${esc(profile.display_name || profile.email)}${owner ? ' · Besitzer:in' : ''}</span><span class="pod-member-label">${esc(profile.role_title || department.label)}</span></span></button>${canManage && !owner ? `<button class="pod-member-remove" type="button" data-remove-member="${esc(profile.id)}">Entfernen</button>` : ''}</div>`
   }).join('')}</div>`
-  if (canManage && !activePod.open) {
-    const eligible = profiles.filter((profile) => !memberIds.includes(profile.id))
+  if (canManage) {
+    const pendingIds = new Set((invitations || []).map((invitation) => invitation.invitee_id))
+    const eligible = profiles.filter((profile) => !memberIds.includes(profile.id) && !pendingIds.has(profile.id))
     host.insertAdjacentHTML('beforeend', eligible.length
-      ? `<div class="pod-member-add"><select id="pod-member-select" aria-label="Mitglied auswählen"><option value="">Mitglied auswählen …</option>${eligible.map((profile) => `<option value="${esc(profile.id)}">${esc(profile.display_name || profile.email)}</option>`).join('')}</select><button class="btn quiet" id="pod-member-add" type="button">Hinzufügen</button></div>`
+      ? `<div class="pod-member-add"><select id="pod-member-select" aria-label="Person auswählen"><option value="">Person einladen …</option>${eligible.map((profile) => `<option value="${esc(profile.id)}">${esc(profile.display_name || profile.email)}</option>`).join('')}</select><button class="btn quiet" id="pod-member-add" type="button">Einladen</button></div>`
       : '<div class="pod-team-note">Alle verfügbaren Mitglieder sind bereits im Pod.</div>')
+    if ((invitations || []).length) {
+      host.insertAdjacentHTML('beforeend', `<div class="pod-team-note">Ausstehend: ${(invitations || []).map((invitation) => {
+        const profile = profiles.find((candidate) => candidate.id === invitation.invitee_id)
+        return esc(profile?.display_name || profile?.email || 'Einladung')
+      }).join(', ')}</div>`)
+    }
   }
   host.querySelectorAll('[data-profile]').forEach((button) => button.addEventListener('click', () => openMemberProfile(button.dataset.profile)))
   host.querySelectorAll('[data-remove-member]').forEach((button) => button.addEventListener('click', async () => {
@@ -3338,9 +3453,8 @@ async function renderPodTeam() {
   $('pod-member-add')?.addEventListener('click', async () => {
     const userId = $('pod-member-select').value
     if (!userId) return
-    const { error } = await sb.from('pod_members').insert({ pod_id: activePod.id, user_id: userId })
-    if (error) return alert(`Mitglied konnte nicht hinzugefügt werden: ${error.message}`)
-    activePod.members = [...new Set([...(activePod.members || []), userId])]
+    const { error } = await sb.rpc('invite_to_pod', { target_pod_id: activePod.id, target_user_id: userId })
+    if (error) return alert(`Einladung konnte nicht versendet werden: ${error.message}`)
     renderPodTeam()
   })
 }
@@ -3513,7 +3627,6 @@ $('pset-save').addEventListener('click', async () => {
     project_status: $('pset-status').value,
     target_date: $('pset-target').value || null,
     current_focus: $('pset-focus').value.trim(),
-    instructions: $('pset-instructions').value.trim(),
     open: $('pset-open').checked,
   }
   try {
@@ -3548,7 +3661,7 @@ let pmOpen = true
 $('new-pod').addEventListener('click', async () => {
   pmOpen = true
   document.querySelectorAll('#pm-seg button').forEach((b) => b.classList.toggle('on', b.dataset.acc === 'open'))
-  $('pm-hint').textContent = 'Open · alle aktiven Accounts.'
+  $('pm-hint').textContent = 'Open · für alle sichtbar, Beitritt freiwillig.'
   $('pm-members-wrap').style.display = 'none'
   const profs = await allProfiles()
   $('pm-members').innerHTML = profs
@@ -3563,8 +3676,8 @@ document.querySelectorAll('#pm-seg button').forEach((b) =>
     pmOpen = b.dataset.acc === 'open'
     document.querySelectorAll('#pm-seg button').forEach((x) => x.classList.toggle('on', x === b))
     $('pm-hint').textContent = pmOpen
-      ? 'Open · alle aktiven Accounts.'
-      : 'Restricted · nur ausgewählte Mitglieder.'
+      ? 'Open · für alle sichtbar, Beitritt freiwillig.'
+      : 'Restricted · ausgewählte Personen erhalten eine Einladung.'
     $('pm-members-wrap').style.display = pmOpen ? 'none' : ''
   })
 )
@@ -3576,8 +3689,13 @@ $('pm-create').addEventListener('click', async () => {
     .from('pods').insert({ name, open: pmOpen, created_by: session.user.id }).select().single()
   if (error) { alert('Fehler: ' + error.message); return }
   if (!pmOpen) {
-    const ids = [...document.querySelectorAll('#pm-members input')].filter((i) => i.checked || i.disabled).map((i) => i.value)
-    if (ids.length) await sb.from('pod_members').insert(ids.map((uid) => ({ pod_id: data.id, user_id: uid })))
+    const ids = [...document.querySelectorAll('#pm-members input')]
+      .filter((input) => input.checked && input.value !== session.user.id)
+      .map((input) => input.value)
+    for (const userId of ids) {
+      const { error: inviteError } = await sb.rpc('invite_to_pod', { target_pod_id: data.id, target_user_id: userId })
+      if (inviteError) console.error('Pod-Einladung:', inviteError.message)
+    }
   }
   $('pod-overlay').classList.remove('open')
   await loadPods()
@@ -4441,12 +4559,8 @@ document.body.appendChild(mentionMenu)
 let mentionState = null // { input, items, sel, start }
 
 function mentionCandidatesFor(pod, profs) {
-  // Restricted Pod: nur Mitglieder + Ersteller. Open Pod: das ganze Team.
-  let people = profs
-  if (pod && !pod.open) {
-    const ids = new Set([...(pod.members || []), pod.created_by])
-    people = profs.filter((p) => ids.has(p.id))
-  }
+  const ids = new Set([...(pod?.members || []), pod?.created_by])
+  const people = profs.filter((profile) => ids.has(profile.id))
   return [
     { insert: '@enni', name: 'Enni ruft den AI-Assistenten in die Konversation' },
     { insert: '@team', name: 'Alle aktiven Mitglieder dieses Pods benachrichtigen' },
@@ -6687,7 +6801,7 @@ async function openRoutine(r) {
   $('rt-enabled').checked = r ? r.enabled : true
   const podSel = $('rt-pod')
   podSel.innerHTML = '<option value="">Restricted · nur du</option>' +
-    podsList.map((p) => `<option value="${p.id}">Pod: ${esc(p.name)}</option>`).join('')
+    podsList.filter(isPodMember).map((p) => `<option value="${p.id}">Pod: ${esc(p.name)}</option>`).join('')
   podSel.value = r?.pod_id || ''
   const selectedAccounts = new Set((r?.routine_accounts || []).map((assignment) => assignment.user_id))
   $('rt-accounts').innerHTML = profs.map((profile) => {

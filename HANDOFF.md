@@ -1,6 +1,15 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-17 (flache Space-Navigation und Restricted-Mitgliederverwaltung)
+**Zuletzt aktualisiert:** 2026-07-17 (Pod-Kontext, freiwilliger Beitritt und Einladungen)
+
+### Session 2026-07-17 — Pod-Kontext + echte freiwillige Mitgliedschaft
+
+- **Neuer Reiter `Kontext`:** `Instructions for Agents` wurde aus den Einstellungen in einen eigenen, klaren Pod-Bereich verschoben. Jedes Mitglied pflegt dort zusätzlich seine pod-spezifische Rolle und Verantwortungen; die Rollenübersicht ist für das Pod-Team sichtbar. Das globale Profil bleibt davon getrennt, weil dieselbe Person je Pod eine andere Aufgabe haben kann.
+- **Enni lädt den Kontext immer:** `backend/src/pod-context.js` erzeugt für jeden Pod-Turn einen verbindlichen Systemblock aus Instructions, Mitgliedern, Rollen und Verantwortungen. Derselbe Block wird auch bei Pod-Routinen geladen; fehlende Rolleneinträge werden ausdrücklich als nicht beschrieben markiert statt still erfunden.
+- **Open bedeutet auffindbar, nicht automatisch berechtigt:** Alle aktiven Accounts sehen Open Pods in der Sidebar, aber Chats, Aufgaben, Dateien, Attio-Daten, Routinen und Enni-Kontext bleiben bis zum freiwilligen Klick auf `Pod beitreten` gesperrt. Die Datenbank-Policies erzwingen dieselbe Grenze; selbst früher vom Nutzer angelegte Open-Pod-Konversationen umgehen die neue Mitgliedschaft nicht. Pod-Ersteller werden für alte und neue Pods als echte Mitglieder geführt.
+- **Einladungen für Open und Restricted:** Pod-Besitzer sowie beigetretene Admins können Personen einladen. Die Zielperson erhält eine `pod_invitation` im Notification-Center und kann dort direkt annehmen oder ablehnen. Erst die Annahme erzeugt die Mitgliedschaft; Restricted Pods bleiben vorher vollständig verborgen. Beim Erstellen eines Restricted Pods werden ausgewählte Personen ebenfalls eingeladen und nicht mehr still hinzugefügt.
+- **Teamfunktionen folgen der Mitgliedschaft:** `@team`, Mention-Autocomplete, Aufgaben-Zuweisung, Notification-Muting und Pod-Routinen verwenden nur noch akzeptierte Pod-Mitglieder – nie pauschal die gesamte Organisation eines Open Pods. Beim Entfernen eines Mitglieds wird dessen Pod-Rollenkontext über den zusammengesetzten Foreign Key mit entfernt.
+- **Migration und Verifikation:** Migration `20260717143000_pod_membership_context_and_invitations.sql` ist live; Railway-Deployment `8d055709-6466-4c06-9892-581755a07c99` ist `SUCCESS`. Lokale Syntax-/Diff-Checks und Backend-Tests 17/17 sind grün; der Supabase Security Advisor meldet keine Errors. Ein echter Drei-Account-Production-Eval bestätigte: Open Pod sichtbar, Inhalt vor Join unsichtbar, Inhalt nach Join sichtbar, eigener Rollenkontext speicherbar, Restricted Pod vor Einladung/Annahme unsichtbar, Einladung im persönlichen Notification-Inbox und Zugriff erst nach Annahme. Alle QA-Pods und QA-Accounts wurden anschließend vollständig entfernt.
 
 ### Session 2026-07-17 — Spaces ohne Sidebar-Dropdown + Mitglieder verwalten
 
