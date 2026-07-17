@@ -317,10 +317,15 @@ test('Pods separate discovery from membership and always load team context', () 
     join(here, '../../supabase/migrations/20260717143000_pod_membership_context_and_invitations.sql'),
     'utf8'
   )
+  const managedContextMigration = readFileSync(
+    join(here, '../../supabase/migrations/20260717163000_manage_pod_member_contexts.sql'),
+    'utf8'
+  )
 
   assert.match(frontendHtml, /data-tab="context"/)
   assert.match(frontendHtml, /id="pctx-instructions"/)
   assert.match(frontendHtml, /id="pctx-responsibilities"/)
+  assert.match(frontendHtml, /Rollen im Pod/)
   assert.doesNotMatch(frontendHtml.match(/id="ptab-settings"[\s\S]*?<\/div>\n      <\/div>\n    <\/section>/)?.[0] || '', /pset-instructions/)
   assert.match(frontendSource, /sb\.rpc\('join_open_pod'/)
   assert.match(frontendSource, /sb\.rpc\('invite_to_pod'/)
@@ -334,6 +339,11 @@ test('Pods separate discovery from membership and always load team context', () 
   assert.match(migration, /create table public\.pod_invitations/)
   assert.match(migration, /create or replace function public\.join_open_pod/)
   assert.match(migration, /create or replace function public\.respond_to_pod_invitation/)
+  assert.match(frontendSource, /paintPodContextEditor/)
+  assert.match(frontendSource, /data-context-user/)
+  assert.match(frontendSource, /user_id: userId/)
+  assert.match(managedContextMigration, /private\.can_manage_pod_members\(pod_id\)/)
+  assert.match(managedContextMigration, /pod_member_contexts_update_managed/)
 })
 
 test('impact reporting labels estimates and records skill usage', () => {

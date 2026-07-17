@@ -3344,29 +3344,59 @@ $('pod-file-input').addEventListener('change', async () => {
 })
 
 // --- Tab: Kontext
+let podContextState = null
+
+function paintPodContextEditor(userId) {
+  if (!podContextState) return
+  const { contextByUser, profiles, canManage } = podContextState
+  const profile = profiles.find((candidate) => candidate.id === userId)
+  if (!profile) return
+  podContextState.selectedUserId = userId
+  const context = contextByUser.get(userId)
+  const editable = canManage || userId === session.user.id
+  $('pctx-team').querySelectorAll('[data-context-user]').forEach((button) => {
+    button.setAttribute('aria-pressed', String(button.dataset.contextUser === userId))
+  })
+  $('pctx-selected-avatar').innerHTML = profile.avatar_url
+    ? `<img src="${esc(profile.avatar_url)}" alt="" width="34" height="34" loading="lazy">`
+    : esc(profileInitials(profile))
+  $('pctx-selected-name').textContent = profile.display_name || profile.email
+  $('pctx-selected-hint').textContent = userId === session.user.id ? 'Dein Kontext in diesem Pod' : 'Kontext dieses Pod-Mitglieds'
+  $('pctx-role').value = context?.role_title || ''
+  $('pctx-responsibilities').value = context?.responsibilities || ''
+  $('pctx-role').disabled = !editable
+  $('pctx-responsibilities').disabled = !editable
+  $('pctx-role-save').hidden = !editable
+  $('pctx-save-note').textContent = editable
+    ? (userId === session.user.id ? 'Du bearbeitest deinen eigenen Eintrag.' : 'Du bearbeitest diesen Eintrag als Pod-Verantwortliche:r.')
+    : 'Nur diese Person sowie Pod-Verantwortliche können den Eintrag ändern.'
+}
+
 async function loadPodContext() {
   if (!activePod || !isPodMember(activePod)) return
   const podId = activePod.id
-  const [{ data: contexts }, profiles] = await Promise.all([
+  const [{ data: contexts }, profiles, profile] = await Promise.all([
     sb.from('pod_member_contexts').select('*').eq('pod_id', podId).order('updated_at'),
     allProfiles(),
+    ownProfile(),
   ])
   if (activePod?.id !== podId) return
   const contextByUser = new Map((contexts || []).map((context) => [context.user_id, context]))
-  const own = contextByUser.get(session.user.id)
+  const canManage = activePod.created_by === session.user.id || (profile.is_admin && isPodMember(activePod))
   $('pctx-instructions').value = activePod.instructions || ''
-  $('pctx-role').value = own?.role_title || ''
-  $('pctx-responsibilities').value = own?.responsibilities || ''
   const memberIds = [...new Set([activePod.created_by, ...(activePod.members || [])])]
+  const previousSelection = podContextState?.selectedUserId
+  podContextState = { contextByUser, profiles, memberIds, canManage, selectedUserId: null }
   $('pctx-team').innerHTML = memberIds.map((userId) => {
     const profile = profiles.find((candidate) => candidate.id === userId)
     if (!profile) return ''
     const context = contextByUser.get(userId)
     const role = context?.role_title || profile.role_title || 'Rolle noch nicht beschrieben'
-    const responsibilities = context?.responsibilities || 'Verantwortungen noch nicht beschrieben.'
-    return `<div class="pod-context-person"><button class="pod-member-avatar" type="button" data-profile="${esc(userId)}">${profile.avatar_url ? `<img src="${esc(profile.avatar_url)}" alt="" width="30" height="30" loading="lazy">` : esc(profileInitials(profile))}</button><div><strong>${esc(profile.display_name || profile.email)} · ${esc(role)}</strong><span class="${context?.responsibilities ? '' : 'pod-context-empty'}">${esc(responsibilities)}</span></div></div>`
+    return `<button class="pod-context-person" type="button" data-context-user="${esc(userId)}" aria-pressed="false"><span class="pod-member-avatar">${profile.avatar_url ? `<img src="${esc(profile.avatar_url)}" alt="" width="32" height="32" loading="lazy">` : esc(profileInitials(profile))}</span><span><strong>${esc(profile.display_name || profile.email)}</strong><span class="${context?.role_title ? '' : 'pod-context-empty'}">${esc(role)}</span></span></button>`
   }).join('')
-  $('pctx-team').querySelectorAll('[data-profile]').forEach((button) => button.addEventListener('click', () => openMemberProfile(button.dataset.profile)))
+  $('pctx-team').querySelectorAll('[data-context-user]').forEach((button) => button.addEventListener('click', () => paintPodContextEditor(button.dataset.contextUser)))
+  const initialSelection = memberIds.includes(previousSelection) ? previousSelection : session.user.id
+  paintPodContextEditor(initialSelection)
 }
 
 $('pctx-instructions-save').addEventListener('click', async () => {
@@ -3383,18 +3413,20 @@ $('pctx-instructions-save').addEventListener('click', async () => {
 
 $('pctx-role-save').addEventListener('click', async () => {
   const button = $('pctx-role-save')
+  const userId = podContextState?.selectedUserId
+  if (!userId) return
   button.disabled = true
   const { error } = await sb.from('pod_member_contexts').upsert({
     pod_id: activePod.id,
-    user_id: session.user.id,
+    user_id: userId,
     role_title: $('pctx-role').value.trim(),
     responsibilities: $('pctx-responsibilities').value.trim(),
-  })
+  }, { onConflict: 'pod_id,user_id' })
   button.disabled = false
   if (error) return window.alert(`Rolle konnte nicht gespeichert werden: ${error.message}`)
   button.textContent = 'Gespeichert'
   await loadPodContext()
-  setTimeout(() => { button.textContent = 'Rolle speichern' }, 1200)
+  setTimeout(() => { button.textContent = 'Zuordnung speichern' }, 1200)
 })
 
 // --- Tab: Einstellungen
