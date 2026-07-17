@@ -1,6 +1,14 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-17 (TickTick-OAuth und deduplizierter Marketplace)
+**Zuletzt aktualisiert:** 2026-07-17 (zertifizierte Connectoren ohne Provider-Sondercode)
+
+### Session 2026-07-17 — Connector Certification Flow für zukünftige Tools
+
+- **Research ist kein Funktionsversprechen mehr:** Neue Tool-Recherchen starten immer mit `connect_ready=false`. Beim Admin-Klick auf „Im Marketplace veröffentlichen“ führt das Backend eine technische Zertifizierung durch. Unter 70 % Quellenkonfidenz, ohne offiziellen Remote-MCP, bei unbekanntem Auth-Verfahren oder bei fehlgeschlagener Protokollprüfung bleibt die Veröffentlichung blockiert und zeigt den konkreten Fehler.
+- **Drei verifizierte Verbindungspfade:** Öffentliche MCPs müssen live Tools liefern. OAuth-MCPs müssen Discovery, Dynamic Client Registration und PKCE bis zur echten HTTPS-Autorisierungsseite bestehen. Bearer-/X-API-Key-MCPs werden anhand der offiziellen Endpoint-Evidenz freigegeben und beim persönlichen Verbinden mit dem eingegebenen Credential durch echte Tool-Discovery geprüft; ein ungültiger Token wird niemals gespeichert.
+- **Keine neue Hardcodierung pro OAuth-Anbieter:** Ein approved Research-Blueprint ist jetzt selbst der dynamische Provider-Eintrag. `POST /api/tool-requests/:id/oauth/start` verwendet denselben verschlüsselten OAuth-/PKCE-/Refresh-Pfad wie Lemlist und TickTick. `connectors.oauth_provider` bewahrt die Callback-Identität nach dem Login, damit auch Token-Refresh später ohne feste Provider-Liste funktioniert. Der Login öffnet weiterhin in einem separaten Tab; die Connection bleibt bis zur Space-Zuordnung für Enni inaktiv.
+- **Sauberer Marketplace:** Nur `certification.status=verified` plus `connect_ready=true` erzeugt „Verbinden“. Bereits native oder kuratierte Anbieter werden zusätzlich zu URL/Slug/Name dedupliziert, damit eine Research-Anfrage nicht erneut Notion, TickTick oder einen anderen vorhandenen Anbieter als zweite Karte veröffentlicht.
+- **Produktiv verifiziert:** Migration `20260717124500_dynamic_mcp_oauth_providers.sql` ist live. Backend-Tests 15/15, Syntax und Diff-Check grün. Railway-Deployment `28803d4b-fbf3-42bc-b716-1683b2b69707` ist `SUCCESS`, `/health` grün und Netlify liefert den neuen Certification Flow. Echte generische Smokes bestanden gegen TickTick und den zuvor nicht registrierten offiziellen Notion-MCP `https://mcp.notion.com/mcp`. Der Production-Browser-Eval zeigte vor Freigabe „Wird vor Veröffentlichung technisch geprüft“, während der Prüfung den blockierten Button, danach „Verbinden“ und beim Klick den neuen-Tab-Login bei unverändertem Marketplace. Temporärer Request, Audit-Eintrag, Connector-Prüfung und OAuth-Sessions wurden vollständig entfernt.
 
 ### Session 2026-07-17 — OAuth in neuem Tab + TickTick dedupliziert
 
