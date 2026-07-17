@@ -192,6 +192,19 @@ test('researched integrations join the existing permission sections with provide
   assert.doesNotMatch(frontendSource, /Von Enni recherchiert/)
 })
 
+test('Lemlist is a curated Read & Write MCP connector with safe reconnects', () => {
+  const frontendSource = readFileSync(join(here, '../../frontend/app.js'), 'utf8')
+  const mcpSource = readFileSync(join(here, '../src/tools/mcp.js'), 'utf8')
+
+  assert.match(frontendSource, /display_name: 'Lemlist'/)
+  assert.match(frontendSource, /https:\/\/app\.lemlist\.com\/mcp/)
+  assert.match(frontendSource, /auth_type: 'mcp_x_api_key'/)
+  assert.match(frontendSource, /access_mode: 'read_write'/)
+  assert.match(frontendSource, /https:\/\/www\.lemlist\.com\/favicon\.ico/)
+  assert.match(mcpSource, /moveConnectorAssignments\(previousIds, data\.id\)/)
+  assert.match(mcpSource, /\.eq\('url', normalizedUrl\)/)
+})
+
 test('marketplace connections stay dormant until an accessible Space activates them', () => {
   const accessSource = readFileSync(join(here, '../src/connector-access.js'), 'utf8')
   const mcpSource = readFileSync(join(here, '../src/tools/mcp.js'), 'utf8')

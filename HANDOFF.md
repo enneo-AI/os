@@ -2,6 +2,13 @@
 
 **Zuletzt aktualisiert:** 2026-07-17 (kompakte Bibliothek und einheitliches Zugriffsmodell)
 
+### Session 2026-07-17 — Lemlist als verbindbares Marketplace-Tool
+
+- **Kuratierter Connector:** Lemlist erscheint ohne Research-Sonderrubrik direkt unter `Read & Write`, mit offiziellem Lemlist-Favicon, dem offiziellen Remote-MCP-Endpunkt `https://app.lemlist.com/mcp` und vorgewählter `X-API-Key`-Authentifizierung.
+- **Einrichtungsweg:** Jeder Nutzer kann in Lemlist unter Settings → Team → Integrations einen API-Key erzeugen und im enneo-OS-Dialog eintragen. Der Key wird ausschließlich verschlüsselt gespeichert. Die Connection bleibt für Enni inaktiv, bis sie einem Open oder Restricted Space zugeordnet wird.
+- **Reconnect-sicher:** Erneutes Verbinden desselben MCP-Endpunkts im selben Account-Scope ersetzt die vorherige Connection und übernimmt deren Space-Zuordnungen, statt Duplikate zu erzeugen.
+- **Offiziell verifiziert:** Lemlists `/mcp/health` antwortet mit HTTP 200; offizielle Developer- und Help-Center-Dokumentation bestätigt Remote MCP, `X-API-Key` und schreibende Campaign-/Lead-/Inbox-/Webhook-Funktionen. JavaScript-Syntax, Diff-Check und Backend-Tests 14/14 grün.
+
 ### Session 2026-07-17 — Kompakte Bibliothek + Team-Zugänge
 
 - **Eine Sprache für Zugriff:** Die Oberflächen für Spaces, Marketplace, Kontexte, Skills und Routinen verwenden nur noch `Open` und `Restricted`. Persönliche Inhalte sind kein dritter Modus, sondern `Restricted · nur du`. Spaces und Routinen unterstützen Restricted-Zugriff für mehrere ausgewählte Accounts; bei Kontexten und Skills ist Restricted aktuell noch auf den jeweiligen Owner begrenzt.

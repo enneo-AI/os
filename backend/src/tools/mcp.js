@@ -6,7 +6,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { db } from '../db.js'
 import { decryptSecret, encryptSecret } from '../crypto.js'
-import { canUseConnector, connectorsForUser, invalidateConnectorAccessCache } from '../connector-access.js'
+import { canUseConnector, connectorsForUser, invalidateConnectorAccessCache, moveConnectorAssignments } from '../connector-access.js'
 
 const CACHE_TTL_MS = 5_000
 // Per-User-Caches: jeder Nutzer sieht Team-Connectors + seine eigenen persoenlichen
@@ -45,12 +45,18 @@ export async function addConnector({ name, url, token, authType = 'manual', cate
   const allowedAuthTypes = new Set(['manual', 'mcp_bearer', 'mcp_x_api_key', 'mcp_none'])
   if (!allowedAuthTypes.has(authType)) throw new Error('Nicht unterstützte MCP-Authentifizierung')
   if (['mcp_bearer', 'mcp_x_api_key'].includes(authType) && !token?.trim()) throw new Error('Für diese Authentifizierung ist ein Token erforderlich')
-  const tools = await probeMcpServer(url, token, authType) // wirft bei unerreichbar/ungültig
+  const normalizedUrl = url.trim()
+  const tools = await probeMcpServer(normalizedUrl, token, authType) // wirft bei unerreichbar/ungültig
+  let previousQuery = db.from('connectors').select('id').eq('kind', 'mcp').eq('url', normalizedUrl)
+  previousQuery = visibility === 'team'
+    ? previousQuery.eq('visibility', 'team')
+    : previousQuery.eq('owner', owner || userId).neq('visibility', 'team')
+  const { data: previous } = await previousQuery
   const { data, error } = await db
     .from('connectors')
     .insert({
       name: name.trim(),
-      url: url.trim(),
+      url: normalizedUrl,
       token: token?.trim() ? encryptSecret(token.trim()) : null,
       auth_type: authType,
       category: category === 'connection' ? 'connection' : 'tool',
@@ -62,6 +68,12 @@ export async function addConnector({ name, url, token, authType = 'manual', cate
     .select('id, name, category, tool_count')
     .single()
   if (error) throw new Error(error.message)
+  const previousIds = (previous || []).map((row) => row.id).filter((id) => id !== data.id)
+  await moveConnectorAssignments(previousIds, data.id)
+  if (previousIds.length) {
+    const { error: deleteError } = await db.from('connectors').delete().in('id', previousIds)
+    if (deleteError) throw new Error(deleteError.message)
+  }
   invalidateConnectorAccessCache()
   caches.clear()
   return { ...data, tools: tools.map((t) => t.name) }

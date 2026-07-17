@@ -5377,6 +5377,18 @@ let toolResearchCache = []
 let toolResearchAdmin = false
 let toolResearchPoll = null
 let currentToolResearch = null
+let marketplaceConnectorRows = []
+
+// Official Remote-MCP integrations that enneo OS supports directly. Lemlist
+// documents this endpoint and X-API-Key auth at developer.lemlist.com/mcp/setup.
+const CURATED_MCP_CONNECTORS = [{
+  display_name: 'Lemlist',
+  summary: 'Campaigns, Leads, Inbox & Analytics',
+  logo_url: 'https://www.lemlist.com/favicon.ico',
+  mcp_url: 'https://app.lemlist.com/mcp',
+  auth_type: 'mcp_x_api_key',
+  access_mode: 'read_write',
+}]
 
 const researchTypeLabel = (type) => ({
   remote_mcp: 'Remote MCP', oauth2: 'OAuth 2.0', api_key: 'API-Key', webhook: 'Webhook', unsupported: 'Kein sicherer Weg gefunden',
@@ -5415,8 +5427,31 @@ function researchLogo(blueprint) {
     : '<span class="c-logo" aria-hidden="true">◇</span>'
 }
 
+function renderCuratedMcpConnector(blueprint, target) {
+  const connected = marketplaceConnectorRows.some((connector) =>
+    connector.kind === 'mcp' && connector.url === blueprint.mcp_url && connector.owner === session.user.id
+  )
+  const row = document.createElement('button')
+  row.className = 'crow'
+  row.innerHTML = `${researchLogo(blueprint)}<div><div class="c-name">${esc(blueprint.display_name)}</div><div class="c-sub">${esc(blueprint.summary)} · ${researchAccessLabel(blueprint.access_mode)}</div></div><span class="c-right ${connected ? 'ok' : 'off'}">${connected ? '<span class="access-badge inactive">Verbunden</span>' : '<span class="connector-connect"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Verbinden</span>'}</span>`
+  if (connected) row.disabled = true
+  else row.addEventListener('click', () => openConnectorModal({
+    name: blueprint.display_name,
+    url: blueprint.mcp_url,
+    authType: blueprint.auth_type,
+  }))
+  target.appendChild(row)
+}
+
 async function loadToolResearch() {
   clearTimeout(toolResearchPoll)
+  const readWrite = $('researched-read-write')
+  const readOnly = $('researched-read-only')
+  readWrite.innerHTML = ''
+  readOnly.innerHTML = ''
+  for (const blueprint of CURATED_MCP_CONNECTORS) {
+    renderCuratedMcpConnector(blueprint, blueprint.access_mode === 'read_only' ? readOnly : readWrite)
+  }
   try {
     const { requests } = await fetchToolResearch()
     const activity = $('tool-research-activity')
@@ -5434,10 +5469,6 @@ async function loadToolResearch() {
     }
 
     const approved = requests.filter((item) => item.status === 'approved')
-    const readWrite = $('researched-read-write')
-    const readOnly = $('researched-read-only')
-    readWrite.innerHTML = ''
-    readOnly.innerHTML = ''
     for (const item of approved) {
       const blueprint = item.research || {}
       const row = document.createElement('button')
@@ -5586,7 +5617,6 @@ async function loadConnectorRows() {
   ])
   const { is_admin } = await ownProfile()
   await loadOAuthProviderStatus().catch(() => null)
-  loadToolResearch()
   const me = session.user.id
   const spacesById = new Map((spaces || []).map((space) => [space.id, space]))
   const connectorSpaces = (connector) => (assignments || [])
@@ -5595,6 +5625,8 @@ async function loadConnectorRows() {
     .filter(Boolean)
   // Sichtbar: team-weite + eigene (personal/proposed)
   const visible = (data || []).filter((c) => c.visibility === 'team' || c.owner === me)
+  marketplaceConnectorRows = visible
+  loadToolResearch()
   renderInstalledConnections(visible)
   for (const kind of Object.keys(NATIVE_CONNECTORS)) {
     // Eigener persönlicher Connector hat Vorrang vor dem Team-Connector (wie im Tool-Loop)
