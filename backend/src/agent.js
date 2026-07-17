@@ -23,6 +23,7 @@ import { loadPersonalContextBlock } from './contexts.js'
 import { releaseNotesPromptBlock } from './knowledge-sync.js'
 import { capabilityPromptBlock } from './behavior.js'
 import { enforceWriteTruth, notionReadBackMatches, notionReadBackPlan } from './write-truth.js'
+import { selfContextPromptBlock } from './self-context.js'
 import { db } from './db.js'
 
 const anthropic = new Anthropic()
@@ -254,6 +255,7 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
   const capabilitiesBlock = capabilityPromptBlock(turnTools)
   const systemBlocks = [
     { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: selfContextPromptBlock() },
     { type: 'text', text: `Aktuelles Datum und Uhrzeit: ${now} (Europe/Berlin). Die aktuelle Woche läuft von Montag, ${d(monday)}, bis Sonntag, ${d(sunday)}. Rechne relative Zeitangaben ("diese Woche", "gestern", "letzter Monat") immer davon ausgehend.` },
     ...(skillsBlock ? [{ type: 'text', text: skillsBlock }] : []),
     ...(autoSkillsBlock ? [{ type: 'text', text: autoSkillsBlock }] : []),

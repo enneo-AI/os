@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { capabilityPromptBlock } from '../src/behavior.js'
 import { enforceWriteTruth, isMutationToolName, notionReadBackMatches, notionReadBackPlan } from '../src/write-truth.js'
+import { selfContextPromptBlock } from '../src/self-context.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -45,6 +46,21 @@ test('system prompt keeps the decision and anti-generic quality gates', () => {
   assert.match(source, /niemals leer antworten/)
   assert.match(source, /Automatisch geladene Skills/)
   assert.match(source, /autoSkillsPromptBlock/)
+})
+
+test('Enni loads a durable map of her own repository and production architecture', () => {
+  const block = selfContextPromptBlock()
+  const agentSource = readFileSync(join(here, '../src/agent.js'), 'utf8')
+
+  assert.match(block, /Dein eigenes System: enneo OS/)
+  assert.match(block, /Projekt-ID 84559103/)
+  assert.match(block, /enneo\/infrastructure\/enneo-os/)
+  assert.match(block, /backend\/src\/agent\.js/)
+  assert.match(block, /backend\/src\/connector-access\.js/)
+  assert.match(block, /backend\/src\/write-truth\.js/)
+  assert.match(block, /Code vorhanden bedeutet nicht automatisch live/)
+  assert.match(block, /Der pro Turn geladene Tool-Katalog ist die Wahrheit/)
+  assert.match(agentSource, /selfContextPromptBlock\(\)/)
 })
 
 test('skill router preserves specialization and composition rules', () => {
