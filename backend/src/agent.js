@@ -18,10 +18,11 @@ import { slackToolDefinitions, runSlackTool } from './tools/slack.js'
 import { productivityToolDefinitions, runProductivityTool } from './tools/productivity.js'
 import { registrationToolDefinitions, runRegistrationTool } from './tools/registration.js'
 import { uxUiToolDefinitions, runUxUiTool } from './tools/ux-ui.js'
-import { learningsPromptBlock } from './learnings.js'
+import { learningToolDefinitions, learningsPromptBlock, runLearningTool } from './learnings.js'
 import { loadPersonalContextBlock } from './contexts.js'
 import { releaseNotesPromptBlock } from './knowledge-sync.js'
 import { capabilityPromptBlock } from './behavior.js'
+import { enforceWriteTruth, notionReadBackMatches, notionReadBackPlan } from './write-truth.js'
 import { db } from './db.js'
 
 const anthropic = new Anthropic()
@@ -64,6 +65,8 @@ Antworte IMMER in der Sprache der letzten Nachricht des Nutzers. Schreibt er auf
 - WICHTIG — API-Rezepte statt Endpoint-Raten: Im Wiki liegen unter dem Slug-Prefix "enneo-api/" 15 Rezept-Seiten mit den dokumentierten Mind-API-Endpoints (ai-agents, customers, events, exports, knowledge, quality, reports, settings-config, tags, telephony, templates, tickets, tools, troubleshooting, users). BEVOR du enneo_api_get gegen einen Endpoint aufrufst, den du nicht sicher kennst, hole dir das passende Rezept: wiki_read_page mit slug "enneo-api/{thema}" (oder wiki_semantic_search). Beispiel: Telefonnummern/Leitungen/Anruf-Metriken → "enneo-api/telephony" (dort: /report/telephonyLines, /telephony/getRouting u.a.). Rate NIE mehrfach blind — ein 405/404 heißt: Rezept nachschlagen.
 - ÄNDERUNGEN an einer Enneo-Instanz (Settings setzen: PUT /settings/{name} mit dem neuen Wert als Body; Tag anlegen: POST /tag mit {name, reference, type}; Ticket ändern; Agent-Konfiguration) machst du AUSSCHLIESSLICH über enneo_propose_write. Das erstellt eine Freigabe-Karte — der Nutzer bestätigt oder lehnt ab. Kündige nie an, etwas "gemacht zu haben", solange es nur vorgeschlagen ist. Lies vor einem Änderungs-Vorschlag den Ist-Zustand (z.B. das aktuelle Setting), damit die summary "alt → neu" zeigt.
 - Zusätzlich können via Administration verknüpfte MCP-Server verfügbar sein — deren Tools beginnen mit "mcp__". Nutze sie gemäß ihrer Beschreibung wie jedes andere Tool.
+- EXTERNE SCHREIBAKTIONEN: Behaupte nur dann, etwas sei erstellt, geändert, verschoben, zurückgesetzt, gelöscht, gespeichert oder erledigt, wenn in DIESEM Turn der passende Schreib-Tool-Call erfolgreich war. Eine Absicht, ein vorheriger Turn oder eine plausible Annahme reicht nie. Bei jeder Notion-Schreibaktion musst du die betroffene Seite NACH dem Schreiben erneut laden. Erst wenn dieser Read-back den Zielzustand zeigt, darfst du "geprüft", "bestätigt" oder "verifiziert" sagen.
+- DAUERHAFT LERNEN: Wenn der Nutzer ausdrücklich sagt „lerne daraus“, „merke dir das“ oder dass du etwas künftig anders machen sollst, formuliere daraus eine konkrete dauerhafte Anweisung und rufe learning_save_personal auf. Bestätige das Learning nur nach erfolgreichem Tool-Call. Behaupte niemals, es gebe keinen dauerhaften Lernmechanismus.
 - FEHLENDES TOOL: Wenn eine Aufgabe oder ein Skill-Workflow ein Tool braucht, das nicht verbunden ist (kein attio_/slack_/passendes mcp__-Tool verfügbar), oder der Nutzer ein neues Tool anbinden will: rufe SOFORT request_tool_connection auf — frag NICHT erst nach URL oder Zugangsdaten. Die Karte im Chat hat Felder für alles; der Nutzer trägt URL und Key dort selbst ein (du siehst sie nie). url im Tool-Call nur vorbefüllen, wenn du sie sicher kennst — sonst weglassen. Danach erscheint das Tool als persönliches Tool des Nutzers unter Spaces → Tools.
 - CRM-Fragen (Kunden-Accounts, Ansprechpartner, Deals, Discovery-Notizen): wenn attio_-Tools verfügbar sind, ist Attio die Quelle — erst attio_query_records (Filter z.B. {"name":{"$contains":"..."}}), dann attio_get_record / attio_list_notes für Details. Für Calls/Meetings und deren Gesprächs-Transkripte: attio_list_meetings (nach Titel/Zeitraum/Teilnehmern filtern) → attio_get_transcript mit der meeting_id. Attio ist read-only.
 - Slack-Fragen ("was wurde in #channel besprochen", Diskussionen, Entscheidungen aus Threads): wenn slack_-Tools verfügbar sind — erst slack_list_channels, dann slack_read_channel, Threads über slack_read_thread. Slack ist read-only; private Channels siehst du nur, wenn der Bot dort eingeladen wurde — sag das ehrlich, wenn ein Channel fehlt.
@@ -88,6 +91,7 @@ const TOOLS = [
   ...enneoToolDefinitions,
   ...skillToolDefinitions,
   ...fileToolDefinitions,
+  ...learningToolDefinitions,
 ]
 
 // Derselbe Katalog, den Enni in einem Turn wirklich verwenden kann. Die UI nutzt
@@ -108,6 +112,7 @@ export async function availableToolDefinitions(userId) {
 async function executeTool(name, input, ctx) {
   try {
     if (name === 'request_tool_connection') return { content: await runRegistrationTool(name, input), isError: false }
+    if (name === 'learning_save_personal') return { content: await runLearningTool(name, input, ctx), isError: false }
     if (name.startsWith('mcp__')) return { content: await runMcpTool(name, input, ctx), isError: false }
     if (name.startsWith('pod_')) return { content: await runPodTool(name, input, ctx), isError: false }
     if (name.startsWith('wiki_')) return { content: await runWikiTool(name, input, ctx), isError: false }
@@ -366,10 +371,41 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
       }
       toolCalls.push(call)
       emit({ type: 'tool_result', name: block.name, is_error: result.isError, duration_ms: call.duration_ms })
+
+      // Notion-Schreibzugriffe werden direkt im selben Turn erneut gelesen. So ist
+      // "erledigt" nicht bloß die Antwort des Mutation-Endpoints, sondern der
+      // tatsächlich danach sichtbare Zustand. Der Read-back bleibt als eigener
+      // Tool-Call im Audit-Trail erhalten.
+      let toolResultContent = result.content
+      if (!result.isError && !suppressed) {
+        const readBack = notionReadBackPlan(block.name, block.input, turnTools, result.content)
+        if (readBack) {
+          emit({ type: 'tool_use', name: readBack.name, input: readBack.input })
+          const verifyStarted = Date.now()
+          const verification = await executeTool(readBack.name, readBack.input, ctx)
+          const verificationCall = {
+            name: readBack.name,
+            input: readBack.input,
+            output: verification.content.slice(0, 20000),
+            is_error: verification.isError,
+            suppressed: false,
+            automatic_verification: true,
+            verification_matches: !verification.isError && notionReadBackMatches(block.input, verification.content),
+            duration_ms: Date.now() - verifyStarted,
+          }
+          toolCalls.push(verificationCall)
+          emit({ type: 'tool_result', name: readBack.name, is_error: verification.isError, duration_ms: verificationCall.duration_ms })
+          toolResultContent += verification.isError
+            ? `\n\nAutomatische Rückprüfung fehlgeschlagen: ${verification.content}`
+            : verificationCall.verification_matches
+              ? `\n\nAutomatische Rückprüfung nach der Änderung:\n${verification.content}`
+              : `\n\nAutomatische Rückprüfung zeigt den gewünschten Zielwert nicht eindeutig. Melde die Änderung NICHT als verifiziert.\n${verification.content}`
+        }
+      }
       toolResults.push({
         type: 'tool_result',
         tool_use_id: block.id,
-        content: result.content,
+        content: toolResultContent,
         is_error: result.isError,
       })
     }
@@ -421,6 +457,15 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
     const correction = '\n\nHinweis: Der Wissensvorschlag wurde in diesem Turn nicht gespeichert. Ich darf ihn erst als eingereicht bezeichnen, nachdem `wiki_propose_update` erfolgreich eine Vorschlags-ID geliefert hat.'
     finalText += correction
     emit({ type: 'text_delta', text: correction })
+  }
+
+  // Letzte deterministische Wahrheitskontrolle für alle Schreib-Connectors. Das
+  // Modell darf auch bei einem Folgefehler keine ausgeführte oder verifizierte
+  // Änderung erfinden. text_replace überschreibt den bereits gestreamten Entwurf.
+  const writeTruth = enforceWriteTruth(finalText, toolCalls)
+  if (writeTruth.changed) {
+    finalText = writeTruth.text
+    emit({ type: 'text_replace', text: finalText, reason: writeTruth.reason })
   }
 
   // Zwischen-Narrativ dem Gedanken-Text voranstellen (bleibt so beim Neuladen im Panel,

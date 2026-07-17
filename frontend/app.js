@@ -4516,6 +4516,12 @@ async function send() {
           body.insertAdjacentHTML('beforeend', '<span class="scursor"></span>')
           setStatus('Schreibt …')
           follow()
+        } else if (ev.type === 'text_replace') {
+          answerText = ev.text || ''
+          body.innerHTML = md(answerText)
+          body.insertAdjacentHTML('beforeend', '<span class="scursor"></span>')
+          setStatus('Antwort wird verifiziert …')
+          follow()
         } else if (ev.type === 'done') {
           completionEvent = ev
           if (!isTeamMsg) {

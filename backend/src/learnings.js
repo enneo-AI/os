@@ -9,6 +9,46 @@ import { logUsage } from './usage.js'
 const anthropic = new Anthropic()
 const MAX_BLOCK_CHARS = 2500 // pro Sektion — neueste zuerst, Rest fällt raus
 
+export const learningToolDefinitions = [{
+  name: 'learning_save_personal',
+  description: 'Speichert eine ausdrückliche Korrektur oder Verhaltenspräferenz des aktuellen Nutzers dauerhaft für dessen zukünftige Enni-Konversationen. Nur verwenden, wenn der Nutzer ausdrücklich sagt, dass Enni daraus lernen, sich etwas merken oder es künftig anders machen soll.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      learning: { type: 'string', description: 'Ein dauerhafter, eigenständig verständlicher Satz als konkrete Anweisung für Enni.' },
+    },
+    required: ['learning'],
+    additionalProperties: false,
+  },
+}]
+
+export async function runLearningTool(name, input, ctx = {}) {
+  if (name !== 'learning_save_personal') throw new Error(`Unbekanntes Learning-Tool: ${name}`)
+  if (!ctx.userId) throw new Error('Persönliches Learning benötigt einen eingeloggten Nutzer')
+  const content = String(input?.learning || '').trim()
+  if (content.length < 10) throw new Error('Das Learning ist zu kurz')
+  if (content.length > 1000) throw new Error('Das Learning ist zu lang')
+
+  const { data: existing } = await db
+    .from('learnings')
+    .select('id, content')
+    .eq('user_id', ctx.userId)
+    .eq('enabled', true)
+    .limit(100)
+  const duplicate = (existing || []).find((row) => row.content.trim().toLowerCase() === content.toLowerCase())
+  if (duplicate) return JSON.stringify({ status: 'already_saved', learning_id: duplicate.id, learning: duplicate.content })
+
+  const { data, error } = await db.from('learnings').insert({
+    user_id: ctx.userId,
+    content,
+    source: 'feedback',
+    source_conversation_id: ctx.conversationId || null,
+    share_status: 'none',
+  }).select('id, content').single()
+  if (error) throw new Error(error.message)
+  return JSON.stringify({ status: 'saved', learning_id: data.id, learning: data.content })
+}
+
 // System-Block für einen Turn: Team-weite (approved) + persönliche Learnings des Nutzers
 export async function learningsPromptBlock(userId) {
   if (!userId) return null

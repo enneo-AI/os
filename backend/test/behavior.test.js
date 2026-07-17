@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { capabilityPromptBlock } from '../src/behavior.js'
+import { enforceWriteTruth, isMutationToolName, notionReadBackMatches, notionReadBackPlan } from '../src/write-truth.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -400,6 +401,49 @@ test('knowledge approval claims require a successful proposal tool call', () => 
   assert.match(source, /const claimedKnowledgeProposal/)
   assert.match(source, /call\.name === 'wiki_propose_update'/)
   assert.match(source, /Der Wissensvorschlag wurde in diesem Turn nicht gespeichert/)
+})
+
+test('external write claims require a successful mutation and Notion read-back', () => {
+  assert.equal(isMutationToolName('mcp__notion__notion-update-page'), true)
+  assert.equal(isMutationToolName('mcp__notion__notion-fetch'), false)
+
+  const missingWrite = enforceWriteTruth('Erledigt, ich habe den Status zurückgesetzt.', [])
+  assert.equal(missingWrite.reason, 'missing_successful_write')
+  assert.match(missingWrite.text, /nicht ausgeführt/)
+  assert.equal(enforceWriteTruth('Die Änderung wurde nicht gespeichert.', []).changed, false)
+
+  const write = { name: 'mcp__notion__notion-update-page', input: { page_id: 'page-1' }, output: 'ok', is_error: false }
+  const missingReadBack = enforceWriteTruth('Erledigt und geprüft.', [write])
+  assert.equal(missingReadBack.reason, 'missing_notion_readback')
+
+  const read = { name: 'mcp__notion__notion-fetch', input: { id: 'page-1' }, output: 'Status: Not started', is_error: false, verification_matches: true }
+  const verified = enforceWriteTruth('Erledigt und geprüft.', [write, read])
+  assert.equal(verified.changed, false)
+
+  const plan = notionReadBackPlan(write.name, write.input, [{
+    name: 'mcp__notion__notion-fetch',
+    input_schema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+  }])
+  assert.deepEqual(plan, { name: 'mcp__notion__notion-fetch', input: { id: 'page-1' } })
+  assert.deepEqual(notionReadBackPlan('mcp__notion__notion-create-page', { properties: { Name: 'Neu' } }, [{
+    name: 'mcp__notion__notion-fetch',
+    input_schema: { type: 'object', properties: { id: { type: 'string' } } },
+  }], JSON.stringify({ id: '12345678-1234-1234-1234-123456789012' })), {
+    name: 'mcp__notion__notion-fetch', input: { id: '12345678-1234-1234-1234-123456789012' },
+  })
+  assert.equal(notionReadBackMatches({ properties: { Status: 'Not started' } }, read.output), true)
+  assert.equal(notionReadBackMatches({ properties: JSON.stringify({ Status: 'In progress' }) }, read.output), false)
+  assert.equal(enforceWriteTruth('Erledigt und geprüft.', [write, { ...read, verification_matches: false }]).reason, 'missing_notion_readback')
+})
+
+test('explicit learning requests have a durable personal tool', () => {
+  const agentSource = readFileSync(join(here, '../src/agent.js'), 'utf8')
+  const learningSource = readFileSync(join(here, '../src/learnings.js'), 'utf8')
+
+  assert.match(agentSource, /DAUERHAFT LERNEN/)
+  assert.match(agentSource, /learning_save_personal/)
+  assert.match(learningSource, /status: 'saved'/)
+  assert.match(learningSource, /share_status: 'none'/)
 })
 
 test('Markdown directories import as ordered Space pages with approval-safe indexing', () => {
