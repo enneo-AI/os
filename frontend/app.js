@@ -5445,6 +5445,10 @@ function researchAccessLabel(accessMode) {
   return accessMode === 'read_only' ? 'Read only' : 'Read & Write'
 }
 
+function isCertifiedConnectReady(blueprint = {}) {
+  return blueprint.connect_ready === true && blueprint.certification?.status === 'verified'
+}
+
 function researchLogo(blueprint) {
   const url = researchLogoUrl(blueprint)
   return url
@@ -5493,7 +5497,10 @@ async function loadToolResearch() {
       activity.appendChild(row)
     }
 
-    const curatedKeys = new Set(CURATED_MCP_CONNECTORS.flatMap((item) => blueprintIdentityKeys(item, item.display_name)))
+    const curatedKeys = new Set([
+      ...CURATED_MCP_CONNECTORS.flatMap((item) => blueprintIdentityKeys(item, item.display_name)),
+      ...Object.values(NATIVE_CONNECTORS).flatMap((item) => blueprintIdentityKeys({}, item.label)),
+    ])
     const seenApproved = new Set()
     const approved = requests.filter((item) => {
       if (item.status !== 'approved') return false
@@ -5506,11 +5513,12 @@ async function loadToolResearch() {
     })
     for (const item of approved) {
       const blueprint = item.research || {}
+      const certifiedReady = isCertifiedConnectReady(blueprint)
       const row = document.createElement('button')
       row.className = 'crow'
       const accessLabel = researchAccessLabel(blueprint.access_mode)
-      row.innerHTML = `${researchLogo(blueprint)}<div><div class="c-name">${esc(blueprint.display_name || item.name || 'Integration')}</div><div class="c-sub">${esc(blueprint.summary || researchTypeLabel(blueprint.integration_type))} · ${accessLabel}</div></div><span class="c-right off"><span class="connector-connect"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>${blueprint.connect_ready ? 'Verbinden' : 'Einrichten'}</span></span>`
-      row.addEventListener('click', () => blueprint.connect_ready ? openResearchedMcp(item) : openToolResearchDetail(item, toolResearchAdmin))
+      row.innerHTML = `${researchLogo(blueprint)}<div><div class="c-name">${esc(blueprint.display_name || item.name || 'Integration')}</div><div class="c-sub">${esc(blueprint.summary || researchTypeLabel(blueprint.integration_type))} · ${accessLabel}</div></div><span class="c-right off"><span class="connector-connect"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>${certifiedReady ? 'Verbinden' : 'Einrichten'}</span></span>`
+      row.addEventListener('click', () => certifiedReady ? openResearchedMcp(item) : openToolResearchDetail(item, toolResearchAdmin))
       ;(blueprint.access_mode === 'read_only' ? readOnly : readWrite).appendChild(row)
     }
     applyMarketplaceFilter()
@@ -5559,9 +5567,14 @@ function renderToolResearchDetail(item, isAdmin) {
   const notes = (blueprint.security_notes || []).map((note) => `<li>${esc(note)}</li>`).join('')
   const steps = (blueprint.implementation_steps || []).map((step) => `<li>${esc(step)}</li>`).join('')
   const evidence = (blueprint.evidence || []).map((source) => `<a href="${esc(source.url)}" target="_blank" rel="noopener"><span><strong>${esc(source.title || new URL(source.url).hostname)}</strong> · ${esc(source.claim || '')}</span><b>↗</b></a>`).join('')
+  const certification = blueprint.certification
+  const certificationText = certification?.status === 'verified'
+    ? `Technisch verifiziert · ${certification.method === 'oauth_discovery_dcr_pkce' ? 'OAuth + PKCE' : certification.method === 'live_tool_discovery' ? `${certification.tool_count} Tools geladen` : 'Credential-Test beim Verbinden'}`
+    : item.status === 'review' ? 'Wird vor Veröffentlichung technisch geprüft' : 'Noch nicht technisch verifiziert'
   const detailLogo = researchLogoUrl(blueprint)
   $('trd-content').innerHTML = `<div class="research-detail-head">${detailLogo ? `<span class="c-logo" style="width:42px;height:42px"><img src="${esc(detailLogo)}" alt="${esc(blueprint.display_name || '')} Logo"></span>` : '<span class="research-orb" aria-hidden="true"></span>'}<div><div class="eyebrow">Enni Research Lab</div><h3 id="trd-title">${esc(blueprint.display_name || item.name || 'Tool-Recherche')}</h3><p>${esc(blueprint.summary || item.research_error || 'Die Recherche läuft noch.')}</p></div></div>
     <div class="research-facts"><div class="research-fact"><span>Status</span><strong class="research-state ${stateClass}">${stateLabel}</strong></div><div class="research-fact"><span>Zugriff</span><strong>${researchAccessLabel(blueprint.access_mode)}</strong></div><div class="research-fact"><span>Verbindung</span><strong>${esc(researchTypeLabel(blueprint.integration_type))}</strong></div><div class="research-fact"><span>Quellensicherheit</span><strong>${Number(blueprint.confidence || 0)} %</strong></div></div>
+    <div class="research-section"><h4>Verbindungsprüfung</h4><p class="pf-hint">${esc(certificationText)}</p></div>
     ${capabilities ? `<div class="research-section"><h4>Funktionen</h4><div class="research-chips">${capabilities}</div></div>` : ''}
     ${scopes ? `<div class="research-section"><h4>Angefragte Rechte</h4><div class="research-chips">${scopes}</div></div>` : ''}
     ${notes ? `<div class="research-section"><h4>Sicherheitsprüfung</h4><ul class="pf-hint">${notes}</ul></div>` : ''}
@@ -5572,7 +5585,7 @@ function renderToolResearchDetail(item, isAdmin) {
   if (item.status === 'failed') actions.insertAdjacentHTML('beforeend', '<button class="btn dark" id="trd-retry">Erneut recherchieren</button>')
   if (isAdmin && item.status === 'review') actions.insertAdjacentHTML('beforeend', '<button class="btn quiet danger-link" id="trd-reject">Ablehnen</button><button class="btn dark" id="trd-approve">Im Marketplace veröffentlichen</button>')
   if (item.status === 'approved' && blueprint.setup_url) actions.insertAdjacentHTML('beforeend', `<a class="btn quiet" href="${esc(blueprint.setup_url)}" target="_blank" rel="noopener">Anbieter-Portal ↗</a>`)
-  if (item.status === 'approved' && blueprint.connect_ready) actions.insertAdjacentHTML('beforeend', '<button class="btn dark" id="trd-connect">Verbinden</button>')
+  if (item.status === 'approved' && isCertifiedConnectReady(blueprint)) actions.insertAdjacentHTML('beforeend', '<button class="btn dark" id="trd-connect">Verbinden</button>')
   $('trd-close').addEventListener('click', () => $('tool-research-detail-overlay').classList.remove('open'))
   $('trd-retry')?.addEventListener('click', () => retryToolResearch(item.id))
   $('trd-reject')?.addEventListener('click', () => decideToolResearch(item.id, 'reject'))
@@ -5590,9 +5603,21 @@ function openToolResearchDetail(item, isAdmin = false) {
 $('trd-close').addEventListener('click', () => $('tool-research-detail-overlay').classList.remove('open'))
 
 async function decideToolResearch(id, action) {
+  const approveButton = action === 'approve' ? $('trd-approve') : null
+  if (approveButton) {
+    approveButton.disabled = true
+    approveButton.textContent = 'Verbindung wird geprüft …'
+  }
   const res = await fetch(`${BACKEND_URL}/api/tool-requests/${id}/${action}`, { method: 'POST', headers: { Authorization: `Bearer ${await token()}` } })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) { $('trd-err').textContent = data.error || 'Entscheidung fehlgeschlagen'; return }
+  if (!res.ok) {
+    $('trd-err').textContent = data.error || 'Entscheidung fehlgeschlagen'
+    if (approveButton) {
+      approveButton.disabled = false
+      approveButton.textContent = 'Im Marketplace veröffentlichen'
+    }
+    return
+  }
   $('tool-research-detail-overlay').classList.remove('open')
   await Promise.all([loadToolResearch(), loadToolResearchProposals()])
 }
@@ -5607,8 +5632,12 @@ async function retryToolResearch(id) {
 
 async function openResearchedMcp(item) {
   const blueprint = item.research || {}
-  if (!blueprint.connect_ready || !blueprint.mcp_url) return openToolResearchDetail(item, toolResearchAdmin)
+  if (!isCertifiedConnectReady(blueprint) || !blueprint.mcp_url) return openToolResearchDetail(item, toolResearchAdmin)
   $('tool-research-detail-overlay').classList.remove('open')
+  if (blueprint.auth?.mcp_scheme === 'oauth') {
+    const provider = `research-${item.id}`
+    return startMcpOAuth(provider, blueprint.display_name || item.name || 'Integration', `/api/tool-requests/${item.id}/oauth/start`)
+  }
   const authType = blueprint.auth?.mcp_scheme === 'x_api_key' ? 'mcp_x_api_key' : blueprint.auth?.mcp_scheme === 'bearer' ? 'mcp_bearer' : 'mcp_none'
   openConnectorModal({ name: blueprint.display_name || item.name, url: blueprint.mcp_url, authType })
 }
@@ -5756,11 +5785,12 @@ const OAUTH_RESULT_STORAGE_KEY = 'enneo-oauth-result'
 function oauthProviderLabel(provider) {
   return NATIVE_CONNECTORS[provider]?.label
     || CURATED_MCP_CONNECTORS.find((item) => item.oauth_provider === provider)?.display_name
+    || (provider?.startsWith('research-') ? 'Integration' : null)
     || null
 }
 
 function showOAuthReturnPayload({ provider, status, workspace, reason }) {
-  const label = oauthProviderLabel(provider)
+  const label = provider?.startsWith('research-') && workspace ? workspace : oauthProviderLabel(provider)
   if (!label) return false
   if (status === 'connected') {
     showOAuthResult('success', `${label} ist verbunden`, `${workspace ? workspace + ' · ' : ''}Noch keinem Space zugeordnet und deshalb für Enni inaktiv.`)
@@ -5806,11 +5836,11 @@ window.addEventListener('storage', async (event) => {
   } catch {}
 })
 
-async function startMcpOAuth(provider, label) {
+async function startMcpOAuth(provider, label, startPath = `/api/mcp/oauth/${provider}/start`) {
   const oauthTab = openOAuthBrowserTab(provider)
   showOAuthResult('success', `${label}-Login im neuen Tab geöffnet`, 'Du meldest dich direkt beim Anbieter an. enneo OS erhält niemals dein Passwort.')
   try {
-    const res = await fetch(`${BACKEND_URL}/api/mcp/oauth/${provider}/start`, {
+    const res = await fetch(`${BACKEND_URL}${startPath}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${await token()}` },
     })

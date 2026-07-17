@@ -42,7 +42,7 @@ class PersistentMcpOAuthProvider {
     this._state = state
     this._session = session
     this._connector = connector
-    this._provider = session?.provider || Object.entries(MCP_OAUTH_SERVERS)
+    this._provider = session?.provider || connector?.oauth_provider || Object.entries(MCP_OAUTH_SERVERS)
       .find(([, meta]) => meta.url.replace(/\/$/, '') === connector?.url?.replace(/\/$/, ''))?.[0]
     this._authorizationUrl = null
     this._codeVerifier = session?.code_verifier ? decryptSecret(session.code_verifier) : null
@@ -145,9 +145,10 @@ function resultUrl(provider, status, params = {}) {
   return url.toString()
 }
 
-export async function createMcpOAuthUrl({ provider, userId }) {
-  const meta = MCP_OAUTH_SERVERS[provider]
+export async function createMcpOAuthUrl({ provider, userId, server = null, cleanup = false }) {
+  const meta = server || MCP_OAUTH_SERVERS[provider]
   if (!meta) throw new Error('OAuth-MCP nicht unterstützt')
+  if (!/^https:\/\//.test(meta.url || '')) throw new Error('OAuth-MCP benötigt eine öffentliche HTTPS-URL')
   await db.from('mcp_oauth_sessions').delete().lt('expires_at', new Date().toISOString())
   const state = crypto.randomBytes(32).toString('base64url')
   const session = {
@@ -160,6 +161,7 @@ export async function createMcpOAuthUrl({ provider, userId }) {
   const oauthProvider = new PersistentMcpOAuthProvider({ state, session })
   const transport = new StreamableHTTPClientTransport(new URL(meta.url), { authProvider: oauthProvider })
   const client = new Client({ name: 'enneo-os', version: '1.0.0' })
+  let authorizationUrl = null
   try {
     await client.connect(transport)
     throw new Error(`${meta.label} hat keinen OAuth-Login angefordert`)
@@ -168,10 +170,12 @@ export async function createMcpOAuthUrl({ provider, userId }) {
       await db.from('mcp_oauth_sessions').delete().eq('state_hash', session.state_hash)
       throw err
     }
-    return oauthProvider.authorizationUrl
+    authorizationUrl = oauthProvider.authorizationUrl
   } finally {
     await client.close().catch(() => {})
   }
+  if (cleanup) await db.from('mcp_oauth_sessions').delete().eq('state_hash', session.state_hash)
+  return authorizationUrl
 }
 
 async function loadOAuthSession(state) {
@@ -187,8 +191,8 @@ export async function completeMcpOAuth({ provider, code, state, deniedError }) {
   const session = await loadOAuthSession(state)
   try {
     if (session.provider !== provider) throw new Error('OAuth-Anbieter stimmt nicht mit dem State überein')
-    if (deniedError) return resultUrl(session.provider, 'error', { reason: deniedError === 'access_denied' ? 'cancelled' : 'provider_error' })
-    if (!code) return resultUrl(session.provider, 'error', { reason: 'missing_code' })
+    if (deniedError) return resultUrl(session.provider, 'error', { workspace: session.connector_name, reason: deniedError === 'access_denied' ? 'cancelled' : 'provider_error' })
+    if (!code) return resultUrl(session.provider, 'error', { workspace: session.connector_name, reason: 'missing_code' })
     const oauthProvider = new PersistentMcpOAuthProvider({ state, session })
     const authResult = await auth(oauthProvider, { serverUrl: session.server_url, authorizationCode: code })
     if (authResult !== 'AUTHORIZED' || !oauthProvider.currentTokens?.access_token) throw new Error('OAuth-Token konnte nicht übernommen werden')
@@ -205,6 +209,7 @@ export async function completeMcpOAuth({ provider, code, state, deniedError }) {
       refresh_token: encryptSecret(tokens.refresh_token),
       token_expires_at: tokenExpiry(tokens),
       oauth_client_information: encryptSecret(JSON.stringify(oauthProvider.currentClientInformation)),
+      oauth_provider: session.provider,
       auth_type: 'mcp_oauth', category: session.category, kind: 'mcp',
       tool_count: tools.length, created_by: session.user_id, owner: session.user_id,
       visibility: 'personal', scopes: String(tokens.scope || '').split(' ').filter(Boolean),

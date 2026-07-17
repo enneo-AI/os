@@ -1,5 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { db } from './db.js'
+import { createMcpOAuthUrl } from './mcp-oauth.js'
+import { probeMcpServer } from './tools/mcp.js'
 
 const anthropic = new Anthropic()
 const active = new Set()
@@ -115,7 +117,9 @@ function cleanBlueprint(value, request, sources) {
     setup_url: httpsUrl(value.setup_url),
     integration_type: integrationType,
     access_mode: accessMode,
-    connect_ready: integrationType === 'remote_mcp' && !!mcpUrl && mcpScheme !== 'oauth',
+    // A researched endpoint is only a candidate. The admin approval endpoint
+    // performs the real protocol certification before enabling Connect.
+    connect_ready: false,
     mcp_url: mcpUrl,
     auth: {
       type: authType,
@@ -140,6 +144,60 @@ function cleanBlueprint(value, request, sources) {
     confidence: Math.round(Math.max(0, Math.min(100, confidence))),
     evidence: [...evidence, ...sourceEvidence.filter((source) => !evidence.some((item) => item.url === source.url))].slice(0, 8),
     researched_at: new Date().toISOString(),
+  }
+}
+
+export function researchedOAuthProvider(requestId) {
+  return `research-${String(requestId).toLowerCase()}`
+}
+
+export async function certifyToolBlueprint(blueprint, { requestId, userId }) {
+  if (blueprint?.integration_type !== 'remote_mcp' || !httpsUrl(blueprint?.mcp_url)) {
+    throw new Error('Nur ein offiziell dokumentierter Remote-MCP kann direkt veröffentlicht werden.')
+  }
+  if (Number(blueprint.confidence || 0) < 70) {
+    throw new Error('Die offizielle Quellenlage liegt unter der Mindestkonfidenz von 70 %.')
+  }
+  const scheme = String(blueprint.auth?.mcp_scheme || 'none').toLowerCase()
+  if (!['none', 'bearer', 'x_api_key', 'oauth'].includes(scheme)) {
+    throw new Error('Das Authentifizierungsverfahren wird von enneo OS nicht unterstützt.')
+  }
+
+  let method
+  let toolCount = null
+  if (scheme === 'none') {
+    const tools = await probeMcpServer(blueprint.mcp_url, null, 'mcp_none')
+    if (!tools.length) throw new Error('Der MCP-Server liefert keine verwendbaren Tools.')
+    toolCount = tools.length
+    method = 'live_tool_discovery'
+  } else if (scheme === 'oauth') {
+    const authorizationUrl = await createMcpOAuthUrl({
+      provider: researchedOAuthProvider(requestId),
+      userId,
+      server: { label: blueprint.display_name, url: blueprint.mcp_url, category: 'tool' },
+      cleanup: true,
+    })
+    const parsed = new URL(authorizationUrl)
+    if (parsed.protocol !== 'https:' || !parsed.searchParams.get('client_id')) {
+      throw new Error('OAuth-Discovery oder Dynamic Client Registration war unvollständig.')
+    }
+    method = 'oauth_discovery_dcr_pkce'
+  } else {
+    // A private credential cannot be tested during admin review. The endpoint
+    // and auth scheme are certified from official evidence; addConnector then
+    // performs real authenticated Tool Discovery before saving each account.
+    if (!blueprint.evidence?.some((item) => httpsUrl(item?.url))) {
+      throw new Error('Für die Token-Verbindung fehlt eine belastbare offizielle Quelle.')
+    }
+    method = 'official_endpoint_runtime_credential_probe'
+  }
+
+  return {
+    status: 'verified',
+    method,
+    auth_scheme: scheme,
+    tool_count: toolCount,
+    verified_at: new Date().toISOString(),
   }
 }
 

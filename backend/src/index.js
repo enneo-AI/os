@@ -1396,9 +1396,20 @@ app.post('/api/tool-requests/:id/:action(approve|reject)', async (req, res) => {
   if (req.params.action === 'approve' && existing.status !== 'review') {
     return res.status(400).json({ error: 'Nur vollständig recherchierte Entwürfe können veröffentlicht werden.' })
   }
+  let research = existing.research || {}
+  if (req.params.action === 'approve') {
+    try {
+      const { certifyToolBlueprint } = await import('./tool-research.js')
+      const certification = await certifyToolBlueprint(research, { requestId: existing.id, userId: user.id })
+      research = { ...research, certification, connect_ready: certification.status === 'verified' }
+    } catch (error) {
+      return res.status(400).json({ error: `Technische Zertifizierung fehlgeschlagen: ${error.message}` })
+    }
+  }
   const now = new Date().toISOString()
   const { data, error } = await db.from('tool_requests').update({
     status,
+    research,
     reviewed_by: user.id,
     reviewed_at: now,
     published_at: status === 'approved' ? now : null,
@@ -1541,11 +1552,43 @@ app.post('/api/mcp/oauth/:provider/start', async (req, res) => {
   }
 })
 
+// Approved researched OAuth MCPs use the same SDK-native discovery, DCR, PKCE
+// and refresh path as curated providers. The approved blueprint is the dynamic
+// registry entry; no code deployment is needed for each future provider.
+app.post('/api/tool-requests/:id/oauth/start', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  try {
+    const { data: request, error } = await db.from('tool_requests')
+      .select('id, status, research')
+      .eq('id', req.params.id)
+      .maybeSingle()
+    if (error || !request) return res.status(404).json({ error: 'Integration nicht gefunden' })
+    const blueprint = request.research || {}
+    if (request.status !== 'approved' || blueprint.certification?.status !== 'verified' || !blueprint.connect_ready) {
+      return res.status(409).json({ error: 'Diese Integration wurde noch nicht technisch zertifiziert.' })
+    }
+    if (blueprint.integration_type !== 'remote_mcp' || blueprint.auth?.mcp_scheme !== 'oauth' || !blueprint.mcp_url) {
+      return res.status(400).json({ error: 'Diese Integration verwendet keinen unterstützten OAuth-MCP-Login.' })
+    }
+    const { createMcpOAuthUrl } = await import('./mcp-oauth.js')
+    const { researchedOAuthProvider } = await import('./tool-research.js')
+    const url = await createMcpOAuthUrl({
+      provider: researchedOAuthProvider(request.id),
+      userId: user.id,
+      server: { label: blueprint.display_name, url: blueprint.mcp_url, category: 'tool' },
+    })
+    res.json({ url })
+  } catch (err) {
+    console.error('Research MCP OAuth Start:', err.message)
+    res.status(503).json({ error: `Anbieter-Login konnte nicht gestartet werden: ${err.message}` })
+  }
+})
+
 app.get('/api/mcp/oauth/:provider/callback', async (req, res) => {
   try {
-    const { MCP_OAUTH_SERVERS, completeMcpOAuth } = await import('./mcp-oauth.js')
+    const { completeMcpOAuth } = await import('./mcp-oauth.js')
     const provider = req.params.provider
-    if (!MCP_OAUTH_SERVERS[provider]) return res.status(404).send('OAuth-MCP nicht gefunden')
     const url = await completeMcpOAuth({
       provider,
       code: String(req.query.code || ''),
