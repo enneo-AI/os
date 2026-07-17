@@ -7,6 +7,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { db } from '../db.js'
 import { decryptSecret, encryptSecret } from '../crypto.js'
 import { canUseConnector, connectorsForUser, invalidateConnectorAccessCache, moveConnectorAssignments } from '../connector-access.js'
+import { oauthProviderForConnector } from '../mcp-oauth.js'
 
 const CACHE_TTL_MS = 5_000
 // Per-User-Caches: jeder Nutzer sieht Team-Connectors + seine eigenen persoenlichen
@@ -21,10 +22,10 @@ export function mcpHeaders(token, authType = 'manual') {
   return { Authorization: `Bearer ${token}` }
 }
 
-async function connect(url, token, authType = 'manual') {
-  const transport = new StreamableHTTPClientTransport(new URL(url), {
-    requestInit: token ? { headers: mcpHeaders(token, authType) } : undefined,
-  })
+async function connect(url, token, authType = 'manual', connector = null) {
+  const transport = new StreamableHTTPClientTransport(new URL(url), authType === 'mcp_oauth'
+    ? { authProvider: oauthProviderForConnector(connector) }
+    : { requestInit: token ? { headers: mcpHeaders(token, authType) } : undefined })
   const client = new Client({ name: 'enneo-os', version: '1.0.0' })
   await client.connect(transport)
   return client
@@ -102,14 +103,14 @@ export async function mcpToolDefinitions(userId) {
   for (const c of visible) {
     try {
       const token = decryptSecret(c.token)
-      const client = await connect(c.url, token, c.auth_type)
+      const client = await connect(c.url, token, c.auth_type, c)
       try {
         const { tools } = await client.listTools()
         const slug = slugify(c.name)
         for (const t of tools) {
           const nsName = `mcp__${slug}__${t.name}`.slice(0, 128).replace(/[^a-zA-Z0-9_-]/g, '_')
           if (routes.has(nsName)) continue
-          routes.set(nsName, { connectorId: c.id, url: c.url, token, authType: c.auth_type, realName: t.name })
+          routes.set(nsName, { connectorId: c.id, connector: c, url: c.url, token, authType: c.auth_type, realName: t.name })
           defs.push({
             name: nsName,
             description: `[${c.name}] ${t.description || t.name}`.slice(0, 1000),
@@ -136,7 +137,7 @@ export async function runMcpTool(name, input, ctx = {}) {
     caches.delete(key)
     throw new Error('Diese Connection ist in keinem für dich zugänglichen Space aktiviert.')
   }
-  const client = await connect(route.url, route.token, route.authType)
+  const client = await connect(route.url, route.token, route.authType, route.connector)
   try {
     const result = await client.callTool({ name: route.realName, arguments: input || {} })
     const text = (result.content || [])

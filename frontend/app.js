@@ -5380,13 +5380,15 @@ let currentToolResearch = null
 let marketplaceConnectorRows = []
 
 // Official Remote-MCP integrations that enneo OS supports directly. Lemlist
-// documents this endpoint and X-API-Key auth at developer.lemlist.com/mcp/setup.
+// documents browser OAuth with discovery, PKCE and token refresh as the
+// recommended connection path at developer.lemlist.com/mcp/setup.
 const CURATED_MCP_CONNECTORS = [{
   display_name: 'Lemlist',
   summary: 'Campaigns, Leads, Inbox & Analytics',
   logo_url: 'https://www.lemlist.com/favicon.ico',
   mcp_url: 'https://app.lemlist.com/mcp',
-  auth_type: 'mcp_x_api_key',
+  auth_type: 'mcp_oauth',
+  oauth_provider: 'lemlist',
   access_mode: 'read_write',
 }]
 
@@ -5435,11 +5437,9 @@ function renderCuratedMcpConnector(blueprint, target) {
   row.className = 'crow'
   row.innerHTML = `${researchLogo(blueprint)}<div><div class="c-name">${esc(blueprint.display_name)}</div><div class="c-sub">${esc(blueprint.summary)} · ${researchAccessLabel(blueprint.access_mode)}</div></div><span class="c-right ${connected ? 'ok' : 'off'}">${connected ? '<span class="access-badge inactive">Verbunden</span>' : '<span class="connector-connect"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Verbinden</span>'}</span>`
   if (connected) row.disabled = true
-  else row.addEventListener('click', () => openConnectorModal({
-    name: blueprint.display_name,
-    url: blueprint.mcp_url,
-    authType: blueprint.auth_type,
-  }))
+  else row.addEventListener('click', () => blueprint.oauth_provider
+    ? startMcpOAuth(blueprint.oauth_provider, blueprint.display_name)
+    : openConnectorModal({ name: blueprint.display_name, url: blueprint.mcp_url, authType: blueprint.auth_type }))
   target.appendChild(row)
 }
 
@@ -5719,8 +5719,8 @@ function showOAuthResult(type, title, detail = '') {
 function handleOAuthReturn() {
   const params = new URLSearchParams(location.search)
   const provider = params.get('oauth')
-  if (!provider || !NATIVE_CONNECTORS[provider]) return
-  const label = NATIVE_CONNECTORS[provider].label
+  const label = NATIVE_CONNECTORS[provider]?.label || (provider === 'lemlist' ? 'Lemlist' : null)
+  if (!provider || !label) return
   if (params.get('status') === 'connected') {
     const workspace = params.get('workspace')
     showOAuthResult('success', `${label} ist verbunden`, `${workspace ? workspace + ' · ' : ''}Noch keinem Space zugeordnet und deshalb für Enni inaktiv.`)
@@ -5733,6 +5733,21 @@ function handleOAuthReturn() {
   const clean = new URL(location.href)
   for (const key of ['oauth', 'status', 'workspace', 'reason']) clean.searchParams.delete(key)
   history.replaceState({}, '', clean)
+}
+
+async function startMcpOAuth(provider, label) {
+  showOAuthResult('success', `${label}-Login wird geöffnet`, 'Du meldest dich direkt beim Anbieter an. enneo OS erhält niemals dein Passwort.')
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/mcp/oauth/${provider}/start`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${await token()}` },
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || !data.url) throw new Error(data.error || 'Anbieter-Login konnte nicht gestartet werden')
+    location.assign(data.url)
+  } catch (err) {
+    showOAuthResult('error', `${label} konnte nicht verbunden werden`, err.message)
+  }
 }
 
 async function startProviderOAuth(provider) {
@@ -5870,12 +5885,6 @@ async function openConnectorModal(prefill = {}) {
     $('cn-auth-type').value = prefill.authType || 'mcp_none'
     $('cn-token').value = ''
     syncConnectorAuthForm()
-    const { is_admin } = await ownProfile()
-    $('cn-owner-wrap').hidden = !is_admin
-    if (is_admin) {
-      const profiles = await allProfiles()
-      $('cn-owner').innerHTML = profiles.map((profile) => `<option value="${profile.id}"${profile.id === session.user.id ? ' selected' : ''}>${esc(profile.display_name || profile.email)}</option>`).join('')
-    }
     $('cn-err').textContent = ''
     $('conn-overlay').classList.add('open')
     setTimeout(() => (prefill.url ? $('cn-token') : $('cn-name')).focus(), 50)
@@ -5909,7 +5918,6 @@ $('cn-save').addEventListener('click', async () => {
         auth_type: $('cn-auth-type').value,
         category: cnCategory,
         scope: 'personal',
-        owner: $('cn-owner-wrap').hidden ? session.user.id : $('cn-owner').value,
       }),
     })
     const data = await res.json()

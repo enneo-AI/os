@@ -2,12 +2,13 @@
 
 **Zuletzt aktualisiert:** 2026-07-17 (kompakte Bibliothek und einheitliches Zugriffsmodell)
 
-### Session 2026-07-17 — Lemlist als verbindbares Marketplace-Tool
+### Session 2026-07-17 — Persönlicher Lemlist-OAuth statt Credential-Formular
 
-- **Kuratierter Connector:** Lemlist erscheint ohne Research-Sonderrubrik direkt unter `Read & Write`, mit offiziellem Lemlist-Favicon, dem offiziellen Remote-MCP-Endpunkt `https://app.lemlist.com/mcp` und vorgewählter `X-API-Key`-Authentifizierung.
-- **Einrichtungsweg:** Jeder Nutzer kann in Lemlist unter Settings → Team → Integrations einen API-Key erzeugen und im enneo-OS-Dialog eintragen. Der Key wird ausschließlich verschlüsselt gespeichert. Die Connection bleibt für Enni inaktiv, bis sie einem Open oder Restricted Space zugeordnet wird.
-- **Reconnect-sicher:** Erneutes Verbinden desselben MCP-Endpunkts im selben Account-Scope ersetzt die vorherige Connection und übernimmt deren Space-Zuordnungen, statt Duplikate zu erzeugen.
-- **Offiziell und produktiv verifiziert:** Lemlists `/mcp/health` antwortet mit HTTP 200; offizielle Developer- und Help-Center-Dokumentation bestätigt Remote MCP, `X-API-Key` und schreibende Campaign-/Lead-/Inbox-/Webhook-Funktionen. JavaScript-Syntax, Diff-Check und Backend-Tests 14/14 grün. Commit `1fb1035` ist auf `main`, Railway-Deployment `efb42e71-f4ed-404d-a601-8167b1daa50f` ist `SUCCESS` und `/health` grün. Der Browser-Smoke auf `os.enneo.ai` bestätigte genau einen Lemlist-Eintrag unter `Read & Write`, das offizielle Logo sowie den mit MCP-URL und `X-API-Key` vorausgefüllten Verbindungsdialog; der temporäre QA-Account wurde anschließend gelöscht.
+- **Ein Klick, echter Anbieter-Login:** Lemlist erscheint direkt unter `Read & Write`. `Verbinden` startet den offiziellen Remote-MCP-OAuth-Flow auf `app.lemlist.com`: Discovery, Dynamic Client Registration, PKCE, Team-Auswahl, Consent sowie Access-/Refresh-Token laufen ohne Lemlist-Passwort oder manuell kopierten API-Key.
+- **Eindeutiger Owner:** Persönliche Connections gehören serverseitig ausnahmslos dem eingeloggten enneo-OS-Account. Das missverständliche Feld `Für Account` wurde auch für Admins entfernt; ein Admin kann keine persönlichen Credentials stellvertretend für andere speichern. Gemeinsame Service-Verbindungen bleiben ein expliziter `scope=team`-Sonderfall nur für Admins.
+- **Sichere Persistenz:** Access-Token, Refresh-Token, dynamische OAuth-Client-Informationen und der kurzlebige PKCE-Verifier werden AES-256-GCM-verschlüsselt. Die neue service-only Tabelle `mcp_oauth_sessions` hat RLS, keine Grants für `anon`/`authenticated` und löscht den State nach Callback. Migration `20260717121000_mcp_oauth_personal_connections.sql` ist live und in der Migration History eingetragen.
+- **Space-Grenze bleibt erhalten:** Nach erfolgreichem Login ist Lemlist weiterhin für Enni inaktiv, bis die konkrete persönliche Connection einem Open oder Restricted Space zugeordnet wird. Ein Reconnect übernimmt bestehende Space-Zuordnungen und ersetzt die alte Connection ohne Duplikat.
+- **Verifiziert:** Offizieller Lemlist-Discovery-Smoke erzeugte `https://app.lemlist.com/oauth/authorize` mit dynamischer Client-ID, PKCE-Challenge und CSRF-State – einmal isoliert mit dem MCP-SDK und einmal über den echten `createMcpOAuthUrl`-Produktionscode samt Live-Datenbank. JavaScript-Syntax, Diff-Check und Backend-Tests 14/14 grün.
 
 ### Session 2026-07-17 — Kompakte Bibliothek + Team-Zugänge
 

@@ -192,17 +192,35 @@ test('researched integrations join the existing permission sections with provide
   assert.doesNotMatch(frontendSource, /Von Enni recherchiert/)
 })
 
-test('Lemlist is a curated Read & Write MCP connector with safe reconnects', () => {
+test('Lemlist uses personal OAuth and keeps safe reconnects', () => {
   const frontendSource = readFileSync(join(here, '../../frontend/app.js'), 'utf8')
+  const frontendHtml = readFileSync(join(here, '../../frontend/index.html'), 'utf8')
+  const indexSource = readFileSync(join(here, '../src/index.js'), 'utf8')
   const mcpSource = readFileSync(join(here, '../src/tools/mcp.js'), 'utf8')
+  const oauthSource = readFileSync(join(here, '../src/mcp-oauth.js'), 'utf8')
+  const migration = readFileSync(join(here, '../../supabase/migrations/20260717121000_mcp_oauth_personal_connections.sql'), 'utf8')
 
   assert.match(frontendSource, /display_name: 'Lemlist'/)
   assert.match(frontendSource, /https:\/\/app\.lemlist\.com\/mcp/)
-  assert.match(frontendSource, /auth_type: 'mcp_x_api_key'/)
+  assert.match(frontendSource, /auth_type: 'mcp_oauth'/)
+  assert.match(frontendSource, /oauth_provider: 'lemlist'/)
+  assert.match(frontendSource, /startMcpOAuth/)
   assert.match(frontendSource, /access_mode: 'read_write'/)
   assert.match(frontendSource, /https:\/\/www\.lemlist\.com\/favicon\.ico/)
+  assert.doesNotMatch(frontendHtml, /id="cn-owner"/)
+  assert.doesNotMatch(frontendHtml, /for="cn-owner"/)
+  assert.doesNotMatch(frontendSource, /cn-owner/)
+  assert.match(indexSource, /const owner = personal \? user\.id : null/)
+  assert.match(indexSource, /\/api\/mcp\/oauth\/:provider\/start/)
+  assert.match(oauthSource, /token_endpoint_auth_method: 'none'/)
+  assert.match(oauthSource, /saveClientInformation/)
+  assert.match(oauthSource, /visibility: 'personal'/)
+  assert.match(mcpSource, /oauthProviderForConnector/)
   assert.match(mcpSource, /moveConnectorAssignments\(previousIds, data\.id\)/)
   assert.match(mcpSource, /\.eq\('url', normalizedUrl\)/)
+  assert.match(migration, /mcp_oauth_sessions/)
+  assert.match(migration, /oauth_client_information/)
+  assert.match(migration, /revoke all.*authenticated/s)
 })
 
 test('marketplace connections stay dormant until an accessible Space activates them', () => {

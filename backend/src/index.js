@@ -1231,13 +1231,12 @@ app.post('/api/connectors', async (req, res) => {
   const { data: prof } = await db.from('profiles').select('is_admin').eq('id', user.id).maybeSingle()
   const isAdmin = !!prof?.is_admin
   const { name, url, token, category, kind, auth_type: authType } = req.body || {}
-  const personal = !isAdmin || req.body?.scope === 'personal'
-  const requestedOwner = isAdmin && req.body?.owner ? String(req.body.owner) : user.id
-  if (personal && requestedOwner !== user.id) {
-    const { data: target } = await db.from('profiles').select('id').eq('id', requestedOwner).eq('account_status', 'active').maybeSingle()
-    if (!target) return res.status(400).json({ error: 'Ziel-Account nicht gefunden oder deaktiviert.' })
-  }
-  const owner = personal ? requestedOwner : null
+  const requestedTeam = req.body?.scope === 'team'
+  if (requestedTeam && !isAdmin) return res.status(403).json({ error: 'Nur Admins können eine gemeinsame Service-Verbindung anlegen.' })
+  const personal = !requestedTeam
+  // Persönliche Credentials gehören ausnahmslos dem eingeloggten Account.
+  // Auch Admins dürfen keine Verbindung stellvertretend für andere anlegen.
+  const owner = personal ? user.id : null
   const visibility = personal ? 'personal' : 'team'
 
   // Legacy-Fallback für bestehende Clients; die sichtbare UI nutzt ausschließlich OAuth.
@@ -1521,6 +1520,40 @@ app.get('/api/oauth/:provider/callback', async (req, res) => {
     console.error(`${provider} OAuth Callback:`, err.message)
     const { providerOAuthErrorUrl } = await import('./provider-oauth.js')
     res.redirect(303, providerOAuthErrorUrl(provider, 'callback_failed'))
+  }
+})
+
+// OAuth für offizielle Remote-MCPs. Der MCP-Server übernimmt Discovery,
+// Dynamic Client Registration, PKCE, Consent und Token Refresh. Anders als
+// bei nativen Provider-Apps ist keine einmalige Admin-Konfiguration nötig.
+app.post('/api/mcp/oauth/:provider/start', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  try {
+    const { MCP_OAUTH_SERVERS, createMcpOAuthUrl } = await import('./mcp-oauth.js')
+    const provider = req.params.provider
+    if (!MCP_OAUTH_SERVERS[provider]) return res.status(404).json({ error: 'OAuth-MCP nicht gefunden' })
+    const url = await createMcpOAuthUrl({ provider, userId: user.id })
+    res.json({ url })
+  } catch (err) {
+    console.error('MCP OAuth Start:', err.message)
+    res.status(503).json({ error: `Anbieter-Login konnte nicht gestartet werden: ${err.message}` })
+  }
+})
+
+app.get('/api/mcp/oauth/callback', async (req, res) => {
+  try {
+    const { completeMcpOAuth } = await import('./mcp-oauth.js')
+    const url = await completeMcpOAuth({
+      code: String(req.query.code || ''),
+      state: String(req.query.state || ''),
+      deniedError: String(req.query.error || ''),
+    })
+    res.redirect(303, url)
+  } catch (err) {
+    console.error('MCP OAuth Callback:', err.message)
+    const { mcpOAuthErrorUrl } = await import('./mcp-oauth.js')
+    res.redirect(303, mcpOAuthErrorUrl('lemlist', 'callback_failed'))
   }
 })
 
