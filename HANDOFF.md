@@ -1,6 +1,13 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-17 (verifizierbare Wiki-Freigaben)
+**Zuletzt aktualisiert:** 2026-07-17 (Markdown-Verzeichnisimport)
+
+### Session 2026-07-17 — Markdown-Verzeichnisse als Space-Wissen importieren
+
+- **Tristans Bowtie-Bible-Use-Case ist live:** In jedem Space gibt es eine kompakte Aktion `Markdown-Dateien importieren`. Nutzer können einzelne `.md`-/`.markdown`-Dateien oder einen kompletten lokalen Ordner auswählen bzw. per Drag-and-drop ablegen. Jede Datei wird eine eigene Wiki-Seite; die H1 wird als Titel verwendet, sonst der Dateiname. Numerische Präfixe wie `00_`, `01_`, `02_` bleiben in natürlicher Reihenfolge.
+- **Ordnerstruktur statt Copy-paste:** Das Feld `Zielordner` akzeptiert auch verschachtelte Pfade wie `Revenue Architecture / Bowtie Bible`. Sie werden in stabile Slugs übersetzt, ohne bestehende Seiten still zu überschreiben. Pro Import gelten maximal 50 Dateien, 2 MB je Datei und 12 MB insgesamt.
+- **Rechte und Freigabe bleiben sicher:** Restricted Spaces akzeptieren Imports nur von Mitgliedern. Admin-Imports sind direkt teamweit verfügbar und werden sofort für die semantische Suche indexiert. Imports von Nicht-Admins landen als zusammengehörige Vorschläge und werden erst nach Admin-Freigabe indexiert. Die Admin-Ansicht gruppiert solche Sammlungen und bietet `Alle freigeben`; schlägt das Reindexing fehl, fällt die Seite sicher auf `proposed` zurück.
+- **Produktiv verifiziert:** Syntax-/Diff-Checks und Backend-Tests 20/20 sind grün. Ein authentifizierter Production-E2E importierte `00_index.md`, `01_fundamentals.md` und `02_revenue-model.md` unter `revenue-architecture/bowtie-bible`, bestätigte vor Freigabe 0 Chunks und nach Bulk-Freigabe 3 Chunks. Der Production-Browser bestätigte den Import-Button und den vollständigen kompakten Dialog. Railway-Deployment `938a2df7-6ecb-47c9-a7fd-82d3ed6c471f` ist `SUCCESS`; Netlify liefert Commit `fe9b441`. Testaccount, Space, Seiten, Chunks, Audit-Einträge und lokale QA-Dateien wurden anschließend vollständig entfernt.
 
 ### Session 2026-07-17 — Verifizierbare Wiki-Freigaben + Brand-Voice-Recovery
 
