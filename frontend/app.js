@@ -1390,6 +1390,11 @@ async function openThread(rootId) {
 function closeThread(updateUrl = true) {
   activeThreadRootId = null
   threadLoadSeq++
+  threadPendingFiles = []
+  renderThreadChips()
+  $('thread-input').value = ''
+  autosizeEl($('thread-input'))
+  updateMentionBacks()
   $('thread-panel')?.classList.remove('open')
   $('thread-panel')?.setAttribute('aria-hidden', 'true')
   if ($('thread-backdrop')) $('thread-backdrop').hidden = true
@@ -3880,6 +3885,7 @@ const ALLOWED_FILES = {
 }
 const extType = (name) => ({ csv: 'text/csv', xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg' }[name.split('.').pop().toLowerCase()])
 let pendingFiles = []
+let threadPendingFiles = []
 
 $('attach-btn').addEventListener('click', () => $('file-input').click())
 $('file-input').addEventListener('change', () => {
@@ -3907,6 +3913,35 @@ function renderChips() {
   })
 }
 
+function renderThreadChips() {
+  const box = $('thread-attach-chips')
+  box.hidden = !threadPendingFiles.length
+  box.innerHTML = ''
+  threadPendingFiles.forEach((item, index) => {
+    const chip = document.createElement('span')
+    chip.className = 'chip'
+    chip.innerHTML = `<span class="ftype">${ALLOWED_FILES[item.type]}</span><span>${esc(item.file.name)}</span><button class="x" type="button" title="Entfernen">✕</button>`
+    chip.querySelector('.x').addEventListener('click', () => {
+      threadPendingFiles.splice(index, 1)
+      renderThreadChips()
+    })
+    box.appendChild(chip)
+  })
+}
+
+$('thread-attach-btn').addEventListener('click', () => $('thread-file-input').click())
+$('thread-file-input').addEventListener('change', () => {
+  for (const file of $('thread-file-input').files) {
+    const type = ALLOWED_FILES[file.type] ? file.type : extType(file.name)
+    if (!type || !ALLOWED_FILES[type]) { showHint(`Dateityp nicht erlaubt: ${file.name}`); continue }
+    if (file.size > 10 * 1024 * 1024) { showHint(`${file.name} ist größer als 10 MB`); continue }
+    if (threadPendingFiles.length >= 4) { showHint('Maximal 4 Dateien pro Nachricht'); break }
+    threadPendingFiles.push({ file, type })
+  }
+  $('thread-file-input').value = ''
+  renderThreadChips()
+})
+
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const r = new FileReader()
@@ -3917,6 +3952,10 @@ function fileToBase64(file) {
 }
 
 function showHint(text) {
+  if (activeThreadRootId && $('thread-panel')?.classList.contains('open')) {
+    $('thread-hint').textContent = text
+    return
+  }
   const hint = $('ctx-hint')
   hint.hidden = false
   hint.className = 'ctx-hint'
@@ -4118,6 +4157,7 @@ function startDictationWebSpeech(btn, textarea, withLangHint = false) {
   })
 }
 $('mic-btn').addEventListener('click', () => startDictation($('mic-btn'), $('composer-input'), true))
+$('thread-mic-btn').addEventListener('click', () => startDictation($('thread-mic-btn'), $('thread-input')))
 
 // Enter/Senden beendet zuerst sauber das Diktat. Der zweite Klick sendet dann das
 // von Scribe finalisierte Transkript; so kann keine halbfertige Live-Vorschau rausgehen.
@@ -4162,6 +4202,8 @@ function updateMentionBacks() {
   renderMentionBack($('composer-input'), $('hl-back'))
   const pod = $('pod-quick-input')
   if (pod) renderMentionBack(pod, $('pod-hl-back'))
+  const thread = $('thread-input')
+  if (thread) renderMentionBack(thread, $('thread-hl-back'))
 }
 
 // ============================================================ Senden + Streaming
@@ -4744,20 +4786,31 @@ async function refreshThreadSummary(rootId) {
 }
 
 async function sendThreadReply() {
+  if (finishDictationBeforeSubmit()) return
   const rootId = activeThreadRootId
   const input = $('thread-input')
   const text = input.value.trim()
-  if (!rootId || !currentConv?.id || !text) return
+  if (!rootId || !currentConv?.id || (!text && !threadPendingFiles.length)) return
   if (activeStreams.has(currentConv.id) || currentConv.working) {
     $('thread-hint').textContent = 'Enni arbeitet gerade in dieser Konversation. Bitte kurz warten.'
     return
   }
   input.value = ''
+  autosizeEl(input)
+  updateMentionBacks()
   input.disabled = true
   $('thread-send').disabled = true
+  const files = threadPendingFiles
+  threadPendingFiles = []
+  renderThreadChips()
+  const attachments = []
+  for (const item of files) {
+    attachments.push({ name: item.file.name, media_type: item.type, data: await fileToBase64(item.file) })
+  }
+  const attachmentMeta = files.map((item) => ({ name: item.file.name, media_type: item.type }))
   const box = $('thread-messages')
   box.querySelector('.thread-empty')?.remove()
-  box.appendChild(renderUser(text, null, myProfile))
+  box.appendChild(renderUser(text || 'Bitte analysiere die angehängten Dateien.', attachmentMeta, myProfile))
   box.scrollTop = box.scrollHeight
   activeStreams.add(currentConv.id)
   updateComposerState()
@@ -4774,6 +4827,7 @@ async function sendThreadReply() {
         thread_root_id: rootId,
         message: text,
         model: $('model-select').value,
+        attachments: attachments.length ? attachments : undefined,
       }),
     })
     if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `HTTP ${response.status}`)
@@ -4842,6 +4896,11 @@ $('thread-input').addEventListener('keydown', (event) => {
     sendThreadReply()
   }
 })
+$('thread-input').addEventListener('input', () => {
+  autosizeEl($('thread-input'))
+  updateMentionBacks()
+})
+$('thread-input').addEventListener('scroll', () => updateMentionBacks())
 
 $('send-btn').addEventListener('click', () => {
   if ($('send-btn').classList.contains('stop')) stopTurn()

@@ -409,8 +409,14 @@ test('Pod conversations use real threads and keep Enni active selectively', () =
   assert.match(agentSource, /false bei Danke, Bestätigung, Smalltalk/)
   assert.match(notificationSource, /notifyPodThreadReply/)
   assert.match(frontendHtml, /id="thread-panel"/)
+  assert.match(frontendHtml, /id="thread-file-input"/)
+  assert.match(frontendHtml, /id="thread-mic-btn"/)
+  assert.match(frontendHtml, /\.mention-menu\{position:fixed;z-index:150/)
   assert.match(frontendSource, /function decorateThreadRoot/)
   assert.match(frontendSource, /async function sendThreadReply/)
+  assert.match(frontendSource, /let threadPendingFiles = \[\]/)
+  assert.match(frontendSource, /startDictation\(\$\('thread-mic-btn'\), \$\('thread-input'\)\)/)
+  assert.match(frontendSource, /attachments: attachments\.length \? attachments : undefined/)
 })
 
 test('impact reporting labels estimates and records skill usage', () => {
