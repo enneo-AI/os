@@ -2,7 +2,7 @@ import express from 'express'
 import cors from 'cors'
 import { randomBytes } from 'node:crypto'
 import { db, getUserFromRequest } from './db.js'
-import { runEnniTurn, ALLOWED_MODELS, generateTitle, availableToolDefinitions } from './agent.js'
+import { runEnniTurn, ALLOWED_MODELS, generateTitle, decideThreadReply, availableToolDefinitions } from './agent.js'
 import { attachmentsToBlocks, attachmentMeta } from './attachments.js'
 import { logUsage } from './usage.js'
 import { startRoutineTicker, runRoutine } from './routines.js'
@@ -10,7 +10,7 @@ import { startKnowledgeSyncTicker, syncKnowledgeSource } from './knowledge-sync.
 import { logAudit } from './audit.js'
 import { getAttioRecordSummary, hasAttioConnection, searchAttioRecords } from './tools/attio.js'
 import {
-  createNotification, createNotifications, notifyPodMentions, pushPublicKey, startPushTicker,
+  createNotification, createNotifications, notifyPodMentions, notifyPodThreadReply, pushPublicKey, startPushTicker,
 } from './notifications.js'
 import { loadSkillWithContexts, savePersonalContext } from './contexts.js'
 import { podContextPrompt } from './pod-context.js'
@@ -273,12 +273,16 @@ app.delete('/api/pods/:id/attio/related/:object/:recordId', async (req, res) => 
 
 // Verlauf ab dem letzten Compaction-Anker aufbauen (Dust-Muster).
 // In Pod-Konversationen werden User-Messages mit dem Autor-Namen geprefixt.
-async function buildHistory(convId, isPod = false) {
-  const { data: all } = await db
+async function buildHistory(convId, isPod = false, threadRootId = null) {
+  let query = db
     .from('messages')
     .select('role, content, author_id')
     .eq('conversation_id', convId)
     .order('created_at')
+  query = threadRootId
+    ? query.or(`id.eq.${threadRootId},thread_root_id.eq.${threadRootId}`)
+    : query.is('thread_root_id', null)
+  const { data: all } = await query
   const msgs = all || []
   let names = {}
   if (isPod) {
@@ -378,7 +382,7 @@ app.post('/api/chat', async (req, res) => {
   const user = await getUserFromRequest(req)
   if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
 
-  const { conversation_id, message, model, attachments } = req.body || {}
+  const { conversation_id, message, model, attachments, thread_root_id } = req.body || {}
   if (!message?.trim() && !attachments?.length) return res.status(400).json({ error: 'message fehlt' })
   if (model && !ALLOWED_MODELS.includes(model)) return res.status(400).json({ error: 'Unbekanntes Modell' })
   let fileBlocks = []
@@ -419,9 +423,26 @@ app.post('/api/chat', async (req, res) => {
     convId = data.id
   }
 
+  // Ein Thread verweist immer auf eine Root-Nachricht derselben Pod-Konversation.
+  // Die Datenbank validiert das zusätzlich per Trigger.
+  let threadRoot = null
+  let priorThreadMessages = []
+  if (thread_root_id) {
+    if (!pod) return res.status(400).json({ error: 'Threads sind nur in Pods verfügbar' })
+    const { data: root } = await db.from('messages').select('id, conversation_id, thread_root_id, role, content, author_id')
+      .eq('id', thread_root_id).maybeSingle()
+    if (!root || root.conversation_id !== convId || root.thread_root_id || root.role !== 'user') {
+      return res.status(400).json({ error: 'Ungültige Thread-Hauptnachricht' })
+    }
+    threadRoot = root
+    const { data: rows } = await db.from('messages').select('role, content, author_id, created_at')
+      .eq('thread_root_id', thread_root_id).order('created_at')
+    priorThreadMessages = rows || []
+  }
+
   // Verlauf ab letztem Compaction-Anker laden und User-Message persistieren.
   // Datei-Inhalte gehen nur in DIESEM Turn ans Modell; im Verlauf bleibt ein Text-Marker.
-  const prior = await buildHistory(convId, !!pod)
+  const prior = await buildHistory(convId, !!pod, thread_root_id || null)
   const meta = attachmentMeta(attachments)
   const storedText = meta.length
     ? `${message || ''}\n\n[Angehängte Dateien: ${meta.map((m) => m.name).join(', ')}]`.trim()
@@ -432,12 +453,19 @@ app.post('/api/chat', async (req, res) => {
     content: storedText,
     attachments: meta.length ? meta : null,
     author_id: user.id,
+    thread_root_id: thread_root_id || null,
   }).select('id').single()
   if (userMessageError) return res.status(500).json({ error: userMessageError.message })
   if (pod) {
     try {
-      await notifyPodMentions({
-        pod, actorId: user.id, messageId: userMessage.id, conversationId: convId, text: message,
+      const mentionNotifications = await notifyPodMentions({
+        pod, actorId: user.id, messageId: userMessage.id, conversationId: convId,
+        threadRootId: thread_root_id || null, text: message,
+      })
+      if (thread_root_id) await notifyPodThreadReply({
+        pod, actorId: user.id, messageId: userMessage.id, conversationId: convId,
+        threadRootId: thread_root_id, text: message,
+        excludeUserIds: mentionNotifications.map((item) => item.user_id),
       })
     } catch (error) {
       console.error('Mention-Benachrichtigung fehlgeschlagen:', error.message)
@@ -486,7 +514,46 @@ app.post('/api/chat', async (req, res) => {
     // unabhängig davon, ob er am Satzanfang oder mitten in der Nachricht steht.
     const slashMatch = (message || '').match(/(?:^|\s)\/([a-z0-9][a-z0-9-]*)\b/i)
     const enniMentioned = /@enni\b/i.test(message || '') || !!slashMatch
-    if (pod && !enniMentioned) {
+    const threadWasActive = !!threadRoot && (
+      /@enni\b/i.test(threadRoot.content || '') ||
+      /(?:^|\s)\/[a-z0-9][a-z0-9-]*\b/i.test(threadRoot.content || '') ||
+      priorThreadMessages.some((item) => item.role === 'assistant')
+    )
+    let shouldReply = enniMentioned
+    let decisionCost = 0
+    if (pod && threadRoot && !shouldReply && threadWasActive) {
+      const authorIds = [...new Set(priorThreadMessages.map((item) => item.author_id).filter(Boolean))]
+      const { data: authors } = authorIds.length
+        ? await db.from('profiles').select('id, display_name, email').in('id', authorIds)
+        : { data: [] }
+      const names = Object.fromEntries((authors || []).map((item) => [item.id, item.display_name || item.email]))
+      try {
+        const decision = await decideThreadReply({
+          root: threadRoot.content,
+          replies: priorThreadMessages.map((item) => ({ ...item, author: item.role === 'assistant' ? 'Enni' : names[item.author_id] })),
+          latest: message || '[Datei angehängt]',
+          senderName: user.user_metadata?.full_name || user.email,
+        })
+        shouldReply = decision.respond
+        decisionCost = await logUsage({
+          userId: user.id, conversationId: convId, messageId: userMessage.id,
+          model: decision.model, usage: decision.usage, source: 'thread_decision',
+        })
+      } catch (error) {
+        console.error('Thread-Entscheidung fehlgeschlagen:', error.message)
+        shouldReply = false
+      }
+    }
+    const responseThreadRootId = pod && shouldReply ? (thread_root_id || userMessage.id) : null
+    if (pod) emit({
+      type: 'thread_context',
+      user_message_id: userMessage.id,
+      thread_root_id: thread_root_id || userMessage.id,
+      is_thread_reply: !!thread_root_id,
+      enni_active: threadWasActive || enniMentioned,
+      reply_expected: shouldReply,
+    })
+    if (pod && !shouldReply) {
       if (titlePromise) {
         const t = await titlePromise
         if (t?.title) {
@@ -496,7 +563,7 @@ app.post('/api/chat', async (req, res) => {
         }
       }
       await db.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', convId)
-      emit({ type: 'done', message_id: null, cost_eur: 0, team_message: true })
+      emit({ type: 'done', message_id: null, cost_eur: decisionCost, team_message: true, thread_observed: !!threadRoot })
       progress.close()
       res.end()
       return
@@ -508,7 +575,7 @@ app.post('/api/chat', async (req, res) => {
       const senderName = user.user_metadata?.full_name || user.email
       extraSystem =
         `Diese Konversation läuft im Pod "${pod.name}" — ein geteilter Projekt-Raum (Team-Chat, mehrere Personen lesen und schreiben mit). ` +
-        `Du wurdest gerade mit @enni gerufen; die aktuelle Nachricht kommt von ${senderName}. User-Nachrichten sind mit dem Absender-Namen geprefixt. ` +
+        `${threadRoot ? 'Du antwortest innerhalb eines Threads. Enni wurde für diesen Thread aktiviert und prüft Folgeantworten automatisch; antworte nur, wenn dein Beitrag jetzt wirklich hilfreich ist. ' : 'Du wurdest gerade mit @enni gerufen. '}Die aktuelle Nachricht kommt von ${senderName}. User-Nachrichten sind mit dem Absender-Namen geprefixt. ` +
         `Du hast Zugriff auf den GESAMTEN Pod über die pod_-Tools: Aufgabenliste (pod_list_tasks), geteilte Dateien (pod_list_files / pod_read_file) und die anderen Konversationen (pod_list_conversations / pod_read_conversation). Nutze sie, wenn die Frage Pod-Kontext braucht.` +
         (pod.description ? `\nPod-Beschreibung: ${pod.description}` : '')
       extraSystem += await podContextPrompt(pod)
@@ -572,6 +639,7 @@ app.post('/api/chat', async (req, res) => {
         thinking: result.thinking || null,
         tool_calls: result.toolCalls.length ? result.toolCalls : null,
         duration_ms: durationMs,
+        thread_root_id: responseThreadRootId,
       })
       .select('id')
       .single()
@@ -615,7 +683,7 @@ app.post('/api/chat', async (req, res) => {
           message_id: msg?.id || null,
           title: 'Enni ist fertig',
           body: (result.text || '').replace(/\s+/g, ' ').trim().slice(0, 240),
-          action_url: pod ? `/pod/${pod.id}?tab=convs&conversation=${convId}` : `/chat/${convId}`,
+          action_url: pod ? `/pod/${pod.id}?tab=convs&conversation=${convId}${responseThreadRootId ? `&thread=${responseThreadRootId}` : ''}` : `/chat/${convId}`,
           metadata: { duration_ms: durationMs },
         })
       } catch (error) {

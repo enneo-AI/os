@@ -37,7 +37,7 @@ function compactMessage(text) {
   return String(text || '').replace(/\s+/g, ' ').trim().slice(0, 240)
 }
 
-export async function notifyPodMentions({ pod, actorId, messageId, conversationId, text }) {
+export async function notifyPodMentions({ pod, actorId, messageId, conversationId, threadRootId, text }) {
   const raw = String(text || '')
   const tokens = [...raw.matchAll(/@([\wÀ-ÿ.\-]+)/g)].map((match) => match[1].toLowerCase())
   const hasTeam = tokens.includes('team')
@@ -69,8 +69,32 @@ export async function notifyPodMentions({ pod, actorId, messageId, conversationI
     message_id: messageId,
     title: type === 'mention' ? `${actorName} hat dich erwähnt` : `${actorName} hat @team erwähnt`,
     body,
-    action_url: `/pod/${pod.id}?tab=convs&conversation=${conversationId}`,
+    action_url: `/pod/${pod.id}?tab=convs&conversation=${conversationId}${threadRootId ? `&thread=${threadRootId}` : ''}`,
     metadata: { pod_name: pod.name },
+  })))
+}
+
+export async function notifyPodThreadReply({ pod, actorId, messageId, conversationId, threadRootId, text, excludeUserIds = [] }) {
+  if (!threadRootId) return []
+  const [{ data: root }, { data: replies }, { data: actor }] = await Promise.all([
+    db.from('messages').select('author_id').eq('id', threadRootId).maybeSingle(),
+    db.from('messages').select('author_id').eq('thread_root_id', threadRootId),
+    db.from('profiles').select('display_name, email').eq('id', actorId).maybeSingle(),
+  ])
+  const excluded = new Set([actorId, ...excludeUserIds])
+  const recipients = [...new Set([root?.author_id, ...(replies || []).map((item) => item.author_id)].filter((id) => id && !excluded.has(id)))]
+  const actorName = actor?.display_name || actor?.email?.split('@')[0] || 'Ein Teammitglied'
+  return createNotifications(recipients.map((userId) => ({
+    user_id: userId,
+    type: 'thread_reply',
+    actor_id: actorId,
+    pod_id: pod.id,
+    conversation_id: conversationId,
+    message_id: messageId,
+    title: `${actorName} hat im Thread geantwortet`,
+    body: compactMessage(text),
+    action_url: `/pod/${pod.id}?tab=convs&conversation=${conversationId}&thread=${threadRootId}`,
+    metadata: { pod_name: pod.name, thread_root_id: threadRootId },
   })))
 }
 

@@ -390,6 +390,29 @@ test('Pods separate discovery from membership and always load team context', () 
   assert.match(managedContextMigration, /pod_member_contexts_update_managed/)
 })
 
+test('Pod conversations use real threads and keep Enni active selectively', () => {
+  const frontendSource = readFileSync(join(here, '../../frontend/app.js'), 'utf8')
+  const frontendHtml = readFileSync(join(here, '../../frontend/index.html'), 'utf8')
+  const indexSource = readFileSync(join(here, '../src/index.js'), 'utf8')
+  const agentSource = readFileSync(join(here, '../src/agent.js'), 'utf8')
+  const notificationSource = readFileSync(join(here, '../src/notifications.js'), 'utf8')
+  const migration = readFileSync(
+    join(here, '../../supabase/migrations/20260717190000_pod_message_threads.sql'),
+    'utf8'
+  )
+
+  assert.match(migration, /add column if not exists thread_root_id/)
+  assert.match(migration, /Threads sind nur in Pods verfügbar/)
+  assert.match(indexSource, /threadWasActive/)
+  assert.match(indexSource, /decideThreadReply/)
+  assert.match(indexSource, /thread_root_id: responseThreadRootId/)
+  assert.match(agentSource, /false bei Danke, Bestätigung, Smalltalk/)
+  assert.match(notificationSource, /notifyPodThreadReply/)
+  assert.match(frontendHtml, /id="thread-panel"/)
+  assert.match(frontendSource, /function decorateThreadRoot/)
+  assert.match(frontendSource, /async function sendThreadReply/)
+})
+
 test('impact reporting labels estimates and records skill usage', () => {
   const indexSource = readFileSync(join(here, '../src/index.js'), 'utf8')
   const frontendSource = readFileSync(join(here, '../../frontend/app.js'), 'utf8')

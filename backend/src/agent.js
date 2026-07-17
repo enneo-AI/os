@@ -499,6 +499,29 @@ export async function generateTitle(firstMessage) {
   return { title: title.slice(0, 60), usage: response.usage, model }
 }
 
+// Ein aktivierter Pod-Thread wird wie in Slack von Enni mitgelesen. Haiku
+// entscheidet günstig und bewusst zurückhaltend, ob die neue Antwort Ennis
+// Beitrag braucht; explizite Erwähnungen werden bereits vor diesem Call abgefangen.
+export async function decideThreadReply({ root, replies, latest, senderName }) {
+  const model = 'claude-haiku-4-5'
+  const transcript = [
+    `Hauptnachricht: ${root}`,
+    ...replies.slice(-12).map((item) => `${item.author || (item.role === 'assistant' ? 'Enni' : 'Teammitglied')}: ${item.content}`),
+    `${senderName || 'Teammitglied'} (neu): ${latest}`,
+  ].join('\n')
+  const response = await anthropic.messages.create({
+    model,
+    max_tokens: 80,
+    system:
+      'Du entscheidest für einen Team-Chat-Thread, ob Enni jetzt antworten soll. Antworte NUR mit JSON {"respond":true|false}. true bei einer Frage, Bitte, Aufgabe, Korrektur, Unsicherheit oder wenn Enni konkret weiterhelfen kann. false bei Danke, Bestätigung, Smalltalk, reinen Statusmeldungen oder Gesprächen eindeutig zwischen Menschen. Enni soll hilfreich sein, aber nicht jede Unterhaltung unterbrechen.',
+    messages: [{ role: 'user', content: transcript.slice(0, 12000) }],
+  })
+  const raw = response.content.find((block) => block.type === 'text')?.text || ''
+  let respond = false
+  try { respond = !!JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] || '{}').respond } catch { respond = false }
+  return { respond, usage: response.usage, model }
+}
+
 // Kontext-Kompaktierung: Haiku fasst den Verlauf zusammen (billig, ~Sekunden)
 export async function compactConversation(title, transcript) {
   const model = 'claude-haiku-4-5'

@@ -16,6 +16,9 @@ let session = null
 let currentConv = null // {id, title} oder null = neue Konversation
 let closeTargetConv = null // Chat, der im Schließen-Modal bestätigt wird
 let costByMessage = {}
+let currentMessageRows = []
+let activeThreadRootId = null
+let threadLoadSeq = 0
 
 // Multi-Sessions: Streams laufen pro Konversation weiter, auch wenn man wegnavigiert.
 // viewSeq erhöht sich bei jedem Ansichts-Wechsel — Hintergrund-Streams prüfen damit,
@@ -1143,6 +1146,7 @@ function renameConv(btn, c) {
 }
 
 function newConversation() {
+  closeThread(false)
   currentConv = null
   mountPromptQueue(null)
   viewSeq++
@@ -1169,6 +1173,7 @@ $('new-chat').addEventListener('click', () => {
 })
 
 async function openConversation(c) {
+  closeThread(false)
   currentConv = c
   viewSeq++
   updateComposerState()
@@ -1202,16 +1207,27 @@ async function openConversation(c) {
     allSkills(),
   ])
   costByMessage = Object.fromEntries((usage || []).map((u) => [u.message_id, Number(u.cost_eur)]))
+  currentMessageRows = msgs || []
+  const threadReplies = new Map()
+  for (const message of currentMessageRows) {
+    if (!message.thread_root_id) continue
+    const list = threadReplies.get(message.thread_root_id) || []
+    list.push(message)
+    threadReplies.set(message.thread_root_id, list)
+  }
   const box = $('msgs')
   box.innerHTML = ''
-  for (const m of msgs || []) {
+  for (const m of currentMessageRows.filter((message) => !message.thread_root_id)) {
+    let node = null
     if (m.role === 'user') {
       if (convPod && m.author_id && m.author_id !== session.user.id)
-        box.appendChild(renderPeer(profs.find((profile) => profile.id === m.author_id), m.content, m.attachments))
-      else box.appendChild(renderUser(m.content, m.attachments, profs.find((profile) => profile.id === session.user.id)))
+        node = renderPeer(profs.find((profile) => profile.id === m.author_id), m.content, m.attachments)
+      else node = renderUser(m.content, m.attachments, profs.find((profile) => profile.id === session.user.id))
+      if (convPod) node = decorateThreadRoot(node, m, threadReplies.get(m.id) || [])
     } else if (m.role === 'assistant')
-      box.appendChild(renderAgent(m.content, m.thinking, m.tool_calls || [], costByMessage[m.id], m.duration_ms))
-    else if (m.role === 'compaction') box.appendChild(renderCompactionMarker(m.content))
+      node = renderAgent(m.content, m.thinking, m.tool_calls || [], costByMessage[m.id], m.duration_ms)
+    else if (m.role === 'compaction') node = renderCompactionMarker(m.content)
+    if (node) box.appendChild(node)
   }
   ctxTokens = computeCtxTokens(msgs || [])
   renderCtx()
@@ -1221,6 +1237,10 @@ async function openConversation(c) {
   mountPromptQueue(c.id)
   if (promptQueues.get(c.id)?.length) setTimeout(() => drainPromptQueue(c.id), 400)
   window.scrollTo({ top: document.body.scrollHeight })
+  const requestedThread = new URLSearchParams(location.search).get('thread')
+  if (requestedThread && currentMessageRows.some((message) => message.id === requestedThread && !message.thread_root_id)) {
+    openThread(requestedThread)
+  }
 }
 
 // ============================================================ Rendering
@@ -1295,6 +1315,82 @@ function renderPeer(profile, text, attachments) {
   }
   return wrapPersonMessage(el, profile)
 }
+
+const THREAD_ICON = '<svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H7l-4 2 1.4-4.2A9 9 0 1 1 21 12Z"/></svg>'
+
+function decorateThreadRoot(node, message, replies = []) {
+  const outer = document.createElement('div')
+  const mine = message.author_id === session.user.id
+  outer.className = `thread-root-wrap${mine ? ' mine' : ''}`
+  outer.dataset.messageId = message.id
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = 'thread-summary'
+  const people = replies.filter((item) => item.role === 'user').length
+  button.innerHTML = `${THREAD_ICON}<span>${replies.length ? `${replies.length} Antwort${replies.length === 1 ? '' : 'en'}` : 'Antworten'}</span>${people ? `<span class="thread-count">· ${people} Team</span>` : ''}`
+  button.setAttribute('aria-label', replies.length ? `Thread mit ${replies.length} Antworten öffnen` : 'Auf diese Nachricht antworten')
+  button.addEventListener('click', () => openThread(message.id))
+  outer.append(node, button)
+  return outer
+}
+
+async function openThread(rootId) {
+  if (!currentConv?.id || !convPod) return
+  activeThreadRootId = rootId
+  const seq = ++threadLoadSeq
+  const panel = $('thread-panel')
+  panel.classList.add('open')
+  panel.setAttribute('aria-hidden', 'false')
+  $('thread-backdrop').hidden = false
+  $('thread-messages').innerHTML = '<div class="skel" style="height:64px"></div><div class="skel" style="height:48px"></div>'
+  const url = new URL(location.href)
+  url.searchParams.set('tab', 'convs')
+  url.searchParams.set('conversation', currentConv.id)
+  url.searchParams.set('thread', rootId)
+  history.replaceState({}, '', url)
+  const [{ data: rows }, profs, { data: usage }] = await Promise.all([
+    sb.from('messages').select('*').eq('conversation_id', currentConv.id).or(`id.eq.${rootId},thread_root_id.eq.${rootId}`).order('created_at'),
+    allProfiles(),
+    sb.from('llm_usage').select('message_id, cost_eur').eq('conversation_id', currentConv.id),
+  ])
+  if (seq !== threadLoadSeq || activeThreadRootId !== rootId) return
+  const box = $('thread-messages')
+  box.innerHTML = ''
+  const costs = Object.fromEntries((usage || []).map((item) => [item.message_id, Number(item.cost_eur)]))
+  for (const message of rows || []) {
+    let node
+    if (message.role === 'user') {
+      const profile = profs.find((item) => item.id === message.author_id)
+      node = message.author_id === session.user.id
+        ? renderUser(message.content, message.attachments, profile)
+        : renderPeer(profile, message.content, message.attachments)
+    } else if (message.role === 'assistant') {
+      node = renderAgent(message.content, message.thinking, message.tool_calls || [], costs[message.id], message.duration_ms)
+    }
+    if (!node) continue
+    if (message.id === rootId) node.classList.add('thread-root')
+    box.appendChild(node)
+  }
+  if ((rows || []).length === 1) box.insertAdjacentHTML('beforeend', '<div class="thread-empty">Noch keine Antworten</div>')
+  $('thread-input').focus()
+  box.scrollTop = box.scrollHeight
+}
+
+function closeThread(updateUrl = true) {
+  activeThreadRootId = null
+  threadLoadSeq++
+  $('thread-panel')?.classList.remove('open')
+  $('thread-panel')?.setAttribute('aria-hidden', 'true')
+  if ($('thread-backdrop')) $('thread-backdrop').hidden = true
+  if (updateUrl && currentConv && location.pathname.startsWith('/pod/')) {
+    const url = new URL(location.href)
+    url.searchParams.delete('thread')
+    history.replaceState({}, '', url)
+  }
+}
+
+$('thread-close').addEventListener('click', () => closeThread())
+$('thread-backdrop').addEventListener('click', () => closeThread())
 
 function toolRow(call, idx) {
   const short = summarizeInput(call.input)
@@ -4350,7 +4446,8 @@ async function send() {
 
   const box = $('msgs')
   box.querySelector('.empty')?.remove()
-  appendBeforePromptQueue(box, renderUser(text || 'Bitte analysiere die angehängten Dateien.', attachMeta, myProfile))
+  let optimisticNode = renderUser(text || 'Bitte analysiere die angehängten Dateien.', attachMeta, myProfile)
+  appendBeforePromptQueue(box, optimisticNode)
   if (!currentConv) $('chat-title').textContent = (text || attachMeta[0]?.name || '').slice(0, 80)
 
   // Pod-Konversationen sind Team-Chat: Enni antwortet nur bei @enni-Erwähnung.
@@ -4469,6 +4566,27 @@ async function send() {
               sb.from('pod_tasks').update({ conversation_id: ev.conversation_id }).eq('id', pendingTaskId).then(() => {})
               pendingTaskId = null
             }
+          }
+        } else if (ev.type === 'thread_context') {
+          if (inView() && convPod && !ev.is_thread_reply) {
+            const rootMessage = {
+              id: ev.user_message_id,
+              conversation_id: streamConvId,
+              role: 'user',
+              content: text,
+              attachments: attachMeta,
+              author_id: session.user.id,
+              thread_root_id: null,
+            }
+            currentMessageRows.push(rootMessage)
+            const decorated = decorateThreadRoot(optimisticNode, rootMessage, [])
+            optimisticNode.replaceWith(decorated)
+            optimisticNode = decorated
+          }
+          if (inView() && ev.reply_expected && !ev.is_thread_reply) {
+            await openThread(ev.thread_root_id)
+            $('thread-messages').querySelector('.thread-empty')?.remove()
+            if (wrap) $('thread-messages').appendChild(wrap)
           }
         } else if (ev.type === 'thinking_delta') {
           thinkingText += ev.text
@@ -4607,6 +4725,107 @@ async function hydrateToolOutputs(messageId, thinkBody, wrap) {
   }
 }
 
+async function refreshThreadSummary(rootId) {
+  const { count } = await sb.from('messages').select('id', { count: 'exact', head: true }).eq('thread_root_id', rootId)
+  const button = document.querySelector(`.thread-root-wrap[data-message-id="${rootId}"] .thread-summary`)
+  if (!button) return
+  button.innerHTML = `${THREAD_ICON}<span>${count ? `${count} Antwort${count === 1 ? '' : 'en'}` : 'Antworten'}</span>`
+}
+
+async function sendThreadReply() {
+  const rootId = activeThreadRootId
+  const input = $('thread-input')
+  const text = input.value.trim()
+  if (!rootId || !currentConv?.id || !text) return
+  if (activeStreams.has(currentConv.id) || currentConv.working) {
+    $('thread-hint').textContent = 'Enni arbeitet gerade in dieser Konversation. Bitte kurz warten.'
+    return
+  }
+  input.value = ''
+  input.disabled = true
+  $('thread-send').disabled = true
+  const box = $('thread-messages')
+  box.querySelector('.thread-empty')?.remove()
+  box.appendChild(renderUser(text, null, myProfile))
+  const pending = document.createElement('div')
+  pending.className = 'm-agent thread-pending'
+  pending.innerHTML = '<div class="who"><span class="enni-dot">E</span><b>Enni</b></div><div class="think"><button class="think-head"><span class="t-status shimmer">Liest im Thread mit …</span></button></div><div class="body"></div>'
+  box.appendChild(pending)
+  box.scrollTop = box.scrollHeight
+  activeStreams.add(currentConv.id)
+  updateComposerState()
+  let answer = ''
+  let replyExpected = false
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({
+        conversation_id: currentConv.id,
+        thread_root_id: rootId,
+        message: text,
+        model: $('model-select').value,
+      }),
+    })
+    if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `HTTP ${response.status}`)
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const parts = buffer.split('\n\n')
+      buffer = parts.pop()
+      for (const part of parts) {
+        if (!part.startsWith('data: ')) continue
+        const event = JSON.parse(part.slice(6))
+        if (event.type === 'thread_context') {
+          replyExpected = !!event.reply_expected
+          if (!replyExpected) pending.remove()
+          else pending.querySelector('.t-status').textContent = 'Enni antwortet …'
+        } else if (event.type === 'text_delta' && replyExpected) {
+          answer += event.text
+          pending.querySelector('.body').innerHTML = md(answer) + '<span class="scursor"></span>'
+          box.scrollTop = box.scrollHeight
+        } else if (event.type === 'text_replace' && replyExpected) {
+          answer = event.text || ''
+          pending.querySelector('.body').innerHTML = md(answer)
+        } else if (event.type === 'error') {
+          throw new Error(event.message)
+        }
+      }
+    }
+    $('thread-hint').textContent = replyExpected
+      ? 'Enni bleibt in diesem Thread aktiviert.'
+      : 'Enni hat mitgelesen; keine Antwort war nötig.'
+  } catch (error) {
+    pending.querySelector('.t-status')?.classList.remove('shimmer')
+    const body = pending.querySelector('.body')
+    if (body) body.innerHTML = `<p style="color:var(--high)">${esc(error.message)}</p>`
+    $('thread-hint').textContent = 'Die Antwort wurde nicht vollständig verarbeitet.'
+  } finally {
+    activeStreams.delete(currentConv.id)
+    currentConv.working = false
+    updateComposerState()
+    input.disabled = false
+    $('thread-send').disabled = false
+    await refreshThreadSummary(rootId)
+    if (activeThreadRootId === rootId) await openThread(rootId)
+  }
+}
+
+$('thread-composer').addEventListener('submit', (event) => {
+  event.preventDefault()
+  sendThreadReply()
+})
+$('thread-input').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault()
+    sendThreadReply()
+  }
+})
+
 $('send-btn').addEventListener('click', () => {
   if ($('send-btn').classList.contains('stop')) stopTurn()
   else send()
@@ -4741,6 +4960,7 @@ function attachMentions(input, getPod) {
 }
 attachMentions($('composer-input'), () => convPod)
 attachMentions($('pod-quick-input'), () => activePod)
+attachMentions($('thread-input'), () => convPod)
 
 // Capture-Phase auf document: läuft VOR den Enter-Send-Handlern der Inputs
 document.addEventListener(
@@ -7223,14 +7443,21 @@ function subscribeConvMessages(convId) {
       async (p) => {
         const m = p.new
         if (currentConv?.id !== convId) return
+        if (m.thread_root_id) {
+          refreshThreadSummary(m.thread_root_id)
+          if (activeThreadRootId === m.thread_root_id && !activeStreams.has(convId)) openThread(m.thread_root_id)
+          return
+        }
         if (activeStreams.has(convId)) return // eigener Stream rendert live
         if (m.role === 'compaction') return
         if (m.role === 'user' && m.author_id === session.user.id) return // schon im DOM
         const profs = await allProfiles()
         const box = $('msgs')
         box.querySelector('.empty')?.remove()
-        if (m.role === 'user')
-          box.appendChild(renderPeer(profs.find((profile) => profile.id === m.author_id), m.content, m.attachments))
+        if (m.role === 'user') {
+          const peer = renderPeer(profs.find((profile) => profile.id === m.author_id), m.content, m.attachments)
+          box.appendChild(convPod ? decorateThreadRoot(peer, m, []) : peer)
+        }
         else if (m.role === 'assistant')
           box.appendChild(renderAgent(m.content, m.thinking, m.tool_calls || [], undefined, m.duration_ms))
         window.scrollTo({ top: document.body.scrollHeight })
