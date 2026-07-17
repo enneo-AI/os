@@ -1,6 +1,23 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-17 (Wissensvorschläge in Kontexte gespiegelt)
+**Zuletzt aktualisiert:** 2026-07-17 (Microsoft-Entra-App für Outlook/Graph angelegt — wartet auf Admin-Consent)
+
+### Session 2026-07-17 — Microsoft-Graph-Connector: Entra-App angelegt, Admin-Consent pending
+
+- **Aleksa kann selbst App-Registrierungen anlegen** (obwohl er KEIN M365-Global-Admin ist). Im enneo-Tenant ist "App registrations → New registration" für ihn erlaubt. Damit muss Richard nicht mehr die App bauen — nur noch den Consent klicken.
+- **App "enneo OS" registriert** (Single-Tenant, enneo GmbH):
+  - **Application (client) ID:** `55916b28-e34f-415d-97f3-fd1ecd72622b`
+  - **Directory (tenant) ID:** `29e6f87b-d33d-4577-983d-16e533d2bfd9`
+  - **Object ID:** `7490e7fb-a469-4e5f-b3c2-2234f2368614`
+  - **Redirect URI (Web):** `https://enneo-os-backend-production.up.railway.app/api/oauth/outlook/callback` (== `providerRedirectUri('outlook')` aus `backend/src/provider-oauth.js`)
+  - **Client Secret:** in Entra erstellt (24 Monate). Wert wurde direkt im OS unter `Administration → Integrationen → Outlook` eingetragen und ist dort AES-256-GCM-verschlüsselt (`oauth_provider_configs`). Der Klartext-Wert wird bewusst NIRGENDS gespeichert — bei Verlust neues Secret in Entra erzeugen.
+- **Provider-Config im OS gespeichert + DB-verifiziert:** `oauth_provider_configs` Zeile `outlook` mit obiger client_id + tenant_id, `enabled=true`, `configured_at=2026-07-17 18:07 UTC`. Tenant-Feld = die konkrete Tenant-ID (NICHT `organizations`, weil Single-Tenant-App).
+- **12 Delegated Graph-Permissions gesetzt** (Vollausstattung, Enni soll stark sein — Schreiben läuft im OS über Freigabe-Karte, nie autonomer Versand): `Mail.Read`, `Mail.ReadWrite`, `Mail.Send`, `Calendars.ReadWrite`, `Calendars.ReadWrite.Shared`, `Files.ReadWrite.All`, `Sites.ReadWrite.All`, `People.Read`, `User.Read`, `offline_access`, `email`, `profile`. Merke: SharePoint-Inhalte liegen unter der Graph-Gruppe **`Sites`** (nicht `SharePoint*` — das sind Tenant-Admin-Scopes) und Office-Dateien unter **`Files`**.
+- **🔴 BLOCKER — Admin-Consent fehlt noch:** Der Tenant hat User-Consent deaktiviert → jeder App-Zugriff braucht einmalig Admin-Freigabe. Aleksas "Account verbinden" im Marketplace endet auf "Need admin approval". Richard (oder ein anderer M365-Admin) muss EINMAL diesen Link öffnen und "Accept" klicken:
+  `https://login.microsoftonline.com/29e6f87b-d33d-4577-983d-16e533d2bfd9/adminconsent?client_id=55916b28-e34f-415d-97f3-fd1ecd72622b`
+  Alternativ: Richard in Entra → App registrations → enneo OS → API permissions → "Grant admin consent for enneo GmbH" (bei Aleksa ausgegraut, weil kein Admin).
+- **Nach dem Consent:** Aleksa verbindet im Marketplace neu → `connectors`-Zeile (kind `outlook`) entsteht → Connection einem Space zuordnen, damit Enni sie nutzen darf. Aktueller Stand DB-geprüft: noch KEINE `connectors`-Zeile mit kind `outlook`.
+- **🟡 OFFEN / geplant (noch NICHT gebaut):** Die OS-Backend-Tools decken Outlook bisher nur read-only ab (`OAUTH_PROVIDERS.outlook.scopes` waren `User.Read/Mail.Read/Calendars.Read`, Tools in `backend/src/tools/productivity.js`). Für die Vollausstattung müssen noch gebaut werden: (1) Scopes in `provider-oauth.js` auf die 12 delegierten hochziehen, (2) Mail-Send/Draft-Tool mit Freigabe-Karte (Muster: Enneo-Plattform propose_write), (3) SharePoint-Sites-Suche + Datei-Lesen, (4) Excel-Range-Read via Graph Workbook-API, (5) PowerPoint = Download + Text-Extraktion (keine Graph-Folien-API). Erst nach Consent testbar.
 
 ### Session 2026-07-17 — Brand-Voice-Guide sichtbar unter Kontexte
 
