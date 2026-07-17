@@ -1,6 +1,13 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-17 (Pod-Rollen pro Mitglied)
+**Zuletzt aktualisiert:** 2026-07-17 (Wissensvorschläge in Kontexte gespiegelt)
+
+### Session 2026-07-17 — Brand-Voice-Guide sichtbar unter Kontexte
+
+- **Ursache behoben:** `wiki_propose_update` speicherte Kontext-artige Guides bisher ausschließlich als `knowledge_updates`/Wiki-Seiten. Die Bibliothek `Kontexte` liest dagegen aus `contexts`; Chris konnte den bestätigten Vorschlag deshalb dort nicht sehen.
+- **Ein Nutzerpfad statt zweier Ablagen:** Vorschläge mit einem `kontext/*`-Slug werden nun zusätzlich als persönlicher, schreibgeschützter Kontext des Urhebers gespiegelt. In der Kontextliste steht kompakt `Wartet auf Freigabe`. Bei Admin-Freigabe publiziert derselbe Vorgang den Eintrag automatisch als Open-Kontext und hält Wiki/RAG und Kontext-Bibliothek inhaltlich synchron; bei Ablehnung wird ausschließlich der vorgeschlagene Kontextspiegel entfernt.
+- **Bestehender Chris-Vorschlag repariert:** Knowledge Update `2c99a195-3f9a-496d-9c90-2e4a0e5e8cf2` ist als Kontext `Enneo Brand Voice & Tonality Guardrails` mit Chris als Owner und vollständigen 12.742 Zeichen live. Er bleibt bewusst `proposed`, bis Aleksa ihn unter `Administration → Reviews → Wissensvorschläge` freigibt; Chris sieht ihn schon jetzt unter `Kontexte`.
+- **Technik und Verifikation:** Migration `20260717173000_context_knowledge_sync.sql` verknüpft Contexts optional mit Wiki-Seite und Knowledge Update. Ein echter Production-E2E bestätigte den kompletten Übergang `proposed/persönlich → approved/Open` einschließlich aktuellem Inhalt und anschließender QA-Bereinigung. Backend-Tests 20/20, Syntax und Diff-Check sind grün. Railway-Deployment `2e959c0f-a93d-4034-89c3-c7ebc17ac270` ist `SUCCESS`; Netlify liefert den Kontextstatus aus Commit `c9b9df2`.
 
 ### Session 2026-07-17 — Pod-Kontext mit echten Rollen pro Mitglied
 
