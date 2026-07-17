@@ -3312,8 +3312,8 @@ async function renderPodTeam() {
   $('pset-team-state').textContent = activePod.open ? 'Open' : `Restricted · ${members.length} ${members.length === 1 ? 'Mitglied' : 'Mitglieder'}`
   $('pset-team-state').className = `pod-customer-state${activePod.open ? ' on' : ''}`
   $('pset-team-copy').textContent = activePod.open
-    ? 'Offener Pod: Alle aktiven Mitglieder haben automatisch Zugriff.'
-    : canManage ? 'Nur ausgewählte Mitglieder haben Zugriff. Du kannst sie hier verwalten.' : 'Nur Pod-Besitzer und eingeladene Admins können Mitglieder verwalten.'
+    ? 'Open: Alle aktiven Accounts haben automatisch Zugriff.'
+    : canManage ? 'Restricted: Nur ausgewählte Mitglieder haben Zugriff.' : 'Restricted: Nur Pod-Besitzer und eingeladene Admins können Mitglieder verwalten.'
   const host = $('pset-team-content')
   host.innerHTML = `<div class="pod-member-list">${members.map((profile) => {
     const department = departmentInfo(profile)
@@ -3548,7 +3548,7 @@ let pmOpen = true
 $('new-pod').addEventListener('click', async () => {
   pmOpen = true
   document.querySelectorAll('#pm-seg button').forEach((b) => b.classList.toggle('on', b.dataset.acc === 'open'))
-  $('pm-hint').textContent = 'Alle in der Organisation können den Pod sehen und beitreten.'
+  $('pm-hint').textContent = 'Open · alle aktiven Accounts.'
   $('pm-members-wrap').style.display = 'none'
   const profs = await allProfiles()
   $('pm-members').innerHTML = profs
@@ -3563,8 +3563,8 @@ document.querySelectorAll('#pm-seg button').forEach((b) =>
     pmOpen = b.dataset.acc === 'open'
     document.querySelectorAll('#pm-seg button').forEach((x) => x.classList.toggle('on', x === b))
     $('pm-hint').textContent = pmOpen
-      ? 'Alle in der Organisation können den Pod sehen und beitreten.'
-      : 'Nur eingeladene Mitglieder haben Zugriff auf den Pod.'
+      ? 'Open · alle aktiven Accounts.'
+      : 'Restricted · nur ausgewählte Mitglieder.'
     $('pm-members-wrap').style.display = pmOpen ? 'none' : ''
   })
 )
@@ -5061,7 +5061,7 @@ async function openWikiPage(slug) {
   const mine = data.created_by === session.user.id
   $('doc-edit').hidden = !(is_admin || (mine && data.visibility !== 'team'))
   $('doc-share').hidden = !(mine && data.visibility === 'personal')
-  $('doc-share').textContent = data.visibility === 'proposed' ? 'Freigabe angefragt' : 'Für Team vorschlagen'
+  $('doc-share').textContent = data.visibility === 'proposed' ? 'Open angefragt' : 'Open vorschlagen'
   activateArea('wiki')
   window.scrollTo({ top: 0 })
 }
@@ -6042,13 +6042,14 @@ function renderSkillList(filter = '') {
   for (const s of matches) {
       const row = document.createElement('button')
       row.className = 'crow'
+      const mine = s.created_by === session.user.id
       const vis = s.visibility === 'personal'
-        ? '<span class="access-badge restricted">Restricted · nur du</span>'
+        ? `<span class="access-badge restricted">${mine ? 'Restricted · nur du' : 'Restricted'}</span>`
         : s.visibility === 'proposed'
           ? '<span class="access-badge restricted">Restricted · Open angefragt</span>'
           : '<span class="access-badge open">Open</span>'
       row.innerHTML = `<span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:var(--lila-deep);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
-        <div><div class="c-name">${esc(s.name)}</div><div class="c-sub">${esc(s.category || 'Allgemein')} · /${esc(s.slug)}${s.tools?.length ? ` · ${s.tools.length} Tools` : ''}</div></div>
+        <div><div class="c-name">${esc(s.name)}</div><div class="c-sub">${esc(s.category || 'Allgemein')} · /${esc(s.slug)}${s.tools?.length ? ` · ${s.tools.length} Tools` : ''}${!mine && s.visibility !== 'team' ? ` · ${esc(profName(skillListProfs, s.created_by))}` : ''}</div></div>
         ${vis}`
       row.addEventListener('click', () => openSkill(s, skillListAdmin))
       list.appendChild(row)
@@ -6339,7 +6340,7 @@ $('sk-save').addEventListener('click', async () => {
   $('sk-save').disabled = true
   const requiredContextIds = Array.from($('sk-required-contexts').selectedOptions).map((option) => option.value)
   if (row.visibility === 'team' && requiredContextIds.some((id) => contextListCache.find((context) => context.id === id)?.visibility !== 'team')) {
-    err.textContent = 'Ein teamweiter Skill darf nur teamweite verbindliche Kontexte verwenden.'
+    err.textContent = 'Ein Open Skill darf nur Open Kontexte als verbindliche Quellen verwenden.'
     $('sk-save').disabled = false
     return
   }
@@ -6456,7 +6457,7 @@ async function loadRoutines() {
         ? (is_admin ? `${r.routine_accounts?.length || 0} Accounts` : 'für dich')
         : (pod ? `Pod „${pod.name}“` : mine ? 'nur du' : `nur ${profName(profs, r.created_by)}`)
     const accessClass = audience === 'all' ? 'open' : 'restricted'
-    const accessLabel = audience === 'all' ? 'Open' : audience === 'restricted' || pod ? 'Restricted' : 'Restricted · nur du'
+    const accessLabel = audience === 'all' ? 'Open' : audience === 'restricted' || pod || !mine ? 'Restricted' : 'Restricted · nur du'
     const last = r.last_run_at
       ? ` · zuletzt ${new Date(r.last_run_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}${r.last_result === 'ok' ? '' : ' ⚠'}`
       : ''
