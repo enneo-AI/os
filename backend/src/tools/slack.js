@@ -1,5 +1,5 @@
-import { db } from '../db.js'
 import { decryptSecret } from '../crypto.js'
+import { connectorForUser } from '../connector-access.js'
 
 // ============================================================ Slack (nativ, read-only)
 // Per OAuth verbunden und verschlüsselt in `connectors` gespeichert. Bewusst nur
@@ -7,26 +7,14 @@ import { decryptSecret } from '../crypto.js'
 // private Channels nur, wenn sie dort manuell eingeladen wurde.
 
 const BASE = 'https://slack.com/api'
-const CACHE_TTL_MS = 60_000
-const cache = new Map() // userId||'team' -> { at, token }
 let userCache = { at: 0, names: new Map() } // Slack-User-ID -> Anzeigename
 
 // Per-User-Aufloesung: eigener persoenlicher Connector hat Vorrang vor dem Team-Connector
 async function slackToken(userId) {
-  const key = userId || 'team'
-  const c = cache.get(key)
-  if (c && Date.now() - c.at < CACHE_TTL_MS) return c.token
-  const { data } = await db.from('connectors').select('token, owner, visibility').eq('kind', 'slack')
-  const rows = data || []
-  const own = userId ? rows.find((r) => r.owner === userId && r.visibility !== 'team') : null
-  const team = rows.find((r) => r.visibility === 'team')
-  const token = decryptSecret((own || team)?.token || null)
-  cache.set(key, { at: Date.now(), token })
-  return token
+  return decryptSecret((await connectorForUser('slack', userId, { fresh: true }))?.token || null)
 }
 
 export function invalidateSlackCache() {
-  cache.clear()
   userCache.at = 0
 }
 
@@ -126,14 +114,14 @@ const TOOL_DEFS = [
 ]
 
 export async function slackToolDefinitions(userId) {
-  return (await slackToken(userId)) ? TOOL_DEFS : []
+  return (await connectorForUser('slack', userId)) ? TOOL_DEFS : []
 }
 
 const clip = (s) => (s.length > 40000 ? s.slice(0, 40000) + '\n\n[... gekürzt]' : s)
 
 export async function runSlackTool(name, input, ctx = {}) {
   const token = await slackToken(ctx.userId)
-  if (!token) throw new Error('Slack ist nicht verbunden — verbinde es unter Spaces → Connections (persönlich) oder bitte den Admin.')
+  if (!token) throw new Error('Slack ist nicht über einen für dich zugänglichen Space aktiviert.')
 
   if (name === 'slack_list_channels') {
     const out = []

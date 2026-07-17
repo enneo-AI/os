@@ -229,13 +229,13 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
     console.error('MCP-Tool-Discovery fehlgeschlagen:', err.message)
   }
   try {
-    const attioDefs = await attioToolDefinitions(ctx.userId) // leer, solange Attio nicht verbunden ist (team-weit oder persoenlich)
+    const attioDefs = await attioToolDefinitions(ctx.userId) // leer, solange keine zugängliche Space-Zuordnung existiert
     if (attioDefs.length) turnTools = [...turnTools, ...attioDefs]
   } catch (err) {
     console.error('Attio-Tool-Discovery fehlgeschlagen:', err.message)
   }
   try {
-    const slackDefs = await slackToolDefinitions(ctx.userId) // leer, solange Slack nicht verbunden ist (team-weit oder persoenlich)
+    const slackDefs = await slackToolDefinitions(ctx.userId) // leer, solange keine zugängliche Space-Zuordnung existiert
     if (slackDefs.length) turnTools = [...turnTools, ...slackDefs]
   } catch (err) {
     console.error('Slack-Tool-Discovery fehlgeschlagen:', err.message)

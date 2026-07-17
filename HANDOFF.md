@@ -1,6 +1,16 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-17 (Connector-Logos und klare Zugriffsarten)
+**Zuletzt aktualisiert:** 2026-07-17 (Marketplace-Connections werden erst durch Spaces aktiv)
+
+### Session 2026-07-17 — Marketplace speichert, Spaces autorisieren
+
+- **Klare Objektgrenze:** Der Marketplace heißt wieder sichtbar `Marketplace` und dient ausschließlich zum Verbinden und Verwalten von Connections. Eine gespeicherte Connection ist für Enni zunächst inaktiv; die UI sagt das nach OAuth und MCP-Verbindungen ausdrücklich.
+- **Konkrete Connection statt Anbieter-Platzhalter:** `space_connections.connection_key` referenziert externe Verbindungen als `connector:<uuid>`. Damit aktiviert ein Space exakt ein Credential-Set und nicht pauschal „Outlook“, „Slack“ oder einen anderen Provider.
+- **Open vs. Restricted technisch erzwungen:** Backend-Tool-Discovery lädt Connectoren nur, wenn sie mindestens einem zugänglichen Space zugeordnet sind. Open Space bedeutet alle aktiven Accounts; Restricted Space bedeutet ausschließlich Ersteller und explizite Mitglieder. Admin-Status allein gibt keinen Restricted-Toolzugriff. MCP-Ausführungen prüfen die Berechtigung erneut unmittelbar vor jedem Tool-Call.
+- **Marketplace-Status ist nicht Toolzugriff:** `personal/team/proposed` steuert weiterhin Katalogsichtbarkeit und Freigabe, aber nie mehr die Ausführungsberechtigung. Ein persönliches Credential kann bewusst über einen Open oder Restricted Space geteilt werden; ein unzugeordnetes Credential bleibt selbst für seinen Owner aus Ennis Toolkatalog entfernt.
+- **Sicheres Space-Management:** Nur der Space-Ersteller darf Connections in Restricted Spaces aktivieren oder entfernen. Bei Open Spaces dürfen zusätzlich aktive Admins verwalten. Private `SECURITY DEFINER`-Helper mit internem `auth.uid()` vermeiden die vorherige `spaces ↔ space_members`-RLS-Rekursion; die Funktionen liegen nicht im exponierten `public`-Schema.
+- **Bestandsverhalten bewusst erhalten:** Die zwei bestehenden Team-Connections DeepWiki und Attio wurden bei der Migration einmalig `Company Data` als Open Space zugeordnet. Neue Connections erhalten niemals automatisch eine Space-Zuordnung. Reconnects übertragen vorhandene Space-Zuordnungen auf die neue Connector-ID; Trennen entfernt verwaiste Zuordnungen.
+- **Verifiziert:** Migration `20260717082825_space_scoped_connectors.sql` ist live und in der Migration History. Ein echter 3-Account-Production-Eval bestätigte: Owner erhält Open + eigenes Restricted, eingeladenes Mitglied erhält Open + Restricted, Outsider nur Open, unzugeordnete Connection bleibt auch für Owner unsichtbar, Outsider sieht weder Restricted Space noch Connector-Metadaten und kann keine fremde Zuordnung anlegen. Temporäre Accounts, Spaces und Connectoren wurden entfernt. Backend-Tests 13/13, JavaScript-Syntax und Diff-Check grün.
 
 ### Session 2026-07-17 — Recherchierte Connectoren im bestehenden Marketplace
 

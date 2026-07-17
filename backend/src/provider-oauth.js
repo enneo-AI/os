@@ -205,11 +205,14 @@ export async function completeProviderOAuth({ provider, code, state, deniedError
   const tokenData = await exchangeCode(provider, code, config)
   const account = await probeProvider(provider, tokenData)
   const personal = oauthState.visibility !== 'team'
+  let previousQuery = db.from('connectors').select('id').eq('kind', provider)
+  previousQuery = personal ? previousQuery.eq('owner', oauthState.user_id).neq('visibility', 'team') : previousQuery.eq('visibility', 'team')
+  const { data: previous } = await previousQuery
   let deleteQuery = db.from('connectors').delete().eq('kind', provider)
   deleteQuery = personal ? deleteQuery.eq('owner', oauthState.user_id).neq('visibility', 'team') : deleteQuery.eq('visibility', 'team')
   await deleteQuery
   const rawScopes = Array.isArray(tokenData.scope) ? tokenData.scope : String(tokenData.scope || '').split(provider === 'slack' ? ',' : ' ')
-  const { error } = await db.from('connectors').insert({
+  const { data: connector, error } = await db.from('connectors').insert({
     name: OAUTH_PROVIDERS[provider].label,
     url: provider === 'outlook' ? 'https://graph.microsoft.com' : provider === 'google_drive' ? 'https://www.googleapis.com/drive' : provider === 'notion' ? 'https://api.notion.com' : provider === 'attio' ? 'https://api.attio.com' : 'https://slack.com',
     token: encryptSecret(tokenData.access_token), refresh_token: encryptSecret(tokenData.refresh_token || null),
@@ -218,8 +221,10 @@ export async function completeProviderOAuth({ provider, code, state, deniedError
     created_by: oauthState.user_id, owner: personal ? oauthState.user_id : null,
     visibility: personal ? 'personal' : 'team', auth_type: 'oauth',
     external_account_id: account.id, external_account_name: account.name, scopes: rawScopes.filter(Boolean),
-  })
+  }).select('id').single()
   if (error) throw new Error(error.message)
+  const { moveConnectorAssignments } = await import('./connector-access.js')
+  await moveConnectorAssignments((previous || []).map((row) => row.id), connector.id)
   invalidateSlackCache(); invalidateAttioCache(); invalidateProductivityCache()
   return resultUrl(provider, 'connected', { workspace: account.name })
 }

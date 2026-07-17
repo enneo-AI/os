@@ -1309,7 +1309,7 @@
     <div class="sb-ctx" id="sb-spaces" hidden>
       <div class="sb-scroll">
         <div class="sb-sec">Enni konfigurieren</div>
-        <button class="sb-item admin-area" data-view="marketplace"><span class="txt">Tools &amp; Quellen</span></button>
+        <button class="sb-item admin-area" data-view="marketplace"><span class="txt">Marketplace</span></button>
         <button class="sb-item admin-area" data-view="contexts"><span class="txt">Kontexte</span></button>
         <button class="sb-item admin-area" data-view="skills"><span class="txt">Skills</span></button>
         <button class="sb-item admin-area" data-view="routines"><span class="txt">Routinen</span></button>
@@ -1592,9 +1592,9 @@
         <header class="space-head">
           <div class="space-identity">
             <button class="space-action space-back" id="cd-back" aria-label="Zurück zum Space"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
-            <div class="space-head-copy"><h2 id="cd-space-name">Space</h2><p>Quellen, die Enni in diesem Space verwenden darf.</p></div>
+            <div class="space-head-copy"><h2 id="cd-space-name">Space</h2><p>Connections, die Enni über diesen Space verwenden darf.</p></div>
           </div>
-          <div class="space-actions"><button class="space-action primary" id="cd-add"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>Quelle hinzufügen</span></button></div>
+          <div class="space-actions"><button class="space-action primary" id="cd-add"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>Connection hinzufügen</span></button></div>
         </header>
         <div class="space-section"><div class="space-page-list" id="cd-list"></div></div>
       </div>
@@ -1642,7 +1642,7 @@
             <button class="space-action primary" id="sh-new-page"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>Neue Seite</span></button>
           </div>
         </header>
-        <nav class="space-tabs" aria-label="Space-Bereiche"><button class="space-tab on" id="sh-tab-content">Inhalte <span class="space-count" id="sh-page-count">0</span></button><button class="space-tab" id="sh-tab-sources">Quellen <span class="space-count" id="sh-source-count">0</span></button></nav>
+        <nav class="space-tabs" aria-label="Space-Bereiche"><button class="space-tab on" id="sh-tab-content">Inhalte <span class="space-count" id="sh-page-count">0</span></button><button class="space-tab" id="sh-tab-sources">Connections <span class="space-count" id="sh-source-count">0</span></button></nav>
         <div id="sh-content-pane">
           <div class="space-toolbar"><input type="search" class="wiki-search" id="sh-search" placeholder="Seiten in diesem Space durchsuchen …"></div>
           <div id="sh-results-panel" hidden><div class="space-section-head"><h3>Treffer</h3></div><div class="space-page-list" id="sh-results"></div></div>
@@ -1650,7 +1650,7 @@
             <section class="space-section"><div class="space-section-head"><h3>Ordner</h3><span id="sh-folder-count"></span></div><div class="space-folder-grid" id="sh-groups"></div></section>
           </div>
         </div>
-        <div id="sh-sources-pane" hidden><section class="space-section"><div class="space-section-head"><h3>Verbundene Quellen</h3><span>für Enni verfügbar</span></div><div id="sh-sources"></div><div class="space-source-actions"><button class="space-action" id="sh-src-edit"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>Quellen verwalten</span></button></div></section></div>
+        <div id="sh-sources-pane" hidden><section class="space-section"><div class="space-section-head"><h3>Aktive Connections</h3><span id="sh-connection-access">für Enni verfügbar</span></div><div id="sh-sources"></div><div class="space-source-actions"><button class="space-action" id="sh-src-edit"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>Connections verwalten</span></button></div></section></div>
       </div>
     </section>
 
@@ -1693,15 +1693,15 @@
     <section class="view" id="v-marketplace">
       <div class="page-head">
         <div class="eyebrow">Marketplace</div>
-        <h2>Ennis Tools & Quellen.</h2>
-        <p>Verbinde persönliche Quellen oder nutze teamweit bereitgestellte Werkzeuge. Bei schreibenden Aktionen bleibt die Freigabe-Karte dazwischen.</p>
+        <h2>Marketplace.</h2>
+        <p>Hier verbindest du Connections. Enni kann sie erst verwenden, nachdem sie einem Open oder Restricted Space hinzugefügt wurden.</p>
         <div class="page-actions"><button class="btn quiet" data-category="tool">MCP direkt verbinden</button><button class="btn dark" id="tool-research-open">＋ Tool anfragen</button></div>
       </div>
-      <div class="scope-guide" aria-label="Zugriffsarten">
-        <div class="scope-guide-intro"><strong>Wer kann was nutzen?</strong><span>Das Label an jedem Eintrag zeigt den tatsächlichen Zugriff.</span></div>
-        <div class="scope-key personal"><i></i><span><b>Persönlich</b> nur in deinem Account</span></div>
-        <div class="scope-key restricted"><i></i><span><b>Ausgewählt</b> für bestimmte Mitglieder</span></div>
-        <div class="scope-key team"><i></i><span><b>Teamweit</b> für alle</span></div>
+      <div class="scope-guide" aria-label="Connection-Aktivierung">
+        <div class="scope-guide-intro"><strong>Connection ≠ Zugriff</strong><span>Der Marketplace speichert nur die Verbindung.</span></div>
+        <div class="scope-key personal"><i></i><span><b>1. Verbinden</b> Zugang sicher hinterlegen</span></div>
+        <div class="scope-key restricted"><i></i><span><b>2. Space</b> Open oder Restricted wählen</span></div>
+        <div class="scope-key team"><i></i><span><b>3. Aktiv</b> Enni erhält den Space-Zugriff</span></div>
       </div>
       <div class="oauth-result" id="oauth-result" role="status" aria-live="polite" hidden></div>
       <div class="research-lab">
@@ -1713,8 +1713,6 @@
       <div class="cost-shell">
         <div class="list-panel">
           <h3>Read &amp; Write</h3>
-          <div class="crow"><span class="c-logo"><img src="/icons/enneo-icon.svg" alt=""></span><div><div class="c-name">Enneo-Plattform</div><div class="c-sub">Tickets, Kunden, AI-Agenten, Settings · alle Instanzen · Schreiben mit Freigabe-Karte</div></div><span class="sk-badge team">Teamweit</span><span class="c-right ok"><span class="dot-s"></span>Aktiv</span></div>
-          <div class="crow"><span class="c-logo"><img src="/icons/enni.png" alt=""></span><div><div class="c-name">Wiki</div><div class="c-sub">Firmenwissen · eingebaut · Änderungen als Vorschlag mit Admin-Freigabe</div></div><span class="sk-badge team">Teamweit</span><span class="c-right ok"><span class="dot-s"></span>Aktiv</span></div>
           <div id="researched-read-write"></div>
 
           <h3 style="margin-top:22px">Remote Control</h3>
@@ -1727,7 +1725,6 @@
           <div class="crow developer-row"><span class="c-logo developer-logo codex" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5H5v14h3M16 5h3v14h-3M10 9h4M10 15h4"/></svg></span><div><div class="c-name">Codex</div><div class="c-sub">Code, Browser-Tests und Deployments · privates Enneo-Admin-Plugin</div></div><span class="c-right off"><span class="dot-s"></span>Coming soon</span></div>
 
           <h3 style="margin-top:22px">Read-only</h3>
-          <div class="crow"><span class="c-logo"><img src="/icons/gitlab.svg" alt=""></span><div><div class="c-name">GitLab</div><div class="c-sub">Code, Projekte, Merge Requests</div></div><span class="sk-badge team">Teamweit</span><span class="c-right ok"><span class="dot-s"></span>Aktiv</span></div>
           <button class="crow" id="outlook-row"><span class="c-logo"><img src="/icons/outlook.svg" alt=""></span><div><div class="c-name">Outlook</div><div class="c-sub" id="outlook-sub">E-Mails und Kalender · read-only</div></div><span class="c-right off" id="outlook-status"><span class="dot-s"></span>Verbinden</span></button>
           <button class="crow" id="attio-row"><span class="c-logo"><img src="/icons/attio.ico" alt=""></span><div><div class="c-name">Attio</div><div class="c-sub" id="attio-sub">CRM-Daten · read-only</div></div><span class="c-right off" id="attio-status"><span class="dot-s"></span>Verbinden</span></button>
           <button class="crow" id="slack-row"><span class="c-logo"><img src="/icons/slack.svg" alt=""></span><div><div class="c-name">Slack</div><div class="c-sub" id="slack-sub">Channels · read-only</div></div><span class="c-right off" id="slack-status"><span class="dot-s"></span>Verbinden</span></button>
@@ -1735,7 +1732,7 @@
           <button class="crow" id="notion-row"><span class="c-logo"><img src="/icons/notion.svg" alt=""></span><div><div class="c-name">Notion</div><div class="c-sub" id="notion-sub">Seiten und Datenbanken · read-only</div></div><span class="c-right off" id="notion-status"><span class="dot-s"></span>Verbinden</span></button>
           <div id="researched-read-only"></div>
 
-          <h3 style="margin-top:22px">Eigene Tools <span class="lbl-hint" style="text-transform:none;letter-spacing:0">— MCP-Server, Rechte je nach Server</span></h3>
+          <h3 style="margin-top:22px">Verbundene Connections <span class="lbl-hint" style="text-transform:none;letter-spacing:0">— erst durch einen Space für Enni aktiv</span></h3>
           <div id="dyn-tools"></div>
         </div>
       </div>
@@ -2425,7 +2422,8 @@
 <!-- ================= ADD CONNECTED DATA MODAL ================= -->
 <div class="overlay" id="cd-overlay">
   <div class="modal" role="dialog" aria-modal="true">
-    <h3>Add connected data to <span id="cdm-space"></span></h3>
+    <h3>Connections für <span id="cdm-space"></span></h3>
+    <p class="pf-hint" id="cdm-access-hint">Die Space-Mitgliedschaft bestimmt, wer Enni mit diesen Connections verwenden darf.</p>
     <div id="cdm-list" style="margin-bottom:18px"></div>
     <div class="m-actions">
       <button class="btn quiet" id="cdm-cancel">Abbrechen</button>

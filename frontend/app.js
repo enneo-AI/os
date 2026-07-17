@@ -4600,16 +4600,30 @@ document.addEventListener('keydown', (e) => {
 })
 
 // ============================================================ Spaces (Dust-Pattern)
-// Connections = Wissensquellen (lesen/indexieren). Aktionen laufen separat als Tools.
+// Systemquellen und konkrete Marketplace-Connections werden einem Space explizit
+// zugeordnet. Erst diese Zuordnung aktiviert die Connection für Enni.
 const CONNECTIONS = {
   wiki: { name: 'Wiki', sub: 'Internes Firmenwissen · eingebaut', logo: '/icons/enni.png' },
   gitlab: { name: 'GitLab', sub: 'Code, Projekte, Merge Requests · read-only', logo: '/icons/gitlab.svg' },
   enneo: { name: 'Enneo-Plattform', sub: 'Tickets, Kunden, AI-Agenten, Settings', logo: '/icons/enneo-icon.svg' },
-  outlook: { name: 'Outlook', sub: 'E-Mails und Kalender · via Marketplace', logo: '/icons/outlook.svg' },
-  google_drive: { name: 'Google Drive', sub: 'Dokumente und Ordner · via Marketplace', logo: '/icons/google-drive.svg' },
-  notion: { name: 'Notion', sub: 'Seiten und Datenbanken · via Marketplace', logo: '/icons/notion.svg' },
-  slack: { name: 'Slack', sub: 'Channels und Threads · via Marketplace', logo: '/icons/slack.svg' },
-  attio: { name: 'Attio', sub: 'CRM-Daten · via Marketplace', logo: '/icons/attio.ico' },
+}
+const CONNECTOR_LOGOS = {
+  outlook: '/icons/outlook.svg', google_drive: '/icons/google-drive.svg', notion: '/icons/notion.svg',
+  slack: '/icons/slack.svg', attio: '/icons/attio.ico',
+}
+let connectorDirectory = new Map()
+
+const connectorKey = (connector) => `connector:${connector.id}`
+function connectionInfo(key) {
+  if (CONNECTIONS[key]) return CONNECTIONS[key]
+  const connector = connectorDirectory.get(key)
+  if (!connector) return null
+  return {
+    name: connector.name,
+    sub: `${connector.external_account_name ? connector.external_account_name + ' · ' : ''}${connector.tool_count ?? '?'} Tools · ${connector.kind === 'mcp' ? 'MCP' : 'Connection'}`,
+    logo: CONNECTOR_LOGOS[connector.kind] || null,
+    connector,
+  }
 }
 // Inhaltsgruppen nach Slug-Prefix — jede Seite landet in GENAU einer Gruppe
 // (erste Übereinstimmung gewinnt; "Weitere" fängt unbekannte Prefixe auf).
@@ -4693,12 +4707,14 @@ function pageLabel(p) {
 }
 
 async function loadSpacesTree() {
-  const [{ data: spaces }, { data: conns }, { data: pages }] = await Promise.all([
+  const [{ data: spaces }, { data: conns }, { data: pages }, { data: connectors }] = await Promise.all([
     sb.from('spaces').select('*').order('created_at'),
     sb.from('space_connections').select('*'),
     wikiPages ? Promise.resolve({ data: null }) : sb.from('wiki_pages').select('slug, title, updated_at, space_id').order('slug'),
+    sb.from('connectors').select('id, name, kind, tool_count, owner, visibility, external_account_name, url').order('created_at'),
   ])
   if (pages) wikiPages = pages
+  connectorDirectory = new Map((connectors || []).map((connector) => [connectorKey(connector), connector]))
   spacesList = (spaces || []).map((s) => ({
     ...s,
     connections: (conns || []).filter((c) => c.space_id === s.id).map((c) => c.connection_key),
@@ -4770,8 +4786,10 @@ function spacePageRow(page) {
   return row
 }
 
-function openSpaceHome(space) {
+async function openSpaceHome(space) {
   currentSpace = space
+  const { is_admin } = await ownProfile()
+  const canManageConnections = space.created_by === session.user.id || (!space.restricted && is_admin)
   // Kleines Lock inline — LOCK_SVG ist nur für Sidebar-Items gestylt (sonst riesig/schwarz)
   const miniLock = '<svg viewBox="0 0 24 24" style="width:18px;height:18px;stroke:var(--ink-3);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;vertical-align:-2px;margin-left:6px"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'
   $('sh-title').innerHTML = esc(space.name) + (space.restricted ? miniLock : '')
@@ -4779,6 +4797,8 @@ function openSpaceHome(space) {
   $('sh-sub').textContent = space.restricted ? 'Privater Wissensraum für ausgewählte Mitglieder' : 'Gemeinsamer Wissensraum für Enni'
   $('sh-page-count').textContent = spacePages.length
   $('sh-source-count').textContent = space.connections.length
+  $('sh-connection-access').textContent = space.restricted ? 'nur für Space-Mitglieder' : 'für alle aktiven Accounts'
+  $('sh-src-edit').hidden = !canManageConnections
   $('sh-search').value = ''
   $('sh-results-panel').hidden = true
   $('sh-main').hidden = false
@@ -4805,12 +4825,13 @@ function openSpaceHome(space) {
   const srcBox = $('sh-sources')
   srcBox.innerHTML = ''
   if (!space.connections.length) {
-    srcBox.innerHTML = '<div class="space-empty">Noch keine Quellen verbunden.</div>'
+    srcBox.innerHTML = '<div class="space-empty">Noch keine Connections aktiviert. Marketplace-Verbindungen bleiben für Enni inaktiv, bis sie hier hinzugefügt werden.</div>'
   }
   for (const key of space.connections) {
-    const c = CONNECTIONS[key] || { name: key, sub: '' }
+    const c = connectionInfo(key)
+    if (!c) continue
     srcBox.insertAdjacentHTML('beforeend',
-      `<div class="crow">${c.logo ? `<span class="c-logo"><img src="${c.logo}" alt=""></span>` : ''}<div><div class="c-name">${esc(c.name)}</div><div class="c-sub">${esc(c.sub)}</div></div><span class="c-right ok"><span class="dot-s"></span>Aktiv</span></div>`)
+      `<div class="crow">${c.logo ? `<span class="c-logo"><img src="${c.logo}" alt=""></span>` : '<span class="c-logo" aria-hidden="true">⌁</span>'}<div><div class="c-name">${esc(c.name)}</div><div class="c-sub">${esc(c.sub)}</div></div><span class="c-right ok"><span class="dot-s"></span>${space.restricted ? 'Restricted' : 'Für alle'}</span></div>`)
   }
   activateArea('wiki', 'space-home')
 }
@@ -4880,18 +4901,21 @@ $('iu-save').addEventListener('click', async () => {
 })
 
 // ---------- Connected Data eines Space
-function openConnectedData(space) {
+async function openConnectedData(space) {
   currentSpace = space
+  const { is_admin } = await ownProfile()
   $('cd-space-name').textContent = space.name
+  $('cd-add').hidden = !(space.created_by === session.user.id || (!space.restricted && is_admin))
   const list = $('cd-list')
   list.innerHTML = ''
   if (!space.connections.length) {
-    list.innerHTML = '<div class="space-empty">Noch keine Quellen verbunden.</div>'
+    list.innerHTML = '<div class="space-empty">Noch keine Connections aktiviert.</div>'
   }
   for (const key of space.connections) {
-    const c = CONNECTIONS[key] || { name: key, sub: '' }
+    const c = connectionInfo(key)
+    if (!c) continue
     list.insertAdjacentHTML('beforeend',
-      `<div class="crow">${c.logo ? `<span class="c-logo"><img src="${c.logo}" alt=""></span>` : ''}<div><div class="c-name">${esc(c.name)}</div><div class="c-sub">${esc(c.sub)}</div></div><span class="c-right ok"><span class="dot-s"></span>Aktiv</span></div>`)
+      `<div class="crow">${c.logo ? `<span class="c-logo"><img src="${c.logo}" alt=""></span>` : '<span class="c-logo" aria-hidden="true">⌁</span>'}<div><div class="c-name">${esc(c.name)}</div><div class="c-sub">${esc(c.sub)}</div></div><span class="c-right ok"><span class="dot-s"></span>${space.restricted ? 'Restricted' : 'Für alle'}</span></div>`)
   }
   activateArea('wiki', 'connected')
 }
@@ -4900,12 +4924,22 @@ $('cd-back').addEventListener('click', () => { if (currentSpace) openSpaceHome(c
 $('cd-add').addEventListener('click', () => {
   if (!currentSpace) return
   $('cdm-space').textContent = `„${currentSpace.name}“`
+  $('cdm-access-hint').textContent = currentSpace.restricted
+    ? 'Nur der Ersteller und ausdrücklich ausgewählte Space-Mitglieder können Enni mit diesen Connections verwenden.'
+    : 'Alle aktiven Accounts können Enni mit diesen Connections verwenden.'
   const list = $('cdm-list')
   list.innerHTML = ''
-  for (const [key, c] of Object.entries(CONNECTIONS)) {
+  const entries = [
+    ...Object.entries(CONNECTIONS),
+    ...[...connectorDirectory.entries()]
+      .filter(([key, connector]) => currentSpace.connections.includes(key) || connector.owner === session.user.id || connector.visibility === 'team')
+      .map(([key]) => [key, connectionInfo(key)]),
+  ]
+  for (const [key, c] of entries) {
+    if (!c) continue
     list.insertAdjacentHTML('beforeend',
-      `<label class="check-row${c.disabled ? ' disabled' : ''}">
-        <input type="checkbox" value="${key}" ${currentSpace.connections.includes(key) ? 'checked' : ''} ${c.disabled ? 'disabled' : ''}>
+      `<label class="check-row">
+        <input type="checkbox" value="${key}" ${currentSpace.connections.includes(key) ? 'checked' : ''}>
         ${c.logo ? `<img src="${c.logo}" alt="" style="width:18px;height:18px;object-fit:contain;flex:none">` : ''}
         <span>${esc(c.name)}</span><span class="cr-sub">${esc(c.sub)}</span>
       </label>`)
@@ -4915,14 +4949,20 @@ $('cd-add').addEventListener('click', () => {
 $('cdm-cancel').addEventListener('click', () => $('cd-overlay').classList.remove('open'))
 $('cdm-save').addEventListener('click', async () => {
   const chosen = [...document.querySelectorAll('#cdm-list input:not(:disabled)')].filter((i) => i.checked).map((i) => i.value)
-  const before = currentSpace.connections.filter((k) => !CONNECTIONS[k]?.disabled)
+  const before = currentSpace.connections
   const toAdd = chosen.filter((k) => !before.includes(k))
   const toRemove = before.filter((k) => !chosen.includes(k))
-  if (toAdd.length)
-    await sb.from('space_connections').insert(toAdd.map((k) => ({ space_id: currentSpace.id, connection_key: k, added_by: session.user.id })))
+  if (toAdd.length) {
+    const { error } = await sb.from('space_connections').insert(toAdd.map((k) => ({ space_id: currentSpace.id, connection_key: k, added_by: session.user.id })))
+    if (error) { window.alert(`Connection konnte nicht aktiviert werden: ${error.message}`); return }
+  }
   for (const k of toRemove)
-    await sb.from('space_connections').delete().eq('space_id', currentSpace.id).eq('connection_key', k)
+    {
+      const { error } = await sb.from('space_connections').delete().eq('space_id', currentSpace.id).eq('connection_key', k)
+      if (error) { window.alert(`Connection konnte nicht entfernt werden: ${error.message}`); return }
+    }
   $('cd-overlay').classList.remove('open')
+  toolCatalogCache = null
   await loadSpacesTree()
   openConnectedData(spacesList.find((s) => s.id === currentSpace.id))
 })
@@ -5520,27 +5560,33 @@ async function shareConnector(id) {
 }
 
 const connScopeBadge = (c, me) => {
-  if (c.visibility === 'team') return '<span class="sk-badge team">Teamweit</span>'
-  if (c.visibility === 'proposed') return '<span class="sk-badge prop">Freigabe angefragt</span>'
-  return c.owner === me ? '<span class="sk-badge">Persönlich</span>' : ''
+  if (c.visibility === 'team') return '<span class="sk-badge team">Im Teamkatalog</span>'
+  if (c.visibility === 'proposed') return '<span class="sk-badge prop">Katalogfreigabe angefragt</span>'
+  return c.owner === me ? '<span class="sk-badge">Deine Connection</span>' : ''
 }
 
 async function loadConnectorRows() {
-  const { data } = await sb
-    .from('connectors')
-    .select('id, name, url, category, tool_count, kind, owner, visibility, auth_type, external_account_name')
-    .order('created_at')
+  const [{ data }, { data: assignments }, { data: spaces }] = await Promise.all([
+    sb.from('connectors').select('id, name, url, category, tool_count, kind, owner, visibility, auth_type, external_account_name').order('created_at'),
+    sb.from('space_connections').select('space_id, connection_key'),
+    sb.from('spaces').select('id, name, restricted'),
+  ])
   const { is_admin } = await ownProfile()
   await loadOAuthProviderStatus().catch(() => null)
   loadToolResearch()
   const me = session.user.id
+  const spacesById = new Map((spaces || []).map((space) => [space.id, space]))
+  const connectorSpaces = (connector) => (assignments || [])
+    .filter((row) => row.connection_key === connectorKey(connector))
+    .map((row) => spacesById.get(row.space_id))
+    .filter(Boolean)
   // Sichtbar: team-weite + eigene (personal/proposed)
   const visible = (data || []).filter((c) => c.visibility === 'team' || c.owner === me)
   for (const kind of Object.keys(NATIVE_CONNECTORS)) {
     // Eigener persönlicher Connector hat Vorrang vor dem Team-Connector (wie im Tool-Loop)
     const rows = visible.filter((x) => x.kind === kind)
     const conn = rows.find((x) => x.owner === me && x.visibility !== 'team') || rows.find((x) => x.visibility === 'team') || null
-    renderNativeRow(kind, conn, is_admin, me)
+    renderNativeRow(kind, conn, is_admin, me, conn ? connectorSpaces(conn) : [])
   }
   {
     const box = $('dyn-tools')
@@ -5548,13 +5594,16 @@ async function loadConnectorRows() {
     box.innerHTML = ''
     for (const c of visible.filter((x) => x.kind === 'mcp')) {
       const mine = c.owner === me
+      const activeSpaces = connectorSpaces(c)
+      const active = activeSpaces.length > 0
+      const activeNames = activeSpaces.map((space) => space.name).join(', ')
       const row = document.createElement('div')
       row.className = 'crow'
       row.innerHTML = `<span class="c-logo" style="background:none;border-style:dashed"><svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:var(--lila-deep);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></span>
-        <div><div class="c-name">${esc(c.name)}</div><div class="c-sub">${esc(new URL(c.url).hostname)} · ${c.tool_count ?? '?'} Tools · MCP</div></div>
+        <div><div class="c-name">${esc(c.name)}</div><div class="c-sub">${esc(new URL(c.url).hostname)} · ${c.tool_count ?? '?'} Tools · MCP${active ? ` · ${esc(activeNames)}` : ' · noch keinem Space zugeordnet'}</div></div>
         ${connScopeBadge(c, me)}
         ${mine && c.visibility === 'personal' ? '<button class="btn quiet c-share" style="padding:4px 12px;font-size:11.5px" title="Team-weite Nutzung beantragen — der Admin entscheidet">Teilen</button>' : ''}
-        <span class="c-right ok"><span class="dot-s"></span>Verbunden</span>` +
+        <span class="c-right ${active ? 'ok' : 'off'}"><span class="dot-s"></span>${active ? `Aktiv in ${activeSpaces.length} Space${activeSpaces.length === 1 ? '' : 's'}` : 'Für Enni inaktiv'}</span>` +
         (is_admin || mine ? '<button class="c-del" title="Trennen"><svg viewBox="0 0 24 24"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg></button>' : '')
       row.querySelector('.c-share')?.addEventListener('click', () => shareConnector(c.id))
       row.querySelector('.c-del')?.addEventListener('click', async () => {
@@ -5565,7 +5614,7 @@ async function loadConnectorRows() {
         })
         if (!res.ok) { window.alert((await res.json().catch(() => ({}))).error || 'Fehler'); return }
         toolCatalogCache = null
-        loadConnectorRows()
+        await Promise.all([loadConnectorRows(), loadSpacesTree()])
       })
       box.appendChild(row)
     }
@@ -5610,7 +5659,8 @@ function handleOAuthReturn() {
   if (!provider || !NATIVE_CONNECTORS[provider]) return
   const label = NATIVE_CONNECTORS[provider].label
   if (params.get('status') === 'connected') {
-    showOAuthResult('success', `${label} ist verbunden`, params.get('workspace') || `Enni kann ${label} jetzt verwenden.`)
+    const workspace = params.get('workspace')
+    showOAuthResult('success', `${label} ist verbunden`, `${workspace ? workspace + ' · ' : ''}Noch keinem Space zugeordnet und deshalb für Enni inaktiv.`)
   } else {
     const detail = params.get('reason') === 'cancelled'
       ? 'Die Verbindung wurde abgebrochen.'
@@ -5633,7 +5683,7 @@ async function startProviderOAuth(provider) {
     const res = await fetch(`${BACKEND_URL}/api/oauth/${provider}/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
-      body: JSON.stringify({ scope: is_admin ? 'team' : 'personal' }),
+      body: JSON.stringify({ scope: 'personal' }),
     })
     const data = await res.json()
     if (res.status === 409 && is_admin) {
@@ -5695,7 +5745,7 @@ $('oauth-setup-save').addEventListener('click', async () => {
   $('oauth-setup-save').textContent = 'Speichern & verbinden'
 })
 
-function renderNativeRow(kind, conn, isAdmin, me) {
+function renderNativeRow(kind, conn, isAdmin, me, activeSpaces = []) {
   const cfg = NATIVE_CONNECTORS[kind]
   nativeState[kind] = conn
   const status = $(cfg.status)
@@ -5703,14 +5753,15 @@ function renderNativeRow(kind, conn, isAdmin, me) {
   if (!status) return
   if (conn) {
     const mine = conn.owner === me
-    const scope = conn.visibility === 'team' ? 'Verbunden' : conn.visibility === 'proposed' ? 'Verbunden · vorgeschlagen' : 'Verbunden · persönlich'
-    status.className = 'c-right ok'
-    status.innerHTML = `<span class="dot-s"></span>${scope}` +
+    const active = activeSpaces.length > 0
+    status.className = `c-right ${active ? 'ok' : 'off'}`
+    status.innerHTML = `<span class="dot-s"></span>${active ? `Aktiv in ${activeSpaces.length} Space${activeSpaces.length === 1 ? '' : 's'}` : 'Für Enni inaktiv'}` +
       (mine && conn.visibility === 'personal' ? `<button class="btn quiet" data-native-share="${kind}" style="padding:3px 10px;font-size:11px;margin-left:8px" title="Team-weite Nutzung beantragen">Teilen</button>` : '') +
       (isAdmin || mine ? `<button class="c-del" data-native-del="${kind}" title="Trennen" style="display:inline-flex;margin-left:8px"><svg viewBox="0 0 24 24"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg></button>` : '')
-    sub.textContent = conn.external_account_name
+    const base = conn.external_account_name
       ? `${conn.external_account_name} · ${cfg.subConnected}`
       : cfg.subConnected
+    sub.textContent = `${base}${active ? ` · ${activeSpaces.map((space) => space.name).join(', ')}` : ' · im Marketplace gespeichert, noch keinem Space zugeordnet'}`
     status.querySelector('[data-native-share]')?.addEventListener('click', (e) => {
       e.stopPropagation()
       shareConnector(conn.id)
@@ -5724,7 +5775,7 @@ function renderNativeRow(kind, conn, isAdmin, me) {
       })
       if (!res.ok) { window.alert((await res.json().catch(() => ({}))).error || 'Fehler'); return }
       toolCatalogCache = null
-      loadConnectorRows()
+      await Promise.all([loadConnectorRows(), loadSpacesTree()])
     })
   } else {
     status.className = 'c-right off'
@@ -5807,7 +5858,8 @@ $('cn-save').addEventListener('click', async () => {
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
     $('conn-overlay').classList.remove('open')
     toolCatalogCache = null
-    loadConnectorRows()
+    showOAuthResult('success', 'Connection gespeichert', 'Noch keinem Space zugeordnet und deshalb für Enni inaktiv.')
+    await Promise.all([loadConnectorRows(), loadSpacesTree()])
   } catch (e) {
     err.textContent = e.message
   }

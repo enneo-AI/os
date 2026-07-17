@@ -1224,8 +1224,8 @@ app.post('/api/wiki-pages/:id/:action(approve|reject|demote)', async (req, res) 
 })
 
 app.post('/api/connectors', async (req, res) => {
-  // Jeder Account darf Tools verbinden: Non-Admins immer als persoenliches Tool
-  // (owner = eigener Account); Admins legen standardmaessig team-weit an.
+  // Jeder Account darf Connections im Marketplace speichern. Die Connection
+  // bleibt fuer Enni inaktiv, bis ein Space sie explizit autorisiert.
   const user = await getUserFromRequest(req)
   if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
   const { data: prof } = await db.from('profiles').select('is_admin').eq('id', user.id).maybeSingle()
@@ -1250,6 +1250,9 @@ app.post('/api/connectors', async (req, res) => {
       ])
       const info = await probeSlack(token.trim())
       // Re-Connect ersetzt den Token — im jeweiligen Scope (persoenlich vs. team)
+      let oldQ = db.from('connectors').select('id').eq('kind', 'slack')
+      oldQ = personal ? oldQ.eq('owner', user.id).neq('visibility', 'team') : oldQ.eq('visibility', 'team')
+      const { data: previous } = await oldQ
       let delQ = db.from('connectors').delete().eq('kind', 'slack')
       delQ = personal ? delQ.eq('owner', user.id).neq('visibility', 'team') : delQ.eq('visibility', 'team')
       await delQ
@@ -1269,6 +1272,8 @@ app.post('/api/connectors', async (req, res) => {
         .select('id, name')
         .single()
       if (error) throw new Error(error.message)
+      const { moveConnectorAssignments } = await import('./connector-access.js')
+      await moveConnectorAssignments((previous || []).map((row) => row.id), data.id)
       invalidateSlackCache()
       return res.json({ ...data, workspace: info.team, bot: info.bot })
     } catch (err) {
@@ -1285,6 +1290,9 @@ app.post('/api/connectors', async (req, res) => {
       ])
       const workspace = await probeAttio(token.trim())
       // Re-Connect ersetzt den Key — im jeweiligen Scope (persoenlich vs. team)
+      let oldQ = db.from('connectors').select('id').eq('kind', 'attio')
+      oldQ = personal ? oldQ.eq('owner', user.id).neq('visibility', 'team') : oldQ.eq('visibility', 'team')
+      const { data: previous } = await oldQ
       let delQ = db.from('connectors').delete().eq('kind', 'attio')
       delQ = personal ? delQ.eq('owner', user.id).neq('visibility', 'team') : delQ.eq('visibility', 'team')
       await delQ
@@ -1304,6 +1312,8 @@ app.post('/api/connectors', async (req, res) => {
         .select('id, name')
         .single()
       if (error) throw new Error(error.message)
+      const { moveConnectorAssignments } = await import('./connector-access.js')
+      await moveConnectorAssignments((previous || []).map((row) => row.id), data.id)
       invalidateAttioCache()
       return res.json({ ...data, workspace })
     } catch (err) {
@@ -1514,9 +1524,9 @@ app.get('/api/oauth/:provider/callback', async (req, res) => {
   }
 })
 
-// Tool fuers Unternehmen beantragen (Owner) bzw. freigeben/ablehnen (Admin).
-// approve macht die hinterlegten Credentials fuer ALLE Accounts nutzbar ('team');
-// reject stuft zurueck auf 'personal' (bleibt beim Owner nutzbar).
+// Connection fuer den Teamkatalog beantragen (Owner) bzw. freigeben/ablehnen
+// (Admin). Das veraendert nur die Sichtbarkeit im Marketplace; Toolzugriff
+// entsteht weiterhin ausschliesslich durch eine Space-Zuordnung.
 app.post('/api/connectors/:id/share', async (req, res) => {
   const user = await getUserFromRequest(req)
   if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
@@ -1540,12 +1550,19 @@ app.post('/api/connectors/:id/:action(approve|reject)', async (req, res) => {
   const target = req.params.action === 'approve' ? 'team' : 'personal'
   const { data: conn } = await db.from('connectors').select('id, kind, visibility').eq('id', req.params.id).maybeSingle()
   if (!conn) return res.status(404).json({ error: 'Tool nicht gefunden' })
+  let replacedIds = []
   // Pro nativem Anbieter gibt es max. EINEN Team-Connector — alter wird ersetzt.
   if (target === 'team' && ['attio', 'slack', 'outlook', 'google_drive', 'notion'].includes(conn.kind)) {
+    const { data: replaced } = await db.from('connectors').select('id').eq('kind', conn.kind).eq('visibility', 'team').neq('id', conn.id)
+    replacedIds = (replaced || []).map((row) => row.id)
     await db.from('connectors').delete().eq('kind', conn.kind).eq('visibility', 'team').neq('id', conn.id)
   }
   const { error } = await db.from('connectors').update({ visibility: target }).eq('id', conn.id)
   if (error) return res.status(400).json({ error: error.message })
+  if (replacedIds.length) {
+    const { moveConnectorAssignments } = await import('./connector-access.js')
+    await moveConnectorAssignments(replacedIds, conn.id)
+  }
   const { invalidateAttioCache } = await import('./tools/attio.js')
   const { invalidateSlackCache } = await import('./tools/slack.js')
   const { invalidateMcpCache } = await import('./tools/mcp.js')

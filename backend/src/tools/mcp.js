@@ -6,8 +6,9 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { db } from '../db.js'
 import { decryptSecret, encryptSecret } from '../crypto.js'
+import { canUseConnector, connectorsForUser, invalidateConnectorAccessCache } from '../connector-access.js'
 
-const CACHE_TTL_MS = 60_000
+const CACHE_TTL_MS = 5_000
 // Per-User-Caches: jeder Nutzer sieht Team-Connectors + seine eigenen persoenlichen
 const caches = new Map() // userId||'team' -> { at, defs, routes: namespacedName -> {url, token, realName} }
 
@@ -61,13 +62,16 @@ export async function addConnector({ name, url, token, authType = 'manual', cate
     .select('id, name, category, tool_count')
     .single()
   if (error) throw new Error(error.message)
+  invalidateConnectorAccessCache()
   caches.clear()
   return { ...data, tools: tools.map((t) => t.name) }
 }
 
 export async function removeConnector(id) {
+  await db.from('space_connections').delete().eq('connection_key', `connector:${id}`)
   const { error } = await db.from('connectors').delete().eq('id', id)
   if (error) throw new Error(error.message)
+  invalidateConnectorAccessCache()
   caches.clear()
 }
 
@@ -80,11 +84,7 @@ export async function mcpToolDefinitions(userId) {
   const key = userId || 'team'
   const cached = caches.get(key)
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.defs
-  const { data: connectors } = await db
-    .from('connectors').select('id, name, url, token, auth_type, owner, visibility').eq('kind', 'mcp')
-  const visible = (connectors || []).filter(
-    (c) => c.visibility === 'team' || (userId && c.owner === userId)
-  )
+  const visible = await connectorsForUser(userId, 'mcp')
   const defs = []
   const routes = new Map()
   for (const c of visible) {
@@ -97,7 +97,7 @@ export async function mcpToolDefinitions(userId) {
         for (const t of tools) {
           const nsName = `mcp__${slug}__${t.name}`.slice(0, 128).replace(/[^a-zA-Z0-9_-]/g, '_')
           if (routes.has(nsName)) continue
-          routes.set(nsName, { url: c.url, token, authType: c.auth_type, realName: t.name })
+          routes.set(nsName, { connectorId: c.id, url: c.url, token, authType: c.auth_type, realName: t.name })
           defs.push({
             name: nsName,
             description: `[${c.name}] ${t.description || t.name}`.slice(0, 1000),
@@ -120,6 +120,10 @@ export async function runMcpTool(name, input, ctx = {}) {
   if (!caches.get(key) || Date.now() - caches.get(key).at >= CACHE_TTL_MS) await mcpToolDefinitions(ctx.userId)
   const route = caches.get(key)?.routes.get(name)
   if (!route) throw new Error(`Unbekanntes MCP-Tool: ${name} (Connector entfernt?)`)
+  if (!(await canUseConnector(route.connectorId, ctx.userId))) {
+    caches.delete(key)
+    throw new Error('Diese Connection ist in keinem für dich zugänglichen Space aktiviert.')
+  }
   const client = await connect(route.url, route.token, route.authType)
   try {
     const result = await client.callTool({ name: route.realName, arguments: input || {} })

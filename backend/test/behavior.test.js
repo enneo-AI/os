@@ -192,6 +192,30 @@ test('researched integrations join the existing permission sections with provide
   assert.doesNotMatch(frontendSource, /Von Enni recherchiert/)
 })
 
+test('marketplace connections stay dormant until an accessible Space activates them', () => {
+  const accessSource = readFileSync(join(here, '../src/connector-access.js'), 'utf8')
+  const mcpSource = readFileSync(join(here, '../src/tools/mcp.js'), 'utf8')
+  const productivitySource = readFileSync(join(here, '../src/tools/productivity.js'), 'utf8')
+  const frontendSource = readFileSync(join(here, '../../frontend/app.js'), 'utf8')
+  const frontendHtml = readFileSync(join(here, '../../frontend/index.html'), 'utf8')
+  const migration = readFileSync(
+    join(here, '../../supabase/migrations/20260717082825_space_scoped_connectors.sql'),
+    'utf8'
+  )
+
+  assert.match(accessSource, /space_connections/)
+  assert.match(accessSource, /!space\.restricted \|\| space\.created_by === userId \|\| memberOf\.has\(space\.id\)/)
+  assert.match(mcpSource, /canUseConnector/)
+  assert.match(productivitySource, /connectorForUser/)
+  assert.match(migration, /private\.can_attach_connector/)
+  assert.match(migration, /Restricted really means invited/)
+  assert.doesNotMatch(migration.match(/create policy spaces_select[\s\S]*?;\n/)?.[0] || '', /is_admin/)
+  assert.match(frontendHtml, /Connection ≠ Zugriff/)
+  assert.match(frontendHtml, /<h2>Marketplace\.<\/h2>/)
+  assert.match(frontendSource, /connectorDirectory/)
+  assert.match(frontendSource, /Noch keine Connections aktiviert/)
+})
+
 test('impact reporting labels estimates and records skill usage', () => {
   const indexSource = readFileSync(join(here, '../src/index.js'), 'utf8')
   const frontendSource = readFileSync(join(here, '../../frontend/app.js'), 'utf8')

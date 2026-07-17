@@ -1,34 +1,16 @@
-import { db } from '../db.js'
 import { decryptSecret } from '../crypto.js'
+import { connectorForUser, connectorsForUser } from '../connector-access.js'
 
 const PROVIDERS = ['outlook', 'google_drive', 'notion']
-const CACHE_TTL_MS = 60_000
-const cache = new Map()
-
-export function invalidateProductivityCache() { cache.clear() }
-
-async function connectorFor(provider, userId) {
-  const key = `${provider}:${userId || 'team'}`
-  const cached = cache.get(key)
-  if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.connector
-  const { data } = await db.from('connectors')
-    .select('id, token, refresh_token, token_expires_at, owner, visibility')
-    .eq('kind', provider)
-  const rows = data || []
-  const own = userId ? rows.find((row) => row.owner === userId && row.visibility !== 'team') : null
-  const connector = own || rows.find((row) => row.visibility === 'team') || null
-  cache.set(key, { at: Date.now(), connector })
-  return connector
-}
+export function invalidateProductivityCache() {}
 
 async function accessToken(provider, userId) {
-  const connector = await connectorFor(provider, userId)
+  const connector = await connectorForUser(provider, userId, { fresh: true })
   if (!connector) return null
   const expiresSoon = connector.token_expires_at && new Date(connector.token_expires_at).getTime() < Date.now() + 90_000
   if (expiresSoon && connector.refresh_token) {
     const { refreshProviderToken } = await import('../provider-oauth.js')
     const token = await refreshProviderToken(provider, connector)
-    invalidateProductivityCache()
     return token
   }
   return decryptSecret(connector.token)
@@ -74,9 +56,8 @@ const NOTION_TOOLS = [
 const DEFINITIONS = { outlook: OUTLOOK_TOOLS, google_drive: DRIVE_TOOLS, notion: NOTION_TOOLS }
 
 export async function productivityToolDefinitions(userId) {
-  let tools = []
-  for (const provider of PROVIDERS) if (await connectorFor(provider, userId)) tools = [...tools, ...DEFINITIONS[provider]]
-  return tools
+  const connected = new Set((await connectorsForUser(userId)).map((row) => row.kind))
+  return PROVIDERS.flatMap((provider) => connected.has(provider) ? DEFINITIONS[provider] : [])
 }
 
 const clip = (value) => value.length > 40_000 ? `${value.slice(0, 40_000)}\n[… gekürzt]` : value
