@@ -12,10 +12,18 @@ const stateHash = (state) => crypto.createHash('sha256').update(state).digest('h
 export const OAUTH_PROVIDERS = {
   outlook: {
     label: 'Outlook', icon: 'outlook.svg', category: 'Produktivität',
-    description: 'E-Mails, Postfächer und Kalender · read-only', toolCount: 4,
+    description: 'E-Mails, Kalender, SharePoint und Dateien · Lesen & Schreiben (Senden mit Freigabe)', toolCount: 4,
     setupUrl: 'https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade',
     setupHint: 'Microsoft Entra → App registrations → New registration → Web Redirect URI eintragen.',
-    scopes: ['openid', 'profile', 'email', 'offline_access', 'User.Read', 'Mail.Read', 'Calendars.Read'],
+    // Scopes müssen EXAKT den in der Entra-App gesetzten Delegated-Permissions entsprechen —
+    // Azure matcht Consent per exaktem Scope-String (Calendars.ReadWrite deckt Calendars.Read NICHT ab).
+    scopes: [
+      'openid', 'profile', 'email', 'offline_access',
+      'User.Read', 'People.Read',
+      'Mail.Read', 'Mail.ReadWrite', 'Mail.Send',
+      'Calendars.ReadWrite',
+      'Files.ReadWrite.All', 'Sites.ReadWrite.All',
+    ],
   },
   google_drive: {
     label: 'Google Drive', icon: 'google-drive.svg', category: 'Produktivität',
