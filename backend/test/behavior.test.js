@@ -490,7 +490,17 @@ test('external write claims require a successful mutation and Notion read-back',
   const missingWrite = enforceWriteTruth('Erledigt, ich habe den Status zurückgesetzt.', [])
   assert.equal(missingWrite.reason, 'missing_successful_write')
   assert.match(missingWrite.text, /nicht ausgeführt/)
+  assert.match(missingWrite.text, /Erledigt, ich habe den Status zurückgesetzt\./, 'Originalantwort bleibt erhalten, Korrektur wird angehängt')
   assert.equal(enforceWriteTruth('Die Änderung wurde nicht gespeichert.', []).changed, false)
+
+  // Regression EG-Factory 2026-07-18: Erledigt-Wörter, die FREMDEN Zustand beschreiben
+  // (Mail-Status aus einem Read-Tool), sind kein Write-Claim — Antwort bleibt unangetastet.
+  const outlookRead = { name: 'outlook_search_messages', input: { query: 'EG Factory' }, output: '{"value":[{"subject":"Test"}]}', is_error: false }
+  const summary = enforceWriteTruth('Du hast 5 Mails von der EG Factory erhalten. 2 sind erledigt, 3 musst du noch beantworten.', [outlookRead])
+  assert.equal(summary.changed, false, 'beschreibende Zusammenfassung in reinem Lese-Turn wird nicht ersetzt')
+  // Aber: eine Ich-Aktions-Behauptung im reinen Lese-Turn wird weiterhin korrigiert.
+  const falseClaim = enforceWriteTruth('Ich habe die Antwort gespeichert und verschickt.', [outlookRead])
+  assert.equal(falseClaim.reason, 'missing_successful_write')
 
   const write = { name: 'mcp__notion__notion-update-page', input: { page_id: 'page-1' }, output: 'ok', is_error: false }
   const missingReadBack = enforceWriteTruth('Erledigt und geprüft.', [write])

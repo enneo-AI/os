@@ -11,6 +11,11 @@ const completionClaim = (text) => {
   return COMPLETION_WORD.test(withoutNegatedClaims)
 }
 
+// Erste-Person-/Passiv-Behauptung über eine EIGENE ausgeführte Änderung ("ich habe … gespeichert",
+// "wurde … eingereicht"). Unterscheidet Ennis Aktions-Claims von beschreibenden Zustandsberichten
+// ("2 Mails sind erledigt, 3 sind offen") — letztere sind in reinen Lese-Turns legitim.
+const SELF_COMPLETION = /\b(?:ich|wir)\b[^.!?\n]{0,80}\b(?:erledigt|ausgef(?:ü|ue)hrt|gespeichert|ge(?:ä|ae)ndert|aktualisiert|verschoben|zur(?:ü|ue)ckgesetzt|erstellt|gel(?:ö|oe)scht|hinzugef(?:ü|ue)gt|entfernt|ver(?:ö|oe)ffentlicht|eingereicht|gesendet|verschickt)\b|\bwurde(?:n)?\b[^.!?\n]{0,80}\b(?:gespeichert|eingereicht|angelegt|erstellt|aktualisiert|ver(?:ö|oe)ffentlicht|gel(?:ö|oe)scht|gesendet|verschickt)\b|\bI\b[^.!?\n]{0,60}\b(?:saved|created|updated|deleted|moved|sent|submitted)\b/i
+
 const successful = (call) => !!call && !call.is_error && !call.suppressed
 
 export function isMutationToolName(name = '') {
@@ -87,16 +92,22 @@ export function notionReadBackPlan(toolName, input, definitions, output = '') {
 export function enforceWriteTruth(text, toolCalls) {
   if (!completionClaim(text)) return { text, changed: false, reason: null }
 
-  const successfulMutation = (toolCalls || []).some((call) => successful(call) && isMutationToolName(call.name))
+  const calls = toolCalls || []
+  const successfulMutation = calls.some((call) => successful(call) && isMutationToolName(call.name))
   if (!successfulMutation) {
+    // Reiner Lese-Turn (erfolgreiche Reads, kein Schreibversuch) ohne Ich-Aktions-Behauptung:
+    // Erledigt-Wörter beschreiben hier fremden Zustand (z.B. Mail-Status) — kein falscher Write-Claim.
+    const attemptedMutation = calls.some((call) => isMutationToolName(call?.name || ''))
+    if (calls.some(successful) && !attemptedMutation && !SELF_COMPLETION.test(String(text || ''))) {
+      return { text, changed: false, reason: null }
+    }
+    // Antwort erhalten, Korrektur sichtbar anhängen (Design 2026-07-17: anhängen, nicht ersetzen).
     return {
-      text: 'Die Änderung wurde nicht ausgeführt. In diesem Turn gab es keinen erfolgreichen Schreibzugriff, deshalb darf ich sie nicht als erledigt melden.',
+      text: `${String(text || '').trim()}\n\nKorrektur: In diesem Turn gab es keinen erfolgreichen Schreibzugriff. Eine oben als erledigt oder gespeichert beschriebene Änderung wurde nicht ausgeführt.`,
       changed: true,
       reason: 'missing_successful_write',
     }
   }
-
-  const calls = toolCalls || []
   const unverifiedNotionWrite = calls.some((call, index) => (
     isNotionMutation(call) && !calls.slice(index + 1).some(isNotionRead)
   ))
