@@ -318,6 +318,25 @@ async function buildHistory(convId, isPod = false, threadRootId = null) {
 // Ein Prozess pro Railway-Service, daher reicht eine In-Memory-Map.
 const activeTurns = new Map() // convId -> AbortController
 
+async function clearConversationRun(conversationId, conversationPatch = {}) {
+  const { error: conversationError } = await db.from('conversations').update({ working: false, ...conversationPatch }).eq('id', conversationId)
+  if (conversationError) throw conversationError
+  const { error: runError } = await db.from('conversation_runs').delete().eq('conversation_id', conversationId)
+  if (runError) throw runError
+}
+
+async function recoverStaleConversationRuns() {
+  const cutoff = new Date(Date.now() - 10 * 60_000).toISOString()
+  const { data: stale, error } = await db.from('conversation_runs').select('conversation_id').lt('updated_at', cutoff)
+  if (error) return console.error('Stale Conversation-Runs konnten nicht geprüft werden:', error.message)
+  for (const run of stale || []) {
+    await clearConversationRun(run.conversation_id).catch((cleanupError) => {
+      console.error('Stale Conversation-Run konnte nicht entfernt werden:', cleanupError.message)
+    })
+  }
+}
+setInterval(recoverStaleConversationRuns, 60_000).unref()
+
 async function conversationIfVisible(conversationId, userId) {
   const { data: conversation } = await db
     .from('conversations')
@@ -337,7 +356,7 @@ app.post('/api/conversations/:id/stop', async (req, res) => {
   const ctl = activeTurns.get(c.id)
   if (!ctl) {
     // Kein laufender Turn in diesem Prozess (z.B. nach Restart hängengebliebenes Flag) → aufräumen
-    await db.from('conversations').update({ working: false }).eq('id', c.id)
+    await clearConversationRun(c.id)
     return res.json({ ok: true, running: false })
   }
   ctl.abort()
@@ -396,6 +415,7 @@ app.post('/api/chat', async (req, res) => {
   if (!message?.trim() && !attachments?.length) return res.status(400).json({ error: 'message fehlt' })
   if (model && !ALLOWED_MODELS.includes(model)) return res.status(400).json({ error: 'Unbekanntes Modell' })
   let fileBlocks = []
+  let turnLocked = false
   try {
     fileBlocks = attachmentsToBlocks(attachments)
   } catch (err) {
@@ -611,6 +631,7 @@ app.post('/api/chat', async (req, res) => {
 
     // Multi-Session-Lock: pro Konversation nur EIN laufender Turn. Atomar via
     // UPDATE … WHERE working=false — verlieren beide gleichzeitig, gewinnt genau einer.
+    const turnStartedIso = new Date().toISOString()
     const { data: lock } = await db
       .from('conversations')
       .update({ working: true })
@@ -623,6 +644,13 @@ app.post('/api/chat', async (req, res) => {
       res.end()
       return
     }
+    turnLocked = true
+    progress.start({
+      podId: pod?.id || null,
+      threadRootId: responseThreadRootId,
+      userMessageId: userMessage.id,
+      startedAt: turnStartedIso,
+    })
 
     let result
     const abortCtl = new AbortController()
@@ -636,7 +664,6 @@ app.post('/api/chat', async (req, res) => {
         signal: abortCtl.signal,
       })
     } catch (err) {
-      await db.from('conversations').update({ working: false }).eq('id', convId)
       throw err
     } finally {
       activeTurns.delete(convId)
@@ -687,10 +714,9 @@ app.post('/api/chat', async (req, res) => {
       }
     }
     // unread=true → grüner Sidebar-Punkt; der Client löscht es sofort, wenn er live zuschaut
-    await db
-      .from('conversations')
-      .update({ updated_at: new Date().toISOString(), working: false, unread: true })
-      .eq('id', convId)
+    await progress.close()
+    await clearConversationRun(convId, { updated_at: new Date().toISOString(), unread: true })
+    turnLocked = false
 
     if (!result.aborted) {
       try {
@@ -722,6 +748,13 @@ app.post('/api/chat', async (req, res) => {
     }
   } catch (err) {
     console.error('chat error:', err)
+    if (turnLocked) {
+      await progress.close()
+      await clearConversationRun(convId).catch((cleanupError) => {
+        console.error('Conversation-Run konnte nicht aufgeräumt werden:', cleanupError.message)
+      })
+      turnLocked = false
+    }
     emit({ type: 'error', message: err.message })
   }
   progress.close()

@@ -1305,12 +1305,16 @@ async function openConversation(c) {
   // Pod-Markierung folgt der Konversation: Pod-Konv → ihr Pod, private Konv → keiner
   sidebarPodId = c.pod_id || null
   paintPodHighlight()
-  const [{ data: msgs }, { data: usage }, profs] = await Promise.all([
+  const [{ data: msgs }, { data: usage }, profs, , { data: liveConversation }, { data: activeRun }] = await Promise.all([
     sb.from('messages').select('*').eq('conversation_id', c.id).order('created_at'),
     sb.from('llm_usage').select('message_id, cost_eur').eq('conversation_id', c.id),
     allProfiles(),
     allSkills(),
+    sb.from('conversations').select('working, unread, updated_at').eq('id', c.id).maybeSingle(),
+    sb.from('conversation_runs').select('*').eq('conversation_id', c.id).maybeSingle(),
   ])
+  Object.assign(c, liveConversation || {}, { active_run: activeRun || null })
+  currentConv = c
   costByMessage = Object.fromEntries((usage || []).map((u) => [u.message_id, Number(u.cost_eur)]))
   currentMessageRows = msgs || []
   const threadReplies = new Map()
@@ -1337,13 +1341,16 @@ async function openConversation(c) {
   ctxTokens = computeCtxTokens(msgs || [])
   renderCtx()
   subscribeConvMessages(c.id) // Live-Nachrichten (Pod-Team-Chat, fremde Geräte)
-  renderLiveProgressIfWorking(c) // läuft hier gerade ein Turn? → Gedanken live zeigen
+  if (!c.active_run?.thread_root_id) renderLiveProgressIfWorking(c) // private/root-level Turn
   // Die Warteschlange sitzt am Composer und bleibt damit vom aktiven Turn getrennt.
   mountPromptQueue(c.id)
   if (promptQueues.get(c.id)?.length) setTimeout(() => drainPromptQueue(c.id), 400)
   window.scrollTo({ top: document.body.scrollHeight })
-  if (requestedThread && currentMessageRows.some((message) => message.id === requestedThread && !message.thread_root_id)) {
-    openThread(requestedThread)
+  const threadToOpen = c.working && c.active_run?.thread_root_id
+    ? c.active_run.thread_root_id
+    : requestedThread
+  if (threadToOpen && currentMessageRows.some((message) => message.id === threadToOpen && !message.thread_root_id)) {
+    openThread(threadToOpen)
   }
 }
 
@@ -1536,6 +1543,9 @@ async function openThread(rootId) {
     box.appendChild(node)
   }
   if ((rows || []).length === 1) box.insertAdjacentHTML('beforeend', '<div class="thread-empty">Noch keine Antworten</div>')
+  if (currentConv?.working && currentConv.active_run?.thread_root_id === rootId && !sendingViews.has(viewSeq)) {
+    renderLiveProgressIfWorking(currentConv, box, rootId)
+  }
   const root = (rows || []).find((message) => message.id === rootId)
   const enniActive = /@enni\b/i.test(root?.content || '') ||
     /(?:^|\s)\/[a-z0-9][a-z0-9-]*\b/i.test(root?.content || '') ||
@@ -2706,7 +2716,7 @@ async function loadPods() {
     btn.dataset.pod = p.id
     const st = status[p.id]
     const ind = st?.work
-      ? '<span class="c-ind work" title="Enni arbeitet in diesem Pod …"></span>'
+      ? '<span class="pod-work-label" title="Enni arbeitet in diesem Pod"><i></i>Enni arbeitet</span>'
       : st?.done ? '<span class="c-ind done" title="Fertig — noch nicht angesehen"></span>' : ''
     const tile = p.logo_url
       ? `<span class="pod-tile logo"><img src="${esc(p.logo_url)}" alt=""></span>`
@@ -2891,11 +2901,13 @@ $('pulse-ask-enni').addEventListener('click', () => {
 // --- Tab: Konversationen (Dust-Muster: Direkt-Input + Suche + Liste)
 let podConvsCache = []
 async function loadPodConvs() {
-  const [{ data }, profs] = await Promise.all([
+  const [{ data }, profs, { data: runs }] = await Promise.all([
     sb.from('conversations').select('id, title, updated_at, user_id, pod_id, working, unread').eq('pod_id', activePod.id).order('updated_at', { ascending: false }),
     allProfiles(),
+    sb.from('conversation_runs').select('conversation_id, thread_root_id, phase, status, started_at').eq('pod_id', activePod.id),
   ])
-  podConvsCache = (data || []).map((c) => ({ ...c, starter: profName(profs, c.user_id) }))
+  const runByConversation = Object.fromEntries((runs || []).map((run) => [run.conversation_id, run]))
+  podConvsCache = (data || []).map((c) => ({ ...c, starter: profName(profs, c.user_id), active_run: runByConversation[c.id] || null }))
   $('pod-conv-count').textContent = podConvsCache.length
   $('pod-conv-search').value = ''
   $('pod-quick-input').placeholder = `Schreib dem Team in „${activePod.name}“ — @enni ruft Enni dazu …`
@@ -2912,8 +2924,11 @@ function renderPodConvs(filter) {
     const ind = c.working || activeStreams.has(c.id)
       ? '<span class="c-ind work" title="Enni arbeitet …"></span>'
       : c.unread ? '<span class="c-ind done" title="Fertig — noch nicht angesehen"></span>' : ''
+    const runMeta = c.working
+      ? `<span class="pod-run-meta"><i></i>${esc(c.active_run?.thread_root_id ? 'Enni arbeitet im Thread' : (c.active_run?.status || 'Enni arbeitet'))}</span>`
+      : esc(c.starter)
     row.innerHTML = `<div class="pod-conv-main"><div class="pod-conv-title">${ind}<span>${esc(c.title || 'Ohne Titel')}</span></div>
-      <div class="pod-conv-meta">${esc(c.starter)}</div></div>
+      <div class="pod-conv-meta">${runMeta}</div></div>
       <span class="pod-conv-date">${compactPodDate(c.updated_at)}</span>
       <svg class="pod-conv-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>`
     row.addEventListener('click', () => { convPod = activePod; openConversation(c) })
@@ -5144,6 +5159,17 @@ async function sendThreadReply() {
   let replyExpected = false
   let enniActive = false
   let pending = null
+  const threadTurnStarted = Date.now()
+  let threadStatusTimer = null
+  let threadStatusLabel = 'Enni arbeitet'
+  const paintThreadPendingStatus = () => {
+    const status = pending?.querySelector('.t-status')
+    if (status) status.textContent = `${threadStatusLabel} · ${fmtDur(Date.now() - threadTurnStarted)}`
+  }
+  const setThreadPendingStatus = (label) => {
+    threadStatusLabel = label
+    paintThreadPendingStatus()
+  }
   try {
     const response = await fetch(`${BACKEND_URL}/api/chat`, {
       method: 'POST',
@@ -5182,17 +5208,26 @@ async function sendThreadReply() {
             pending.className = 'm-agent thread-pending'
             pending.innerHTML = '<div class="who"><span class="enni-dot">E</span><b>Enni</b></div><div class="think"><button class="think-head"><span class="t-status shimmer">Enni antwortet …</span></button></div><div class="body"></div>'
             box.appendChild(pending)
+            paintThreadPendingStatus()
+            threadStatusTimer = setInterval(paintThreadPendingStatus, 1000)
             box.scrollTop = box.scrollHeight
           }
+        } else if (event.type === 'thinking_delta' && replyExpected) {
+          setThreadPendingStatus('Enni denkt nach')
+        } else if (event.type === 'tool_use' && replyExpected) {
+          setThreadPendingStatus(`Enni nutzt ${event.name}`)
         } else if (event.type === 'text_delta' && replyExpected) {
           answer += event.text
           pending.querySelector('.body').innerHTML = md(answer) + '<span class="scursor"></span>'
+          setThreadPendingStatus('Enni schreibt')
           box.scrollTop = box.scrollHeight
         } else if (event.type === 'text_replace' && replyExpected) {
           answer = event.text || ''
           pending.querySelector('.body').innerHTML = md(answer)
         } else if (event.type === 'error') {
           throw new Error(event.message)
+        } else if (event.type === 'done' && replyExpected) {
+          setThreadPendingStatus('Enni schließt ab')
         }
       }
     }
@@ -5213,6 +5248,7 @@ async function sendThreadReply() {
       autosizeEl(input)
     }
   } finally {
+    clearInterval(threadStatusTimer)
     activeStreams.delete(currentConv.id)
     currentConv.working = false
     updateComposerState()
@@ -7795,6 +7831,13 @@ function onConvChange(c) {
     markConversationRead(c.id)
     return
   }
+  // Ein Turn wurde in einem anderen Tab/Gerät gestartet, während die Konversation
+  // offen ist: Run-Snapshot laden und bei Pod-Arbeit automatisch in den Thread gehen.
+  if (!prev?.working && c.working && currentConv?.id === c.id && !activeStreams.has(c.id) && !sendingViews.size) {
+    Object.assign(currentConv, c)
+    openConversation(currentConv)
+    return
+  }
   // Offene Konversation wurde außerhalb dieses Tabs fertig (Routine, anderes Gerät) → neu laden
   if (prev?.working && !c.working && currentConv?.id === c.id && !activeStreams.has(c.id) && !sendingViews.size) {
     openConversation(currentConv)
@@ -7900,25 +7943,36 @@ function subscribeConvMessages(convId) {
 // (nach Wegnavigieren, anderes Gerät, Routine), zeigt dieser Container die aktuellen
 // Gedanken/Tools/Text aus dem Progress-Broadcast des Backends — nicht erst das Endergebnis.
 let progressChannel = null
+let liveProgressTimer = null
 function closeProgressChannel() {
+  clearInterval(liveProgressTimer)
+  liveProgressTimer = null
   if (progressChannel) {
     sb.removeChannel(progressChannel)
     progressChannel = null
   }
 }
 
-function renderLiveProgressIfWorking(c) {
+function renderLiveProgressIfWorking(c, targetBox = $('msgs'), threadRootId = null) {
   closeProgressChannel()
   // Realtime-Snapshot ist frischer als das gecachte Konversations-Objekt aus der Sidebar
   const snap = statusSnapshot.get(c.id)
   const working = (snap ? snap.working : c.working) || activeStreams.has(c.id)
   if (!working) return
-  const box = $('msgs')
+  const initialRun = c.active_run || null
+  if (threadRootId && initialRun?.thread_root_id && initialRun.thread_root_id !== threadRootId) return
+  if (!threadRootId && initialRun?.thread_root_id) return
   const wrap = document.createElement('div')
-  wrap.className = 'm-agent'
+  wrap.className = 'm-agent live-run'
+  wrap.dataset.liveConversation = c.id
   wrap.innerHTML = `<div class="who"><span class="enni-dot">E</span><b>Enni</b></div>
-    <div class="think"><button class="think-head"><span class="chev">▶</span><span class="t-status shimmer">Enni arbeitet …</span></button>
-      <div class="think-body"><div class="tp"></div><div class="think-run"><span class="pulse"></span>Enni arbeitet …</div></div>
+    <div class="live-run-status" role="status" aria-live="polite">
+      <span class="live-run-pulse" aria-hidden="true"><i></i></span>
+      <span class="live-run-copy"><strong>Enni arbeitet</strong><span class="t-status">Status wird synchronisiert …</span></span>
+      <span class="live-run-time">jetzt</span>
+    </div>
+    <div class="think"><button class="think-head"><span class="chev">▶</span><span>Live-Aktivität anzeigen</span></button>
+      <div class="think-body"><div class="tp"></div><div class="think-run"><span class="pulse"></span>Der Arbeitslauf läuft serverseitig weiter.</div></div>
     </div>
     <div class="body"></div>`
   const thinkEl = wrap.querySelector('.think')
@@ -7926,31 +7980,74 @@ function renderLiveProgressIfWorking(c) {
     if (e.target.closest('.tool-row')) return
     thinkEl.classList.toggle('open')
   })
-  box.appendChild(wrap)
+  targetBox.querySelector(`[data-live-conversation="${c.id}"]`)?.remove()
+  targetBox.appendChild(wrap)
   const tstatus = wrap.querySelector('.t-status')
+  const time = wrap.querySelector('.live-run-time')
   const tp = wrap.querySelector('.tp')
   const body = wrap.querySelector('.body')
+  let currentRun = initialRun
+  const paint = (run) => {
+    if (!run || run.conversation_id && run.conversation_id !== c.id) return
+    currentRun = run
+    c.active_run = run
+    const tools = Array.isArray(run.tools) ? run.tools : []
+    const latestTool = tools.at(-1)
+    tstatus.textContent = run.status || (
+      run.phase === 'text' ? 'Enni schreibt die Antwort …' :
+      run.phase === 'tool' && latestTool ? `Enni nutzt ${latestTool} …` :
+      run.phase === 'finalizing' ? 'Enni schließt die Antwort ab …' :
+      'Enni denkt nach …'
+    )
+    tp.textContent = run.thinking || ''
+    body.innerHTML = run.response_text ? md(run.response_text) + '<span class="scursor"></span>' : ''
+    const started = run.started_at ? new Date(run.started_at).getTime() : Date.now()
+    time.dataset.started = String(started)
+    const elapsed = Math.max(0, Date.now() - started)
+    time.textContent = elapsed < 5000 ? 'jetzt' : fmtDur(elapsed)
+    if (targetBox === $('thread-messages')) targetBox.scrollTop = targetBox.scrollHeight
+    else followIfNearBottom()
+  }
+  const acceptRun = (run) => {
+    if (!run) return
+    c.active_run = run
+    if (!threadRootId && run.thread_root_id) {
+      if (activeThreadRootId !== run.thread_root_id) openThread(run.thread_root_id)
+      return
+    }
+    if (threadRootId && run.thread_root_id !== threadRootId) return
+    paint(run)
+  }
+  if (initialRun) paint(initialRun)
+  liveProgressTimer = setInterval(() => {
+    const started = Number(time.dataset.started || new Date(currentRun?.started_at || Date.now()).getTime())
+    time.textContent = fmtDur(Math.max(0, Date.now() - started))
+  }, 1000)
   progressChannel = sb
     .channel('progress-' + c.id)
     .on('broadcast', { event: 'progress' }, ({ payload: p }) => {
       if (currentConv?.id !== c.id || !p) return
-      tp.textContent = p.thinking || ''
-      const tools = p.tools?.length ? ` · ${p.tools.length} Tool-Aufruf${p.tools.length > 1 ? 'e' : ''}` : ''
-      tstatus.textContent =
-        p.phase === 'text' ? `Schreibt …${tools}` :
-        p.phase === 'tool' ? `Nutzt ${p.tools[p.tools.length - 1]} …` :
-        p.phase === 'done' ? 'Schließt ab …' : `Enni denkt nach …${tools}`
-      body.innerHTML = p.text ? md(p.text) : ''
-      if (p.text && p.phase !== 'done') body.insertAdjacentHTML('beforeend', '<span class="scursor"></span>')
-      followIfNearBottom()
+      acceptRun(p)
     })
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'conversation_runs', filter: `conversation_id=eq.${c.id}` },
+      ({ new: run }) => {
+        if (currentConv?.id === c.id) acceptRun(run)
+      }
+    )
     .subscribe()
   // Frisch-Check gegen die DB: war der Turn beim Öffnen schon vorbei (Race mit dem
   // Realtime-Event), Container wieder entfernen — die finale Antwort ist ja schon gerendert.
-  sb.from('conversations').select('working').eq('id', c.id).maybeSingle().then(({ data }) => {
+  Promise.all([
+    sb.from('conversations').select('working').eq('id', c.id).maybeSingle(),
+    sb.from('conversation_runs').select('*').eq('conversation_id', c.id).maybeSingle(),
+  ]).then(([{ data }, { data: run }]) => {
     if (data && !data.working && !activeStreams.has(c.id)) {
       closeProgressChannel()
       wrap.remove()
+    } else if (run) {
+      acceptRun(run)
     }
   })
   // Fertigstellung lädt die Konversation neu (onConvChange working→false) und
