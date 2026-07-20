@@ -1,6 +1,14 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-17 (Microsoft-Entra-App für Outlook/Graph angelegt — wartet auf Admin-Consent)
+**Zuletzt aktualisiert:** 2026-07-20 (Chat-Zuverlässigkeit und persistenter Live-Fortschritt produktiv)
+
+### Session 2026-07-20 — Chat-Zuverlässigkeit + persistenter Live-Fortschritt
+
+- **Chris' Hänger reproduziert und strukturell behoben:** Einzelne Agentenläufe dauerten 4–6,5 Minuten, führten bis zu 59 Tool-Calls aus und konnten trotz sehr langem Thinking ohne sichtbare Antwort enden. Der Tool-Loop hat jetzt harte Zeit- und Aufrufbudgets (18 Tool-Calls, 120 s Recherche, 60 s je Modellaufruf, 45 s Abschlusssynthese), eine Finalisierung ohne Thinking sowie einen deterministischen, niemals leeren Fallback. Auch das Backend persistiert keine leeren Assistant-Nachrichten mehr; historische leere Antworten erhalten im UI einen Recovery-Hinweis.
+- **Nutzereingaben gehen bei Reload nicht mehr verloren:** Chat- und Thread-Drafts werden pro Nutzer, Konversation und Thread lokal gespeichert und erst nach bestätigter Serverannahme gelöscht. Abgebrochene oder neu geladene Seiten stellen den Entwurf wieder her. Thread-Fehler enthalten zusätzlich Client-Version und Telemetrie, damit Produktionsprobleme einem Build zugeordnet werden können.
+- **Laufstatus ist jetzt serverseitiger Zustand:** Migration `20260720154855_persistent_conversation_runs.sql` führt `conversation_runs` ein. Das Backend schreibt Phase, Status, Thinking-/Antwort-Snapshot, Tool-Liste, Zeitstempel, Pod und Thread-Root; Supabase Realtime verteilt Änderungen. RLS erlaubt Lesen nur über eine zugängliche Konversation, Browser-Schreibzugriffe sind blockiert und nur der Service-Role-Backendpfad darf Runs verändern.
+- **Pod-Reentry funktioniert auch nach Navigation und Reload:** Verlässt ein Nutzer einen arbeitenden Pod oder aktualisiert die Seite, lädt das Frontend den aktiven Run erneut, markiert den Pod sichtbar mit `Enni arbeitet` und öffnet beim Zurückkehren automatisch den richtigen Thread. Das Panel zeigt aktuelle Phase, Laufzeit, letztes Tool und Teiltext statt bis zur fertigen Nachricht still zu bleiben.
+- **Produktiv verifiziert:** Backend-Tests 29/29. RLS-Eval bestätigte Owner-Lesen, Fremdisolation und blockierte Client-Writes. Ein Production-E2E verließ einen aktiven Pod-Thread, wechselte in einen privaten Chat, refreshte und kehrte ohne Thread-Parameter zurück; der korrekte Thread und der laufende Status wurden nach beiden Reloads wiederhergestellt, ohne Console-Fehler oder Layout-Overflow. Railway-Deployment `a8a95fef-e303-4a38-9865-63e032006fc7` ist live, `https://os.enneo.ai` liefert Frontend-Version `20260720-durable-live-runs`; Testdaten und aktive QA-Runs wurden bereinigt.
 
 ### Session 2026-07-17 — Microsoft-Graph-Connector: Entra-App angelegt, Admin-Consent pending
 
