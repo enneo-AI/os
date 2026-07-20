@@ -1380,19 +1380,12 @@ function decorateThreadRoot(node, message, replies = []) {
   button.setAttribute('aria-label', replies.length ? `Thread mit ${replies.length} Antworten öffnen` : 'Auf diese Nachricht antworten')
   button.addEventListener('click', () => openThread(message.id))
   attachOwnMessageDelete(node, message, replies.length)
+  // Optimistisch gerenderte Nachrichten hängen schon im Feed. Den leeren Wrapper
+  // zuerst VOR die Blase setzen und die Blase erst danach hineinverschieben. Das
+  // ist auch in Safari sicher und erzeugt zu keinem Zeitpunkt einen Parent/Child-
+  // Selbstbezug (HierarchyRequestError / "incorrect node tree").
+  if (node.parentNode) node.parentNode.insertBefore(outer, node)
   outer.append(node, button)
-  return outer
-}
-
-// Eine optimistisch gerenderte Nachricht hängt bereits im DOM. decorateThreadRoot()
-// verschiebt sie in den neuen Wrapper; danach darf die Blase nicht durch ihren
-// eigenen Parent ersetzt werden (HierarchyRequestError). Position vorher merken
-// und den fertigen Wrapper dort einsetzen.
-function promoteConnectedMessageToThreadRoot(node, message, replies = []) {
-  const parent = node.parentNode
-  const next = node.nextSibling
-  const outer = decorateThreadRoot(node, message, replies)
-  if (parent) parent.insertBefore(outer, next)
   return outer
 }
 
@@ -4838,7 +4831,7 @@ async function send() {
               thread_root_id: null,
             }
             if (!currentMessageRows.some((item) => item.id === rootMessage.id)) currentMessageRows.push(rootMessage)
-            optimisticNode = promoteConnectedMessageToThreadRoot(optimisticNode, rootMessage, [])
+            optimisticNode = decorateThreadRoot(optimisticNode, rootMessage, [])
           }
           if (inView() && ev.reply_expected && !ev.is_thread_reply) {
             await openThread(ev.thread_root_id)
