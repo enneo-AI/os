@@ -1384,6 +1384,18 @@ function decorateThreadRoot(node, message, replies = []) {
   return outer
 }
 
+// Eine optimistisch gerenderte Nachricht hängt bereits im DOM. decorateThreadRoot()
+// verschiebt sie in den neuen Wrapper; danach darf die Blase nicht durch ihren
+// eigenen Parent ersetzt werden (HierarchyRequestError). Position vorher merken
+// und den fertigen Wrapper dort einsetzen.
+function promoteConnectedMessageToThreadRoot(node, message, replies = []) {
+  const parent = node.parentNode
+  const next = node.nextSibling
+  const outer = decorateThreadRoot(node, message, replies)
+  if (parent) parent.insertBefore(outer, next)
+  return outer
+}
+
 async function openThread(rootId) {
   if (!currentConv?.id || !convPod) return
   activeThreadRootId = rootId
@@ -4826,9 +4838,7 @@ async function send() {
               thread_root_id: null,
             }
             if (!currentMessageRows.some((item) => item.id === rootMessage.id)) currentMessageRows.push(rootMessage)
-            const decorated = decorateThreadRoot(optimisticNode, rootMessage, [])
-            optimisticNode.replaceWith(decorated)
-            optimisticNode = decorated
+            optimisticNode = promoteConnectedMessageToThreadRoot(optimisticNode, rootMessage, [])
           }
           if (inView() && ev.reply_expected && !ev.is_thread_reply) {
             await openThread(ev.thread_root_id)
