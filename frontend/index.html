@@ -1222,6 +1222,39 @@
   #member-count{margin-left:auto}
   @media(max-width:900px){.admin-shell{padding:28px 18px 50px}}
 
+  /* ---------- Pod notes ---------- */
+  .pod-notes-shell{max-width:1040px;padding-bottom:48px}
+  .pod-notes-head{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin:4px 0 22px}
+  .pod-notes-head h3{margin:0 0 5px;font-size:18px;font-weight:680;letter-spacing:-.02em}
+  .pod-notes-head p{margin:0;max-width:560px;color:var(--ink-3);font-size:12.5px;line-height:1.5}
+  .pod-notes-actions{display:flex;gap:8px;flex:none}
+  .pod-note-create{height:38px;padding:0 14px;border:1px solid var(--hair);border-radius:11px;background:var(--surface);color:var(--ink-2);font:inherit;font-size:12.5px;font-weight:620;cursor:pointer}
+  .pod-note-create.primary{border-color:transparent;background:var(--cta-bg);color:var(--cta-text)}
+  .pod-note-editor{margin-bottom:22px;padding:18px;border:1px solid var(--edge);border-radius:17px;background:var(--surface);box-shadow:0 14px 35px -30px rgba(26,24,48,.42)}
+  .pod-note-editor-head{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+  .pod-note-kind{display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:999px;background:var(--purple-pale);color:var(--purple);font-size:10px;font-weight:720;letter-spacing:.055em;text-transform:uppercase}
+  .pod-note-editor-head strong{font-size:13.5px}.pod-note-editor-owner{margin-left:auto;color:var(--ink-3);font-size:11px}
+  .pod-note-fields{display:grid;grid-template-columns:minmax(0,1fr) 180px;gap:10px}
+  .pod-note-fields input,.pod-note-content{width:100%;border:1px solid var(--hair);border-radius:11px;background:var(--input-bg);color:var(--ink);font:inherit}
+  .pod-note-fields input{height:42px;padding:0 12px}.pod-note-content{min-height:190px;margin-top:10px;padding:13px 14px;resize:vertical;line-height:1.55}
+  .pod-note-editor-actions{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:12px}
+  .pod-note-editor-actions button{height:36px;padding:0 13px;border:0;border-radius:10px;font:inherit;font-size:12px;font-weight:620;cursor:pointer}
+  .pod-note-cancel{background:transparent;color:var(--ink-3)}.pod-note-save{background:var(--cta-bg);color:var(--cta-text)}
+  .pod-note-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:14px;margin-bottom:10px}
+  .pod-note-filters{display:flex;gap:3px;padding:3px;border-radius:11px;background:var(--soft)}
+  .pod-note-filter{height:30px;padding:0 11px;border:0;border-radius:8px;background:transparent;color:var(--ink-3);font:inherit;font-size:11.5px;font-weight:610;cursor:pointer}
+  .pod-note-filter.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 4px rgba(20,18,38,.08)}
+  .pod-note-list{border-top:1px solid var(--hair)}
+  .pod-note-row{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:12px;align-items:start;width:100%;padding:16px 3px;border:0;border-bottom:1px solid var(--hair);background:transparent;text-align:left;color:inherit;cursor:pointer}
+  .pod-note-row:hover{background:linear-gradient(90deg,transparent,var(--hover),transparent)}
+  .pod-note-mark{display:grid;place-items:center;width:32px;height:32px;border:1px solid var(--hair);border-radius:10px;background:var(--surface);color:var(--ink-3);font-size:15px}
+  .pod-note-row.meeting .pod-note-mark{color:var(--purple);background:var(--purple-pale)}
+  .pod-note-main{min-width:0}.pod-note-title{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:650}
+  .pod-note-title span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pod-note-type{flex:none;color:var(--ink-3);font-size:9.5px;font-weight:680;letter-spacing:.055em;text-transform:uppercase}
+  .pod-note-preview{display:-webkit-box;margin-top:4px;overflow:hidden;color:var(--ink-3);font-size:12px;line-height:1.45;-webkit-box-orient:vertical;-webkit-line-clamp:2;white-space:pre-line}
+  .pod-note-meta{margin-top:7px;color:var(--ink-3);font-size:10.5px}.pod-note-date{padding-top:2px;color:var(--ink-3);font-size:10.5px;white-space:nowrap}
+  .pod-note-empty{padding:36px 4px;color:var(--ink-3);font-size:13px;text-align:center}
+
   /* ---------- Mobile OS shell ---------- */
   .mobile-topbar,.mobile-sidebar-backdrop,.mobile-drawer-head{display:none}
   .sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
@@ -1278,6 +1311,7 @@
     .kanban-scroll{margin-right:-12px;padding-right:12px;scroll-snap-type:x proximity}.kanban-board{grid-template-columns:repeat(4,280px);min-width:max-content}.kanban-lane{scroll-snap-align:start;padding-left:6px;padding-right:6px}.kanban-card-main{min-height:78px}.kanban-status{width:44px;height:44px}.kanban-card-foot{min-height:52px}.kanban-assignee{width:30px;height:30px}
     .tasks-head{gap:8px;align-items:center}.show-done{min-height:44px}.pod-soft-action{min-height:44px}.tsec-head{min-height:48px;padding:11px 2px}.tsec-head .sb-acts{display:inline-flex}.trow{align-items:flex-start;gap:9px;padding:11px 2px 11px 4px;flex-wrap:wrap}.task-check-wrap{width:44px;height:44px;padding:11px}.trow .t-main{flex:1;padding-top:5px}.trow .t-meta{width:calc(100% - 53px);margin-left:53px;justify-content:flex-end;gap:8px}.trow .t-acts{display:inline-flex}.trow .t-meta .glass-icon,.task-run{width:44px;height:44px}.t-av{width:34px;height:34px}.t-due{margin-right:auto}.t-ghost{min-height:46px;padding-left:54px}
     .file-toolbar{justify-content:stretch}.file-upload{width:100%;height:44px;justify-content:center}.file-row{grid-template-columns:40px minmax(0,1fr);gap:10px;padding:10px 2px}.file-actions{grid-column:2;justify-content:flex-end}.glass-icon{width:44px;height:44px}.file-sub{white-space:normal}.pod-danger{gap:10px;flex-direction:column}.danger-link{min-height:44px;text-align:left}
+    .pod-notes-head{display:block;margin-bottom:15px}.pod-notes-actions{margin-top:14px}.pod-note-create{flex:1;min-height:44px}.pod-note-editor{padding:14px 12px}.pod-note-fields{grid-template-columns:1fr}.pod-note-content{min-height:220px;font-size:16px}.pod-note-editor-actions button{min-height:44px}.pod-note-toolbar{grid-template-columns:1fr}.pod-note-filters{overflow-x:auto}.pod-note-filter{min-height:40px;white-space:nowrap}.pod-note-row{grid-template-columns:34px minmax(0,1fr);padding:14px 2px}.pod-note-date{grid-column:2;padding:0}.pod-note-preview{-webkit-line-clamp:3}
     .doc{width:100%;padding:20px 2px 40px}.doc h1{font-size:24px;margin-bottom:18px}.doc>div:has(>h1){flex-wrap:wrap;gap:8px!important}.doc .btn.quiet{min-height:42px}.doc-body{min-width:0;overflow-wrap:anywhere}.doc-body table{display:block;width:100%;overflow-x:auto;white-space:nowrap}.doc-body img{height:auto}.doc-nav{margin-bottom:14px}
     .editor-head{padding:18px 0 14px;margin-bottom:16px}.editor-head h2{font-size:17px}#pe-content{min-height:48dvh;font-size:16px;padding:14px}.pe-toolbar .btn{min-height:40px}.space-shell>.m-actions{position:sticky;bottom:0;z-index:8;margin:14px -12px 0;padding:12px calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));background:var(--modal-footer-glass);-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);border-top:1px solid var(--hair)}
     .admin-shell{padding-top:22px;padding-bottom:40px}.admin-head{padding-bottom:17px;margin-bottom:20px}.admin-head h2{font-size:24px}.admin-pane-head{display:block;margin-bottom:14px}.admin-pane-head p{margin-top:3px}.platform-integration-row{grid-template-columns:38px minmax(0,1fr) auto}.platform-integration-row .btn{grid-column:2/-1;width:100%;min-height:42px}.usage-row{min-height:62px}.impact-grid{grid-template-columns:1fr 1fr}.impact-metric:nth-child(2){border-right:0}.impact-metric:nth-child(-n+2){border-bottom:1px solid var(--hair)}.impact-columns{grid-template-columns:1fr}.invite-compact{display:grid;grid-template-columns:1fr auto}.invite-compact input{grid-column:1/-1;min-height:46px}.invite-role{height:44px}.invite-compact .btn{min-height:44px}.member-row{grid-template-columns:minmax(0,1fr) auto!important;gap:8px}.member-row button,.member-row select{min-height:44px}.member-row .member-state{grid-column:2}.source-row{grid-template-columns:36px minmax(0,1fr);padding:10px 0}.source-action{grid-column:2;width:max-content;min-height:44px}.digest-line{align-items:flex-start}.digest-line .role{flex:none}
@@ -1557,6 +1591,7 @@
           <button class="pt-btn" data-tab="tasks" role="tab" aria-selected="false">Aufgaben <span class="pt-count" id="pod-task-count">0</span></button>
           <button class="pt-btn" data-tab="board" role="tab" aria-selected="false">Board</button>
           <button class="pt-btn" data-tab="files" role="tab" aria-selected="false">Dateien <span class="pt-count" id="pod-file-count">0</span></button>
+          <button class="pt-btn" data-tab="notes" role="tab" aria-selected="false">Notizen <span class="pt-count" id="pod-note-count">0</span></button>
           <button class="pt-btn" data-tab="context" role="tab" aria-selected="false">Kontext</button>
           <button class="pt-btn" data-tab="settings" role="tab" aria-selected="false">Einstellungen</button>
         </div>
@@ -1636,6 +1671,36 @@
           <input type="file" id="pod-file-input" multiple hidden>
           <div class="file-toolbar"><button class="file-upload" id="pod-file-btn"><svg viewBox="0 0 24 24"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/></svg>Datei hochladen</button></div>
           <div class="list-panel"><div id="pod-file-list"></div></div>
+        </div>
+
+        <div class="pod-tab" id="ptab-notes" role="tabpanel" hidden>
+          <div class="pod-notes-shell">
+            <div class="pod-notes-head">
+              <div><h3>Notizen &amp; Meetings</h3><p>Kurze Gedanken festhalten oder vollständige Meeting-Transkripte als gemeinsamen Pod-Kontext ablegen.</p></div>
+              <div class="pod-notes-actions">
+                <button class="pod-note-create" id="pod-transcript-new" type="button">＋ Meeting-Transkript</button>
+                <button class="pod-note-create primary" id="pod-note-new" type="button">＋ Kurze Notiz</button>
+              </div>
+            </div>
+            <section class="pod-note-editor" id="pod-note-editor" aria-label="Pod-Notiz bearbeiten" hidden>
+              <div class="pod-note-editor-head"><span class="pod-note-kind" id="pod-note-editor-kind">Notiz</span><strong id="pod-note-editor-heading">Neue Notiz</strong><span class="pod-note-editor-owner" id="pod-note-editor-owner"></span></div>
+              <div class="pod-note-fields">
+                <input id="pod-note-title" type="text" maxlength="240" autocomplete="off" placeholder="Titel (optional)">
+                <input id="pod-note-date" type="date" autocomplete="off" aria-label="Meeting-Datum" hidden>
+              </div>
+              <textarea class="pod-note-content" id="pod-note-content" maxlength="500000" placeholder="Was soll das Team wissen?"></textarea>
+              <div class="pod-note-editor-actions"><button class="pod-note-cancel" id="pod-note-delete" type="button" hidden>Notiz löschen</button><span style="flex:1"></span><button class="pod-note-cancel" id="pod-note-cancel" type="button">Schließen</button><button class="pod-note-save" id="pod-note-save" type="button">Speichern</button></div>
+            </section>
+            <div class="pod-note-toolbar">
+              <input type="search" class="wiki-search" id="pod-note-search" placeholder="Notizen durchsuchen …">
+              <div class="pod-note-filters" role="group" aria-label="Notizen filtern">
+                <button class="pod-note-filter on" data-note-filter="all" type="button">Alle</button>
+                <button class="pod-note-filter" data-note-filter="note" type="button">Notizen</button>
+                <button class="pod-note-filter" data-note-filter="meeting_transcript" type="button">Meetings</button>
+              </div>
+            </div>
+            <div class="pod-note-list" id="pod-note-list" aria-live="polite"></div>
+          </div>
         </div>
 
         <div class="pod-tab" id="ptab-context" role="tabpanel" hidden>

@@ -419,6 +419,32 @@ test('Pod conversations use real threads and keep Enni active selectively', () =
   assert.match(frontendSource, /attachments: attachments\.length \? attachments : undefined/)
 })
 
+test('Pod notes and meeting transcripts are member-scoped and available to Enni on demand', () => {
+  const frontendSource = readFileSync(join(here, '../../frontend/app.js'), 'utf8')
+  const frontendHtml = readFileSync(join(here, '../../frontend/index.html'), 'utf8')
+  const indexSource = readFileSync(join(here, '../src/index.js'), 'utf8')
+  const podTools = readFileSync(join(here, '../src/tools/pod.js'), 'utf8')
+  const migration = readFileSync(
+    join(here, '../../supabase/migrations/20260720091247_pod_notes_and_transcripts.sql'),
+    'utf8'
+  )
+
+  assert.match(frontendHtml, /data-tab="notes"/)
+  assert.match(frontendHtml, /id="pod-transcript-new"/)
+  assert.match(frontendHtml, /id="pod-note-content"/)
+  assert.match(frontendSource, /function openPodNoteEditor/)
+  assert.match(frontendSource, /from\('pod_notes'\)\.insert/)
+  assert.match(frontendSource, /from\('pod_notes'\)\.update/)
+  assert.match(frontendSource, /from\('pod_notes'\)\.delete/)
+  assert.match(podTools, /name: 'pod_list_notes'/)
+  assert.match(podTools, /name: 'pod_read_note'/)
+  assert.match(indexSource, /lade lange Transkripte nur gezielt/i)
+  assert.match(migration, /create table public\.pod_notes/)
+  assert.match(migration, /using \(public\.is_pod_visible\(pod_id\)\)/)
+  assert.match(migration, /created_by = \(select auth\.uid\(\)\)/)
+  assert.match(migration, /grant select, insert, update, delete on public\.pod_notes to authenticated/)
+})
+
 test('Pod members can delete only their own messages', () => {
   const frontendSource = readFileSync(join(here, '../../frontend/app.js'), 'utf8')
   const frontendHtml = readFileSync(join(here, '../../frontend/index.html'), 'utf8')

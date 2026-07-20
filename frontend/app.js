@@ -914,7 +914,7 @@ async function route() {
     const pod = podsList.find((x) => x.id === p.slice(5))
     const params = new URLSearchParams(location.search)
     const requestedTab = params.get('tab')
-    const tab = ['overview', 'convs', 'tasks', 'board', 'files', 'context', 'settings'].includes(requestedTab) ? requestedTab : 'overview'
+    const tab = ['overview', 'convs', 'tasks', 'board', 'files', 'notes', 'context', 'settings'].includes(requestedTab) ? requestedTab : 'overview'
     if (pod) {
       await openPod(pod, tab)
       const conversationId = params.get('conversation')
@@ -2643,15 +2643,17 @@ $('pod-join').addEventListener('click', async () => {
 })
 
 async function refreshPodCounts(podId) {
-  const [convs, tasks, files] = await Promise.all([
+  const [convs, tasks, files, notes] = await Promise.all([
     sb.from('conversations').select('id', { count: 'exact', head: true }).eq('pod_id', podId),
     sb.from('pod_tasks').select('id', { count: 'exact', head: true }).eq('pod_id', podId),
     sb.from('pod_files').select('id', { count: 'exact', head: true }).eq('pod_id', podId),
+    sb.from('pod_notes').select('id', { count: 'exact', head: true }).eq('pod_id', podId),
   ])
   if (activePod?.id !== podId) return
   $('pod-conv-count').textContent = convs.count ?? 0
   $('pod-task-count').textContent = tasks.count ?? 0
   $('pod-file-count').textContent = files.count ?? 0
+  $('pod-note-count').textContent = notes.count ?? 0
 }
 
 function switchPodTab(tab) {
@@ -2665,12 +2667,13 @@ function switchPodTab(tab) {
   if (selectedTab && window.matchMedia('(max-width: 900px)').matches) {
     selectedTab.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'nearest', inline: 'center' })
   }
-  for (const t of ['overview', 'convs', 'tasks', 'board', 'files', 'context', 'settings']) $('ptab-' + t).hidden = t !== tab
+  for (const t of ['overview', 'convs', 'tasks', 'board', 'files', 'notes', 'context', 'settings']) $('ptab-' + t).hidden = t !== tab
   if (tab === 'overview') loadPodOverview()
   if (tab === 'convs') loadPodConvs()
   if (tab === 'tasks') loadPodTasks()
   if (tab === 'board') loadPodBoard()
   if (tab === 'files') loadPodFiles()
+  if (tab === 'notes') loadPodNotes()
   if (tab === 'context') loadPodContext()
   if (tab === 'settings') fillPodSettings()
   if (activeView === 'pod' && activePod) history.replaceState({}, '', `/pod/${activePod.id}?tab=${tab}`)
@@ -2703,10 +2706,11 @@ function attentionReason(task) {
 async function loadPodOverview() {
   if (!activePod) return
   const podId = activePod.id
-  const [{ data: tasks }, { data: convs }, { data: files }, profs] = await Promise.all([
+  const [{ data: tasks }, { data: convs }, { data: files }, { data: notes }, profs] = await Promise.all([
     sb.from('pod_tasks').select('*').eq('pod_id', podId).order('updated_at', { ascending: false }),
     sb.from('conversations').select('id, title, updated_at, user_id').eq('pod_id', podId).order('updated_at', { ascending: false }).limit(8),
     sb.from('pod_files').select('id, name, created_at, uploaded_by').eq('pod_id', podId).order('created_at', { ascending: false }).limit(8),
+    sb.from('pod_notes').select('id, kind, title, content, created_by, updated_at').eq('pod_id', podId).order('updated_at', { ascending: false }).limit(8),
     allProfiles(),
   ])
   if (activePod?.id !== podId) return
@@ -2742,10 +2746,11 @@ async function loadPodOverview() {
     ...podTasksCache.slice(0, 8).map((t) => ({ type: 'task', label: t.status === 'done' ? 'Aufgabe erledigt' : 'Aufgabe aktualisiert', title: t.title, at: t.updated_at, user: t.assignee || t.created_by })),
     ...(convs || []).map((c) => ({ type: 'chat', label: 'Konversation', title: c.title || 'Ohne Titel', at: c.updated_at, user: c.user_id })),
     ...(files || []).map((f) => ({ type: 'file', label: 'Datei hochgeladen', title: f.name, at: f.created_at, user: f.uploaded_by })),
+    ...(notes || []).map((n) => ({ type: 'note', label: n.kind === 'meeting_transcript' ? 'Meeting-Transkript' : 'Notiz', title: n.title || n.content.slice(0, 72), at: n.updated_at, user: n.created_by })),
   ].sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 6)
   const activityList = $('pulse-activity-list')
   activityList.innerHTML = ''
-  const marks = { task: '✓', chat: '↗', file: '□' }
+  const marks = { task: '✓', chat: '↗', file: '□', note: '≡' }
   for (const event of activity) {
     const who = event.user ? profName(profs, event.user) : 'Team'
     const el = document.createElement('div')
@@ -3502,6 +3507,146 @@ $('pod-file-input').addEventListener('change', async () => {
   }
   $('pod-file-input').value = ''
   loadPodFiles()
+})
+
+// --- Tab: Notizen & Meeting-Transkripte
+let podNotesCache = []
+let podNoteProfiles = []
+let podNoteFilter = 'all'
+let editingPodNote = null
+
+function todayIso() {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+}
+
+function noteDisplayTitle(note) {
+  const fallback = (note.content || '').replace(/\s+/g, ' ').trim().slice(0, 80)
+  return note.title?.trim() || fallback || (note.kind === 'meeting_transcript' ? 'Meeting-Transkript' : 'Notiz')
+}
+
+function formatMeetingDate(value) {
+  if (!value) return ''
+  return new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(`${value}T12:00:00`))
+}
+
+async function loadPodNotes() {
+  if (!activePod) return
+  const podId = activePod.id
+  const [{ data, error }, profiles] = await Promise.all([
+    sb.from('pod_notes').select('*').eq('pod_id', podId).order('updated_at', { ascending: false }),
+    allProfiles(),
+  ])
+  if (activePod?.id !== podId) return
+  if (error) {
+    $('pod-note-list').innerHTML = `<div class="pod-note-empty">Notizen konnten nicht geladen werden: ${esc(error.message)}</div>`
+    return
+  }
+  podNotesCache = data || []
+  podNoteProfiles = profiles
+  $('pod-note-count').textContent = podNotesCache.length
+  $('pod-note-search').value = ''
+  renderPodNotes()
+}
+
+function renderPodNotes() {
+  const query = $('pod-note-search').value.trim().toLowerCase()
+  const notes = podNotesCache.filter((note) => {
+    if (podNoteFilter !== 'all' && note.kind !== podNoteFilter) return false
+    return !query || `${note.title} ${note.content}`.toLowerCase().includes(query)
+  })
+  const list = $('pod-note-list')
+  list.innerHTML = ''
+  for (const note of notes) {
+    const meeting = note.kind === 'meeting_transcript'
+    const row = document.createElement('button')
+    row.type = 'button'
+    row.className = `pod-note-row${meeting ? ' meeting' : ''}`
+    const author = profName(podNoteProfiles, note.created_by)
+    const words = (note.content || '').trim().split(/\s+/).filter(Boolean).length
+    row.innerHTML = `<span class="pod-note-mark" aria-hidden="true">${meeting ? '◷' : '≡'}</span>
+      <span class="pod-note-main"><span class="pod-note-title"><span>${esc(noteDisplayTitle(note))}</span><small class="pod-note-type">${meeting ? 'Meeting' : 'Notiz'}</small></span>
+      <span class="pod-note-preview">${esc(note.content)}</span><span class="pod-note-meta">${esc(author)} · ${words.toLocaleString('de-DE')} Wörter${meeting && note.meeting_date ? ` · ${formatMeetingDate(note.meeting_date)}` : ''}</span></span>
+      <span class="pod-note-date">${esc(relativePulseTime(note.updated_at))}</span>`
+    row.addEventListener('click', () => openPodNoteEditor(note.kind, note))
+    list.appendChild(row)
+  }
+  if (!notes.length) {
+    const scoped = query || podNoteFilter !== 'all'
+    list.innerHTML = `<div class="pod-note-empty">${scoped ? 'Keine passenden Einträge gefunden.' : 'Noch keine Notizen. Halte einen Gedanken fest oder füge das erste Meeting-Transkript ein.'}</div>`
+  }
+}
+
+function openPodNoteEditor(kind, note = null) {
+  editingPodNote = note
+  const meeting = kind === 'meeting_transcript'
+  const own = !note || note.created_by === session.user.id
+  $('pod-note-editor').hidden = false
+  $('pod-note-editor-kind').textContent = meeting ? 'Meeting' : 'Notiz'
+  $('pod-note-editor-heading').textContent = note ? noteDisplayTitle(note) : meeting ? 'Meeting-Transkript hinzufügen' : 'Kurze Notiz hinzufügen'
+  $('pod-note-editor-owner').textContent = note ? profName(podNoteProfiles, note.created_by) : 'Für alle Pod-Mitglieder'
+  $('pod-note-title').value = note?.title || ''
+  $('pod-note-title').placeholder = meeting ? 'Meeting-Titel' : 'Titel (optional)'
+  $('pod-note-date').hidden = !meeting
+  $('pod-note-date').value = note?.meeting_date || (meeting ? todayIso() : '')
+  $('pod-note-content').value = note?.content || ''
+  $('pod-note-content').placeholder = meeting ? 'Meeting-Transkript hier einfügen …' : 'Was soll das Team wissen?'
+  for (const field of [$('pod-note-title'), $('pod-note-date'), $('pod-note-content')]) field.disabled = !own
+  $('pod-note-save').hidden = !own
+  $('pod-note-delete').hidden = !note || !own
+  $('pod-note-editor').dataset.kind = kind
+  $('pod-note-editor').scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'nearest' })
+  if (own) setTimeout(() => (meeting ? $('pod-note-title') : $('pod-note-content')).focus(), 80)
+}
+
+function closePodNoteEditor() {
+  editingPodNote = null
+  $('pod-note-editor').hidden = true
+}
+
+$('pod-note-new').addEventListener('click', () => openPodNoteEditor('note'))
+$('pod-transcript-new').addEventListener('click', () => openPodNoteEditor('meeting_transcript'))
+$('pod-note-cancel').addEventListener('click', closePodNoteEditor)
+$('pod-note-search').addEventListener('input', renderPodNotes)
+document.querySelectorAll('.pod-note-filter').forEach((button) => button.addEventListener('click', () => {
+  podNoteFilter = button.dataset.noteFilter
+  document.querySelectorAll('.pod-note-filter').forEach((item) => item.classList.toggle('on', item === button))
+  renderPodNotes()
+}))
+
+$('pod-note-save').addEventListener('click', async () => {
+  const kind = $('pod-note-editor').dataset.kind
+  const content = $('pod-note-content').value.trim()
+  if (!content) return alert(kind === 'meeting_transcript' ? 'Bitte füge zuerst das Meeting-Transkript ein.' : 'Bitte schreibe zuerst eine Notiz.')
+  const payload = {
+    pod_id: activePod.id,
+    kind,
+    title: $('pod-note-title').value.trim(),
+    content,
+    meeting_date: kind === 'meeting_transcript' ? ($('pod-note-date').value || null) : null,
+  }
+  const save = $('pod-note-save')
+  save.disabled = true
+  save.textContent = 'Speichert …'
+  const result = editingPodNote
+    ? await sb.from('pod_notes').update(payload).eq('id', editingPodNote.id).eq('created_by', session.user.id)
+    : await sb.from('pod_notes').insert({ ...payload, created_by: session.user.id })
+  save.disabled = false
+  save.textContent = 'Speichern'
+  if (result.error) return alert(`Speichern fehlgeschlagen: ${result.error.message}`)
+  closePodNoteEditor()
+  await loadPodNotes()
+  refreshPodCounts(activePod.id)
+})
+
+$('pod-note-delete').addEventListener('click', async () => {
+  if (!editingPodNote || editingPodNote.created_by !== session.user.id) return
+  if (!confirm(`„${noteDisplayTitle(editingPodNote)}“ wirklich löschen?`)) return
+  const { error } = await sb.from('pod_notes').delete().eq('id', editingPodNote.id).eq('created_by', session.user.id)
+  if (error) return alert(`Löschen fehlgeschlagen: ${error.message}`)
+  closePodNoteEditor()
+  await loadPodNotes()
+  refreshPodCounts(activePod.id)
 })
 
 // --- Tab: Kontext
@@ -7528,6 +7673,7 @@ function onPodWorkChange(row) {
     if (!$('ptab-overview').hidden) loadPodOverview()
     if (!$('ptab-tasks').hidden) loadPodTasks()
     if (!$('ptab-board').hidden) loadPodBoard()
+    if (!$('ptab-notes').hidden) loadPodNotes()
     if (taskDetailTask?.id && row.task_id === taskDetailTask.id) loadTaskComments()
   }, 180)
 }
@@ -7538,6 +7684,7 @@ function subscribeRealtime() {
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'conversations' }, (p) => onConvChange(p.new))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'pod_tasks' }, (p) => onPodWorkChange(p.new?.pod_id ? p.new : p.old))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'pod_task_comments' }, (p) => onPodWorkChange(p.new?.pod_id ? p.new : p.old))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'pod_notes' }, (p) => onPodWorkChange(p.new?.pod_id ? p.new : p.old))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${session.user.id}` }, async (payload) => {
       const item = payload.new
       if (item?.conversation_id && !item.read_at && isReadingConversation(item.conversation_id)) {

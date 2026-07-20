@@ -576,7 +576,7 @@ app.post('/api/chat', async (req, res) => {
       extraSystem =
         `Diese Konversation läuft im Pod "${pod.name}" — ein geteilter Projekt-Raum (Team-Chat, mehrere Personen lesen und schreiben mit). ` +
         `${threadRoot ? 'Du antwortest innerhalb eines Threads. Enni wurde für diesen Thread aktiviert und prüft Folgeantworten automatisch; antworte nur, wenn dein Beitrag jetzt wirklich hilfreich ist. ' : 'Du wurdest gerade mit @enni gerufen. '}Die aktuelle Nachricht kommt von ${senderName}. User-Nachrichten sind mit dem Absender-Namen geprefixt. ` +
-        `Du hast Zugriff auf den GESAMTEN Pod über die pod_-Tools: Aufgabenliste (pod_list_tasks), geteilte Dateien (pod_list_files / pod_read_file) und die anderen Konversationen (pod_list_conversations / pod_read_conversation). Nutze sie, wenn die Frage Pod-Kontext braucht.` +
+        `Du hast Zugriff auf den GESAMTEN Pod über die pod_-Tools: Aufgabenliste (pod_list_tasks), geteilte Dateien (pod_list_files / pod_read_file), Notizen und Meeting-Transkripte (pod_list_notes / pod_read_note) sowie die anderen Konversationen (pod_list_conversations / pod_read_conversation). Nutze sie, wenn die Frage Pod-Kontext braucht. Liste Notizen zuerst und lade lange Transkripte nur gezielt, wenn sie für die Frage relevant sind.` +
         (pod.description ? `\nPod-Beschreibung: ${pod.description}` : '')
       extraSystem += await podContextPrompt(pod)
       extraSystem += await podAttioPrompt(pod.id)

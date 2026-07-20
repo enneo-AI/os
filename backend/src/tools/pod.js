@@ -1,6 +1,6 @@
 // Pod-Kontext-Tools: In Pod-Konversationen (Enni wird per @enni gerufen) kann Enni
-// auf den GESAMTEN Pod zugreifen — Aufgabenliste, geteilte Dateien und die anderen
-// Konversationen des Pods. Alle Tools sind an ctx.podId gebunden (read-only,
+// auf den GESAMTEN Pod zugreifen — Aufgabenliste, geteilte Dateien, Notizen,
+// Meeting-Transkripte und die anderen Konversationen. Alle Tools sind an ctx.podId gebunden (read-only,
 // außer Task-Status-Updates gibt es hier bewusst nicht).
 
 import * as XLSX from 'xlsx'
@@ -25,6 +25,27 @@ export const podToolDefinitions = [
       type: 'object',
       properties: { name: { type: 'string', description: 'Dateiname aus pod_list_files' } },
       required: ['name'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'pod_list_notes',
+    description: 'Listet kurze Notizen und Meeting-Transkripte dieses Pods mit ID, Titel, Datum, Autor und Vorschau. Liest nicht automatisch den vollständigen Inhalt.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        kind: { type: 'string', enum: ['note', 'meeting_transcript'], description: 'Optional nur kurze Notizen oder nur Meeting-Transkripte.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'pod_read_note',
+    description: 'Liest den vollständigen Inhalt einer Pod-Notiz oder eines Meeting-Transkripts per ID aus pod_list_notes.',
+    input_schema: {
+      type: 'object',
+      properties: { note_id: { type: 'string' } },
+      required: ['note_id'],
       additionalProperties: false,
     },
   },
@@ -102,6 +123,36 @@ export async function runPodTool(name, input, ctx) {
       return bytes.toString('utf8').slice(0, 60000)
     }
     return `"${f.name}" ist ${mt || 'ein Binärformat'} — kann hier nicht als Text gelesen werden. Bitte den Nutzer, die Datei im Chat anzuhängen.`
+  }
+
+  if (name === 'pod_list_notes') {
+    let query = db
+      .from('pod_notes')
+      .select('id, kind, title, content, meeting_date, created_by, updated_at')
+      .eq('pod_id', podId)
+      .order('updated_at', { ascending: false })
+      .limit(50)
+    if (input?.kind) query = query.eq('kind', input.kind)
+    const [{ data, error }, byId] = await Promise.all([query, names()])
+    if (error) throw new Error(error.message)
+    if (!data?.length) return 'Keine Notizen oder Meeting-Transkripte in diesem Pod.'
+    return data.map((note) => {
+      const type = note.kind === 'meeting_transcript' ? 'Meeting-Transkript' : 'Notiz'
+      const title = note.title?.trim() || (note.content || '').replace(/\s+/g, ' ').slice(0, 80) || 'Ohne Titel'
+      const preview = (note.content || '').replace(/\s+/g, ' ').slice(0, 220)
+      return `- [${type}] ${title} (id: ${note.id}${note.meeting_date ? `, Meeting: ${note.meeting_date}` : ''}, von ${byId[note.created_by] || '?'}, aktualisiert ${note.updated_at})\n  ${preview}`
+    }).join('\n')
+  }
+
+  if (name === 'pod_read_note') {
+    const [{ data: note, error }, byId] = await Promise.all([
+      db.from('pod_notes').select('id, pod_id, kind, title, content, meeting_date, created_by, updated_at').eq('id', input.note_id).maybeSingle(),
+      names(),
+    ])
+    if (error) throw new Error(error.message)
+    if (!note || note.pod_id !== podId) return 'Notiz nicht gefunden oder gehört nicht zu diesem Pod.'
+    const type = note.kind === 'meeting_transcript' ? 'Meeting-Transkript' : 'Notiz'
+    return `# ${note.title?.trim() || type}\n\nTyp: ${type}${note.meeting_date ? `\nMeeting-Datum: ${note.meeting_date}` : ''}\nAutor: ${byId[note.created_by] || 'Unbekannt'}\nAktualisiert: ${note.updated_at}\n\n${note.content}`.slice(0, 120000)
   }
 
   if (name === 'pod_list_conversations') {
