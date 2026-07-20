@@ -406,6 +406,8 @@ test('Pod conversations use real threads and keep Enni active selectively', () =
   assert.match(indexSource, /threadWasActive/)
   assert.match(indexSource, /decideThreadReply/)
   assert.match(indexSource, /thread_root_id: responseThreadRootId/)
+  assert.match(indexSource, /if \(pod && clientVersion\) emit\(\{/)
+  assert.match(indexSource, /Frontends von vor dem Thread-DOM-Fix/)
   assert.match(agentSource, /false bei Danke, Bestätigung, Smalltalk/)
   assert.match(notificationSource, /notifyPodThreadReply/)
   assert.match(frontendHtml, /id="thread-panel"/)

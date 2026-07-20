@@ -555,7 +555,11 @@ app.post('/api/chat', async (req, res) => {
       }
     }
     const responseThreadRootId = pod && shouldReply ? (thread_root_id || userMessage.id) : null
-    if (pod) emit({
+    // Frontends von vor dem Thread-DOM-Fix würden beim Umbau der optimistischen
+    // Nachricht mit HierarchyRequestError abbrechen. Für diese bereits geöffneten
+    // Tabs das UI-only Event auslassen; Persistenz und Enni-Antwort bleiben normal,
+    // beim nächsten Laden rendert die DB-Historie den Thread korrekt.
+    if (pod && clientVersion) emit({
       type: 'thread_context',
       user_message_id: userMessage.id,
       thread_root_id: thread_root_id || userMessage.id,
