@@ -5,6 +5,8 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, BACKEND_URL } from './config.js'
 
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 const $ = (id) => document.getElementById(id)
+const APP_ASSET_VERSION = new URL(import.meta.url).searchParams.get('v') || 'unversioned'
+let updateReloadPending = false
 
 const fmtEur = (n) =>
   (n ?? 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
@@ -174,6 +176,26 @@ async function enterWorkspace() {
   await route()
   registerServiceWorker()
   handleOAuthReturn()
+  setInterval(checkForAppUpdate, 60_000)
+}
+
+// Ein offener Tab behält sein geladenes JavaScript auch nach einem Deploy. Prüfe
+// deshalb die versionierte Modul-URL aus der aktuellen Startseite. Sobald keine
+// Nachricht läuft und kein Entwurf offen ist, wird eine neue Version automatisch
+// geladen; Entwürfe werden niemals still verworfen.
+async function checkForAppUpdate() {
+  try {
+    const html = await fetch(`/?version_check=${Date.now()}`, { cache: 'no-store' }).then((response) => response.text())
+    const latest = html.match(/app\.js\?v=([^"']+)/)?.[1]
+    if (!latest || latest === APP_ASSET_VERSION) return
+    const hasDraft = !!($('composer-input')?.value.trim() || $('thread-input')?.value.trim() || pendingFiles?.length || threadPendingFiles?.length)
+    const busy = sendingViews.size > 0 || activeStreams.size > 0
+    if (!hasDraft && !busy) return location.reload()
+    if (!updateReloadPending) {
+      updateReloadPending = true
+      showHint('Neue enneo-OS-Version verfügbar — bitte nach dem Senden einmal neu laden.')
+    }
+  } catch { /* Offline oder temporär nicht erreichbar: beim nächsten Intervall erneut. */ }
 }
 
 // ============================================================ Notifications
@@ -4767,7 +4789,7 @@ async function send() {
   try {
     const chatRequest = {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}`, 'X-Enneo-Client-Version': APP_ASSET_VERSION },
       body: JSON.stringify({
         conversation_id: currentConv?.id,
         message: text,
@@ -7699,6 +7721,7 @@ function subscribeRealtime() {
 }
 
 document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) checkForAppUpdate()
   if (!document.hidden && currentConv?.id && activeArea === 'chat' && activeView === 'chat') {
     markConversationRead(currentConv.id).then(() => loadConversations())
   }
