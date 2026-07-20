@@ -466,7 +466,7 @@
     -webkit-mask-image:linear-gradient(180deg,#000 0%,#000 8px,transparent 44px);
     mask-image:linear-gradient(180deg,#000 0%,#000 8px,transparent 44px);
     transition:max-height .3s ease}
-  .think.open .think-body{max-height:2000px;cursor:default;-webkit-mask-image:none;mask-image:none}
+  .think.open .think-body{max-height:min(54vh,720px);overflow:auto;cursor:default;-webkit-mask-image:none;mask-image:none}
   .think-body .tp{margin:0 0 9px;font-size:12.5px;color:var(--ink-2);max-width:62ch;white-space:pre-wrap}
   .tool-row{display:flex;align-items:center;gap:9px;width:100%;text-align:left;border:0;background:none;border-radius:8px;padding:6px 8px;margin:0 0 6px -8px;font-size:12.5px;color:var(--ink-2);transition:background .15s}
   .tool-row:hover{background:var(--hover);color:var(--ink)}
@@ -2615,6 +2615,6 @@
   </div>
 </div>
 
-<script type="module" src="/app.js?v=20260720-release-guard"></script>
+<script type="module" src="/app.js?v=20260720-chat-reliability"></script>
 </body>
 </html>

@@ -30,6 +30,10 @@ const anthropic = new Anthropic()
 const DEFAULT_MODEL = process.env.ENNI_MODEL || 'claude-sonnet-5'
 export const ALLOWED_MODELS = ['claude-opus-4-8', 'claude-fable-5', 'claude-sonnet-5', 'claude-haiku-4-5']
 const MAX_TOOL_ITERATIONS = 12
+const MAX_TOOL_CALLS = Number(process.env.ENNI_MAX_TOOL_CALLS || 18)
+const MAX_TURN_MS = Number(process.env.ENNI_MAX_TURN_MS || 120000)
+const MAX_MODEL_CALL_MS = Number(process.env.ENNI_MAX_MODEL_CALL_MS || 60000)
+const FINALIZATION_TIMEOUT_MS = Number(process.env.ENNI_FINALIZATION_TIMEOUT_MS || 45000)
 const SEARCH_TOOL_LIMITS = {
   wiki_semantic_search: 3,
   wiki_search: 3,
@@ -280,11 +284,24 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
   let thinkingText = ''
   const narrative = [] // Zwischen-Texte vor Tool-Calls — gehören zu den Gedanken, nicht zur Antwort
   let finalText = ''
+  const turnStartedAt = Date.now()
+  let budgetReason = null
+
+  const elapsedMs = () => Date.now() - turnStartedAt
+  const callSignal = (timeoutMs) => {
+    const timeoutSignal = AbortSignal.timeout(timeoutMs)
+    return signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal
+  }
 
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
     if (signal?.aborted) { aborted = true; break }
+    if (elapsedMs() >= MAX_TURN_MS) {
+      budgetReason = `Zeitbudget von ${Math.round(MAX_TURN_MS / 1000)} Sekunden erreicht`
+      break
+    }
     setCacheBreakpoint(messages)
     const supportsThinking = !MODEL.startsWith('claude-haiku')
+    const modelSignal = callSignal(Math.min(MAX_MODEL_CALL_MS, Math.max(1000, MAX_TURN_MS - elapsedMs())))
     const stream = anthropic.messages.stream({
       model: MODEL,
       max_tokens: 16000,
@@ -292,7 +309,7 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
       ...(supportsThinking ? { thinking: { type: 'adaptive', display: 'summarized' } } : {}),
       tools: turnTools,
       messages,
-    }, signal ? { signal } : undefined)
+    }, { signal: modelSignal })
 
     // Text DIESER Iteration separat sammeln. Folgt danach ein Tool-Call, war es
     // Arbeits-Narrativ (→ Gedanken); war es die letzte Iteration, ist es die Antwort.
@@ -312,10 +329,17 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
       }
       response = await stream.finalMessage()
     } catch (err) {
-      // Vom Nutzer gestoppt: Teil-Text dieser Iteration wird zur (Teil-)Antwort
+      // Vom Nutzer gestoppt: Teil-Text dieser Iteration wird zur (Teil-)Antwort.
+      // Ein Modell-Timeout beendet dagegen nur die Recherche und wechselt in die
+      // schnelle Finalisierung — ein leerer oder halber Entwurf wird nie gespeichert.
       if (signal?.aborted) {
         aborted = true
         if (iterText.trim()) finalText = iterText
+        break
+      }
+      if (modelSignal.aborted) {
+        if (iterText.trim()) narrative.push(iterText.trim())
+        budgetReason = `Modellrunde nach ${Math.round(MAX_MODEL_CALL_MS / 1000)} Sekunden beendet`
         break
       }
       throw err
@@ -327,6 +351,17 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
 
     if (response.stop_reason === 'refusal') {
       emit({ type: 'error', message: 'Anfrage wurde aus Sicherheitsgründen abgelehnt.' })
+      break
+    }
+
+    if (response.stop_reason === 'max_tokens') {
+      if (iterText.trim()) narrative.push(iterText.trim())
+      budgetReason = 'Antwort wurde an der Token-Grenze abgeschnitten'
+      messages.push({ role: 'assistant', content: response.content })
+      messages.push({
+        role: 'user',
+        content: 'Die vorherige Ausgabe war unvollständig. Formuliere jetzt eine deutlich kürzere, vollständige Abschlussantwort ohne neue Recherche.',
+      })
       break
     }
 
@@ -350,7 +385,17 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
       const usedSearches = searchCounts.get(block.name) || 0
       let suppressed = false
       let result
-      if (searchLimit && usedSearches >= searchLimit) {
+      const toolBudgetReached = toolCalls.length >= MAX_TOOL_CALLS || elapsedMs() >= MAX_TURN_MS
+      if (toolBudgetReached) {
+        suppressed = true
+        budgetReason = toolCalls.length >= MAX_TOOL_CALLS
+          ? `Tool-Budget von ${MAX_TOOL_CALLS} Aufrufen erreicht`
+          : `Zeitbudget von ${Math.round(MAX_TURN_MS / 1000)} Sekunden erreicht`
+        result = {
+          content: `${budgetReason}. Nutze die bereits vorliegenden Ergebnisse und formuliere jetzt die Abschlussantwort.`,
+          isError: false,
+        }
+      } else if (searchLimit && usedSearches >= searchLimit) {
         suppressed = true
         result = {
           content:
@@ -379,7 +424,7 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
       // tatsächlich danach sichtbare Zustand. Der Read-back bleibt als eigener
       // Tool-Call im Audit-Trail erhalten.
       let toolResultContent = result.content
-      if (!result.isError && !suppressed) {
+      if (!result.isError && !suppressed && toolCalls.length < MAX_TOOL_CALLS && elapsedMs() < MAX_TURN_MS) {
         const readBack = notionReadBackPlan(block.name, block.input, turnTools, result.content)
         if (readBack) {
           emit({ type: 'tool_use', name: readBack.name, input: readBack.input })
@@ -413,39 +458,54 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
     }
     if (aborted) break
     messages.push({ role: 'user', content: toolResults })
+    if (budgetReason) break
   }
 
   // Ein komplexer Recherchefall kann die Tool-Iterationsgrenze exakt auf einem
   // Tool-Ergebnis erreichen. Dann darf Enni niemals leer antworten: ein letzter
   // Pass ohne Tools zwingt zur Synthese aus der bereits gesammelten Evidenz.
   if (!finalText.trim() && !aborted && messages.length) {
-    const finalResponse = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 6000,
-      system: [
-        ...systemBlocks,
-        {
-          type: 'text',
-          text:
-            '# Finalisierung\nDas Recherche- und Tool-Budget ist beendet. Rufe keine weiteren Tools auf. ' +
-            'Formuliere jetzt die bestmögliche direkte Antwort aus den vorhandenen Ergebnissen. ' +
-            'Benenne verbleibende Lücken ehrlich und halte explizite Längen-/Formatwünsche ein.',
-        },
-      ],
-      ...(MODEL.startsWith('claude-haiku') ? {} : { thinking: { type: 'adaptive', display: 'summarized' } }),
-      messages,
-    })
-    finalText = finalResponse.content.filter((block) => block.type === 'text').map((block) => block.text).join('\n')
-    const finalThinking = finalResponse.content
-      .filter((block) => block.type === 'thinking')
-      .map((block) => block.thinking || '')
-      .join('\n')
-    if (finalThinking) thinkingText += `\n${finalThinking}`
-    totalUsage.input_tokens += finalResponse.usage.input_tokens
-    totalUsage.output_tokens += finalResponse.usage.output_tokens
-    totalUsage.cache_creation_input_tokens += finalResponse.usage.cache_creation_input_tokens || 0
-    totalUsage.cache_read_input_tokens += finalResponse.usage.cache_read_input_tokens || 0
-    if (finalText) emit({ type: 'text_delta', text: finalText })
+    try {
+      const finalResponse = await anthropic.messages.create({
+        model: MODEL,
+        max_tokens: 5000,
+        system: [
+          ...systemBlocks,
+          {
+            type: 'text',
+            text:
+              '# Finalisierung\nDas Recherche- und Tool-Budget ist beendet. Rufe keine weiteren Tools auf und denke nicht weiter sichtbar nach. ' +
+              'Formuliere jetzt die bestmögliche direkte und in sich abgeschlossene Antwort aus den vorhandenen Ergebnissen. ' +
+              `${budgetReason ? `Grund für die Finalisierung: ${budgetReason}. ` : ''}` +
+              'Benenne verbleibende Lücken ehrlich und halte explizite Längen-/Formatwünsche ein.',
+          },
+        ],
+        messages,
+      }, { signal: callSignal(FINALIZATION_TIMEOUT_MS) })
+      finalText = finalResponse.content.filter((block) => block.type === 'text').map((block) => block.text).join('\n')
+      totalUsage.input_tokens += finalResponse.usage.input_tokens
+      totalUsage.output_tokens += finalResponse.usage.output_tokens
+      totalUsage.cache_creation_input_tokens += finalResponse.usage.cache_creation_input_tokens || 0
+      totalUsage.cache_read_input_tokens += finalResponse.usage.cache_read_input_tokens || 0
+      if (finalText) emit({ type: 'text_replace', text: finalText, reason: 'finalization' })
+    } catch (err) {
+      if (signal?.aborted) aborted = true
+      else console.error('Enni-Finalisierung fehlgeschlagen:', err.message)
+    }
+  }
+
+  // Defense in depth: Auch bei Provider-Timeout, leerem Modell-Output oder einer
+  // ausgeschöpften Token-Runde erhält der Nutzer immer einen sichtbaren Abschluss.
+  if (!finalText.trim() && !aborted) {
+    const lastUserText = [...history].reverse().find((message) => message.role === 'user')?.content || ''
+    const rawText = typeof lastUserText === 'string'
+      ? lastUserText
+      : (lastUserText || []).filter((block) => block.type === 'text').map((block) => block.text).join(' ')
+    const german = /\b(ich|du|wir|bitte|und|der|die|das|kann|soll|möchte)\b|[äöüß]/i.test(rawText)
+    finalText = german
+      ? `Ich konnte diesen Arbeitslauf nicht zuverlässig abschließen${budgetReason ? ` (${budgetReason})` : ''}. Die bis dahin ausgeführten Tool-Schritte bleiben protokolliert; es wurde aber keine vollständige Abschlussantwort erzeugt. Bitte sende den noch offenen Teil als kleineren, klar abgegrenzten Auftrag erneut.`
+      : `I could not complete this run reliably${budgetReason ? ` (${budgetReason})` : ''}. The tool steps completed so far remain recorded, but no complete final answer was produced. Please resend the remaining part as a smaller, clearly scoped task.`
+    emit({ type: 'text_replace', text: finalText, reason: 'empty_response_fallback' })
   }
 
   // Ein Modelltext darf niemals eine Wiki-Freigabe behaupten, wenn der dafür

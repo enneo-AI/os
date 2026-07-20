@@ -21,6 +21,62 @@ let costByMessage = {}
 let currentMessageRows = []
 let activeThreadRootId = null
 let threadLoadSeq = 0
+let mountedMainDraftKey = null
+let mountedThreadDraftKey = null
+
+const DRAFT_PREFIX = 'enneo:draft:v1'
+function draftStorageKey(kind, ...parts) {
+  const userId = session?.user?.id || 'anonymous'
+  return [DRAFT_PREFIX, userId, kind, ...parts.filter(Boolean)].join(':')
+}
+function currentMainDraftKey() {
+  if (currentConv?.id) return draftStorageKey('chat', currentConv.id)
+  return draftStorageKey('chat', convPod?.id ? `new-pod-${convPod.id}` : 'new-private')
+}
+function currentThreadDraftKey(rootId = activeThreadRootId) {
+  return rootId && currentConv?.id ? draftStorageKey('thread', currentConv.id, rootId) : null
+}
+function writeDraft(key, value) {
+  if (!key) return
+  try {
+    if (value) localStorage.setItem(key, value)
+    else localStorage.removeItem(key)
+  } catch { /* Private Browsing / Storage-Quota darf den Chat nie blockieren. */ }
+}
+function readDraft(key) {
+  try { return key ? localStorage.getItem(key) || '' : '' } catch { return '' }
+}
+function clearDraftIfMatches(key, sentText) {
+  if (!key) return
+  try {
+    if (localStorage.getItem(key) === sentText) localStorage.removeItem(key)
+  } catch { /* siehe writeDraft */ }
+}
+function saveMainDraft() {
+  writeDraft(mountedMainDraftKey || currentMainDraftKey(), $('composer-input')?.value || '')
+}
+function restoreMainDraft() {
+  mountedMainDraftKey = currentMainDraftKey()
+  const input = $('composer-input')
+  if (!input) return
+  input.value = readDraft(mountedMainDraftKey)
+  autosize()
+}
+function saveThreadDraft() {
+  writeDraft(mountedThreadDraftKey || currentThreadDraftKey(), $('thread-input')?.value || '')
+}
+function restoreThreadDraft(rootId = activeThreadRootId) {
+  mountedThreadDraftKey = currentThreadDraftKey(rootId)
+  const input = $('thread-input')
+  if (!input) return
+  input.value = readDraft(mountedThreadDraftKey)
+  autosizeEl(input)
+  updateMentionBacks()
+}
+window.addEventListener('pagehide', () => {
+  saveMainDraft()
+  saveThreadDraft()
+})
 
 // Multi-Sessions: Streams laufen pro Konversation weiter, auch wenn man wegnavigiert.
 // viewSeq erhöht sich bei jedem Ansichts-Wechsel — Hintergrund-Streams prüfen damit,
@@ -1189,6 +1245,7 @@ function renameConv(btn, c) {
 }
 
 function newConversation() {
+  saveMainDraft()
   closeThread(false)
   currentConv = null
   mountPromptQueue(null)
@@ -1208,15 +1265,18 @@ function newConversation() {
   ctxTokens = 0
   renderCtx()
   activateChatView()
+  restoreMainDraft()
   $('composer-input').focus()
 }
 $('new-chat').addEventListener('click', () => {
+  saveMainDraft()
   convPod = null
   newConversation()
 })
 
 async function openConversation(c) {
   const requestedThread = new URLSearchParams(location.search).get('thread')
+  saveMainDraft()
   closeThread(false)
   currentConv = c
   viewSeq++
@@ -1229,6 +1289,7 @@ async function openConversation(c) {
   $('chat-title').textContent = (convPod ? `${convPod.name} · ` : '') + (c.title || 'Ohne Titel')
   updateMobileTitle()
   activateChatView()
+  restoreMainDraft()
   markConversationRead(c.id).then(() => {
     loadConversations()
     if (c.pod_id) loadPods()
@@ -1434,7 +1495,9 @@ function decorateThreadRoot(node, message, replies = []) {
 
 async function openThread(rootId) {
   if (!currentConv?.id || !convPod) return
+  saveThreadDraft()
   activeThreadRootId = rootId
+  restoreThreadDraft(rootId)
   const seq = ++threadLoadSeq
   const panel = $('thread-panel')
   panel.classList.add('open')
@@ -1485,7 +1548,9 @@ async function openThread(rootId) {
 }
 
 function closeThread(updateUrl = true) {
+  saveThreadDraft()
   activeThreadRootId = null
+  mountedThreadDraftKey = null
   threadLoadSeq++
   threadPendingFiles = []
   renderThreadChips()
@@ -1751,14 +1816,17 @@ function renderAgent(text, thinking, toolCalls, cost, durationMs) {
     wrap.appendChild(think)
   }
 
+  const visibleText = text?.trim() || ((thinking || toolCalls.length)
+    ? 'Dieser Arbeitslauf wurde ohne vollständige Abschlussantwort beendet. Bitte sende den noch offenen Teil erneut.'
+    : '')
   const body = document.createElement('div')
   body.className = 'body'
-  body.innerHTML = md(text)
+  body.innerHTML = md(visibleText)
   enhanceCode(body)
   renderFileCards(body)
   wrap.appendChild(body)
 
-  if (text) wrap.appendChild(agentMeta(() => text, cost))
+  if (visibleText) wrap.appendChild(agentMeta(() => visibleText, cost))
   renderWriteCards(wrap, toolCalls)
   renderConnectCards(wrap, toolCalls)
   return wrap
@@ -4418,7 +4486,10 @@ function autosize() {
   autosizeEl($('composer-input'))
   updateMentionBacks()
 }
-$('composer-input').addEventListener('input', autosize)
+$('composer-input').addEventListener('input', () => {
+  autosize()
+  saveMainDraft()
+})
 $('composer-input').addEventListener('scroll', () => updateMentionBacks())
 
 // ============================================================ Mention-Tags im Composer
@@ -4710,7 +4781,8 @@ document.addEventListener('click', (e) => {
 async function send() {
   if (finishDictationBeforeSubmit()) return
   const input = $('composer-input')
-  const text = input.value.trim()
+  const rawDraft = input.value
+  const text = rawDraft.trim()
   if (!text && !pendingFiles.length) return
   if (compacting) return
   // Enni arbeitet hier gerade -> Nachricht queuen statt blocken (Prompt-Warteschlange)
@@ -4718,6 +4790,8 @@ async function send() {
   if (busyHere && currentConv) { enqueuePrompt(currentConv.id, text); return }
   if (busyHere) return
   if (ctxPct() >= 80) { renderCtx(); return } // Pflicht-Kompaktierung (Dust: 80%)
+  const sentDraftKey = mountedMainDraftKey || currentMainDraftKey()
+  let draftAccepted = false
   input.value = ''
   autosize()
   // Multi-Session: dieser Stream gehört zu DIESER Ansicht — wechselt der Nutzer weg,
@@ -4848,6 +4922,8 @@ async function send() {
         const ev = JSON.parse(part.slice(6))
 
         if (ev.type === 'conversation') {
+          draftAccepted = true
+          clearDraftIfMatches(sentDraftKey, rawDraft)
           if (!streamConvId) {
             streamConvId = ev.conversation_id
             activeStreams.add(streamConvId)
@@ -4855,6 +4931,7 @@ async function send() {
           }
           if (inView() && !currentConv) {
             currentConv = { id: ev.conversation_id, title: text.slice(0, 80), pod_id: convPod?.id || null }
+            mountedMainDraftKey = currentMainDraftKey()
             $('chat-close').hidden = false
             updateComposerState() // Konversations-ID da → Send-Button wird zum Stop-Button
             if (pendingTaskId) {
@@ -4969,6 +5046,11 @@ async function send() {
       ? 'Verbindung zu Enni unterbrochen. Bitte sende die Nachricht erneut.'
       : `Fehler: ${err.message}`
     ;(body || box).insertAdjacentHTML('beforeend', `<p style="color:var(--high)">${esc(message)}</p>`)
+    if (!draftAccepted && !input.value) {
+      input.value = rawDraft
+      writeDraft(sentDraftKey, rawDraft)
+      autosize()
+    }
   }
 
   clearInterval(statusTimer)
@@ -5030,12 +5112,15 @@ async function sendThreadReply() {
   if (finishDictationBeforeSubmit()) return
   const rootId = activeThreadRootId
   const input = $('thread-input')
-  const text = input.value.trim()
+  const rawDraft = input.value
+  const text = rawDraft.trim()
   if (!rootId || !currentConv?.id || (!text && !threadPendingFiles.length)) return
   if (activeStreams.has(currentConv.id) || currentConv.working) {
     $('thread-hint').textContent = 'Enni arbeitet gerade in dieser Konversation. Bitte kurz warten.'
     return
   }
+  const sentDraftKey = mountedThreadDraftKey || currentThreadDraftKey(rootId)
+  let draftAccepted = false
   input.value = ''
   autosizeEl(input)
   updateMentionBacks()
@@ -5062,7 +5147,7 @@ async function sendThreadReply() {
   try {
     const response = await fetch(`${BACKEND_URL}/api/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}`, 'X-Enneo-Client-Version': APP_ASSET_VERSION },
       body: JSON.stringify({
         conversation_id: currentConv.id,
         thread_root_id: rootId,
@@ -5084,7 +5169,12 @@ async function sendThreadReply() {
       for (const part of parts) {
         if (!part.startsWith('data: ')) continue
         const event = JSON.parse(part.slice(6))
-        if (event.type === 'thread_context') {
+        if (event.type === 'conversation') {
+          draftAccepted = true
+          clearDraftIfMatches(sentDraftKey, rawDraft)
+        } else if (event.type === 'thread_context') {
+          draftAccepted = true
+          clearDraftIfMatches(sentDraftKey, rawDraft)
           replyExpected = !!event.reply_expected
           enniActive = !!event.enni_active
           if (replyExpected) {
@@ -5116,6 +5206,12 @@ async function sendThreadReply() {
     const body = pending?.querySelector('.body')
     if (body) body.innerHTML = `<p style="color:var(--high)">${esc(error.message)}</p>`
     $('thread-hint').textContent = 'Die Antwort wurde nicht vollständig verarbeitet.'
+    reportClientError(error, 'thread_stream', { conversation_id: currentConv?.id, thread_root_id: rootId }).catch(() => {})
+    if (!draftAccepted && !input.value) {
+      input.value = rawDraft
+      writeDraft(sentDraftKey, rawDraft)
+      autosizeEl(input)
+    }
   } finally {
     activeStreams.delete(currentConv.id)
     currentConv.working = false
@@ -5140,6 +5236,7 @@ $('thread-input').addEventListener('keydown', (event) => {
 $('thread-input').addEventListener('input', () => {
   autosizeEl($('thread-input'))
   updateMentionBacks()
+  saveThreadDraft()
 })
 $('thread-input').addEventListener('scroll', () => updateMentionBacks())
 

@@ -643,13 +643,18 @@ app.post('/api/chat', async (req, res) => {
     }
     const durationMs = Date.now() - turnStarted
 
-    // Assistant-Message inkl. Gedankenkette + Tool-Calls persistieren
+    // Assistant-Message inkl. Gedankenkette + Tool-Calls persistieren. Selbst wenn
+    // ein Provider künftig wider Erwarten leer zurückkommt, landet nie wieder eine
+    // leere Enni-Nachricht im Verlauf.
+    const persistedAssistantText = result.text?.trim() || (result.aborted
+      ? '_Gestoppt._'
+      : 'Dieser Arbeitslauf wurde ohne vollständige Abschlussantwort beendet. Bitte sende den noch offenen Teil erneut.')
     const { data: msg } = await db
       .from('messages')
       .insert({
         conversation_id: convId,
         role: 'assistant',
-        content: result.text || (result.aborted ? '_Gestoppt._' : ''),
+        content: persistedAssistantText,
         thinking: result.thinking || null,
         tool_calls: result.toolCalls.length ? result.toolCalls : null,
         duration_ms: durationMs,
