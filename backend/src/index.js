@@ -382,6 +382,16 @@ app.post('/api/chat', async (req, res) => {
   const user = await getUserFromRequest(req)
   if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
 
+  const clientVersion = String(req.get('x-enneo-client-version') || '').slice(0, 120)
+  if (!clientVersion) {
+    // Tabs von vor dem Release-Guard funktionieren weiterhin, werden aber sichtbar:
+    // So lässt sich ein Alt-Client künftig eindeutig von einem aktuellen UI-Bug trennen.
+    logAudit(user.id, 'client.legacy_chat', 'frontend', null, {
+      path: '/api/chat',
+      user_agent: String(req.get('user-agent') || '').slice(0, 300),
+    }).catch(() => {})
+  }
+
   const { conversation_id, message, model, attachments, thread_root_id } = req.body || {}
   if (!message?.trim() && !attachments?.length) return res.status(400).json({ error: 'message fehlt' })
   if (model && !ALLOWED_MODELS.includes(model)) return res.status(400).json({ error: 'Unbekanntes Modell' })
@@ -707,6 +717,21 @@ app.post('/api/chat', async (req, res) => {
   }
   progress.close()
   res.end()
+})
+
+app.post('/api/client-errors', async (req, res) => {
+  const user = await getUserFromRequest(req)
+  if (!user) return res.status(401).json({ error: 'Nicht eingeloggt' })
+  const payload = req.body || {}
+  await logAudit(user.id, 'client.error', 'frontend', payload.conversation_id || null, {
+    client_version: String(payload.client_version || req.get('x-enneo-client-version') || '').slice(0, 120),
+    context: String(payload.context || '').slice(0, 120),
+    message: String(payload.message || '').slice(0, 1000),
+    stack: String(payload.stack || '').slice(0, 6000),
+    path: String(payload.path || '').slice(0, 500),
+    user_agent: String(req.get('user-agent') || '').slice(0, 300),
+  })
+  res.status(204).end()
 })
 
 // Kontext komprimieren (Dust-Muster): Zusammenfassung als compaction-Message einfügen

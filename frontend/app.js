@@ -64,6 +64,27 @@ async function stopTurn() {
   btn.disabled = false
 }
 
+async function reportClientError(error, context, details = {}) {
+  try {
+    await fetch(`${BACKEND_URL}/api/client-errors`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${await token()}`,
+        'X-Enneo-Client-Version': APP_ASSET_VERSION,
+      },
+      body: JSON.stringify({
+        client_version: APP_ASSET_VERSION,
+        context,
+        message: error?.message || String(error),
+        stack: error?.stack || '',
+        path: location.pathname + location.search,
+        ...details,
+      }),
+    })
+  } catch { /* Fehlertelemetrie darf den eigentlichen Flow nie weiter stören. */ }
+}
+
 // Auto-Scroll nur, wenn der Nutzer ohnehin unten ist — Hochscrollen während des
 // Streamens unterbricht das Mitführen, statt dagegen anzukämpfen.
 function followIfNearBottom() {
@@ -4943,6 +4964,7 @@ async function send() {
     }
   } catch (err) {
     runIndicator?.remove()
+    reportClientError(err, 'chat_stream', { conversation_id: streamConvId }).catch(() => {})
     const message = err instanceof TypeError
       ? 'Verbindung zu Enni unterbrochen. Bitte sende die Nachricht erneut.'
       : `Fehler: ${err.message}`

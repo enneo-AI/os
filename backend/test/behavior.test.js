@@ -423,6 +423,9 @@ test('Pod conversations use real threads and keep Enni active selectively', () =
   assert.match(frontendSource, /let threadPendingFiles = \[\]/)
   assert.match(frontendSource, /startDictation\(\$\('thread-mic-btn'\), \$\('thread-input'\)\)/)
   assert.match(frontendSource, /attachments: attachments\.length \? attachments : undefined/)
+  assert.match(frontendSource, /reportClientError\(err, 'chat_stream'/)
+  assert.match(indexSource, /app\.post\('\/api\/client-errors'/)
+  assert.match(indexSource, /client\.legacy_chat/)
 })
 
 test('Pod notes and meeting transcripts are member-scoped and available to Enni on demand', () => {
