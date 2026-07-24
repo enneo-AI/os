@@ -48,6 +48,22 @@ test('system prompt keeps the decision and anti-generic quality gates', () => {
   assert.match(source, /autoSkillsPromptBlock/)
 })
 
+test('email drafts render as isolated copyable blocks', () => {
+  const agentSource = readFileSync(join(here, '../src/agent.js'), 'utf8')
+  const frontendSource = readFileSync(join(here, '../../frontend/app.js'), 'utf8')
+  const frontendHtml = readFileSync(join(here, '../../frontend/index.html'), 'utf8')
+
+  assert.match(agentSource, /E-MAIL-ENTWÜRFE/)
+  assert.match(agentSource, /Sprachkennung "email"/)
+  assert.match(frontendSource, /function enhanceEmailDrafts/)
+  assert.match(frontendSource, /code\.language-email/)
+  assert.match(frontendSource, /Nur den E-Mail-Entwurf kopieren/)
+  assert.match(frontendSource, /überarbeiteter\|optimierter\|finaler/)
+  assert.match(frontendSource, /enhanceEmailDrafts\(body\)/)
+  assert.match(frontendHtml, /\.email-draft-content/)
+  assert.match(frontendHtml, /20260724-email-draft-copy/)
+})
+
 test('Enni loads a durable map of her own repository and production architecture', () => {
   const block = selfContextPromptBlock()
   const agentSource = readFileSync(join(here, '../src/agent.js'), 'utf8')
@@ -418,7 +434,7 @@ test('Pod conversations use real threads and keep Enni active selectively', () =
   assert.match(frontendSource, /node\.parentNode\.insertBefore\(outer, node\)/)
   assert.doesNotMatch(frontendSource, /function promoteConnectedMessageToThreadRoot/)
   assert.doesNotMatch(frontendSource, /optimisticNode\.replaceWith\(decorated\)/)
-  assert.match(frontendHtml, /app\.js\?v=20260720-durable-live-runs/)
+  assert.match(frontendHtml, /app\.js\?v=20260724-email-draft-copy/)
   assert.match(frontendSource, /function checkForAppUpdate/)
   assert.match(frontendSource, /'X-Enneo-Client-Version': APP_ASSET_VERSION/)
   assert.match(frontendSource, /async function sendThreadReply/)

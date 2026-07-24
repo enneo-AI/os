@@ -1621,6 +1621,85 @@ async function copyText(text) {
 const COPY_ICON = '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'
 const CHECK_ICON = '<svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>'
 
+function emailCopyButton(getText) {
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = 'email-copy'
+  button.title = 'Nur E-Mail kopieren'
+  button.setAttribute('aria-label', 'Nur den E-Mail-Entwurf kopieren')
+  button.innerHTML = COPY_ICON
+  button.addEventListener('click', async () => {
+    if (!(await copyText(getText()))) return
+    button.classList.add('done')
+    button.innerHTML = CHECK_ICON
+    button.title = 'E-Mail kopiert'
+    setTimeout(() => {
+      button.classList.remove('done')
+      button.innerHTML = COPY_ICON
+      button.title = 'Nur E-Mail kopieren'
+    }, 1600)
+  })
+  return button
+}
+
+function emailDraftBlock(content, plainText = '') {
+  const block = document.createElement('section')
+  block.className = 'email-draft'
+  block.setAttribute('aria-label', 'E-Mail-Entwurf')
+  const head = document.createElement('div')
+  head.className = 'email-draft-head'
+  head.innerHTML = '<span class="email-draft-label"><span aria-hidden="true">@</span>E-Mail-Entwurf</span>'
+  const body = document.createElement('div')
+  body.className = 'email-draft-content'
+  if (typeof content === 'string') {
+    body.textContent = content.trim()
+  } else {
+    content.forEach((node) => body.appendChild(node.cloneNode(true)))
+  }
+  const getText = () => (plainText || [...body.children]
+    .map((node) => node.innerText.trim())
+    .filter(Boolean)
+    .join('\n\n') || body.innerText).trim()
+  head.appendChild(emailCopyButton(getText))
+  block.append(head, body)
+  return block
+}
+
+// Neue Antworten verwenden ```email```. Für bereits gespeicherte Antworten
+// erkennen wir zusätzlich den bisherigen "Überarbeiteter Vorschlag"-Aufbau,
+// sofern eine echte Grußformel das Ende des Entwurfs eindeutig markiert.
+function enhanceEmailDrafts(container) {
+  container.querySelectorAll('pre > code.language-email').forEach((code) => {
+    const pre = code.parentElement
+    if (!pre || pre.closest('.email-draft')) return
+    pre.replaceWith(emailDraftBlock(code.textContent))
+  })
+
+  const headingPattern = /^(?:überarbeiteter|optimierter|finaler)\s+(?:e-?mail-?)?vorschlag:?$|^(?:e-?mail|mail)[- ]entwurf:?$/i
+  const signoffPattern = /^(?:liebe|viele|beste|freundliche|herzliche)\s+grüße\b|^mit freundlichen grüßen\b|^(?:best|kind|warm)\s+regards\b/i
+  const headings = [...container.querySelectorAll('h1,h2,h3,h4,p')]
+  headings.forEach((heading) => {
+    const title = heading.textContent.trim()
+    if (!headingPattern.test(title) || heading.closest('.email-draft')) return
+    const nodes = []
+    let cursor = heading.nextElementSibling
+    let foundSignoff = false
+    while (cursor && cursor.matches('p,blockquote')) {
+      nodes.push(cursor)
+      if (signoffPattern.test(cursor.textContent.trim())) {
+        foundSignoff = true
+        break
+      }
+      cursor = cursor.nextElementSibling
+    }
+    if (!foundSignoff || nodes.length < 2) return
+    const block = emailDraftBlock(nodes)
+    heading.before(block)
+    heading.remove()
+    nodes.forEach((node) => node.remove())
+  })
+}
+
 // Meta-Zeile unter einer Enni-Antwort: Copy (nur die Antwort, nicht die Gedanken) + Kosten
 function agentMeta(getText, cost) {
   const meta = document.createElement('div')
@@ -1832,6 +1911,7 @@ function renderAgent(text, thinking, toolCalls, cost, durationMs) {
   const body = document.createElement('div')
   body.className = 'body'
   body.innerHTML = md(visibleText)
+  enhanceEmailDrafts(body)
   enhanceCode(body)
   renderFileCards(body)
   wrap.appendChild(body)
@@ -5031,6 +5111,7 @@ async function send() {
             body.innerHTML = md(answerText) // Cursor entfernen — Antwort ist final
             if (ev.stopped && !answerText.trim()) body.innerHTML = '<p><em>Gestoppt.</em></p>'
             runIndicator.remove()
+            enhanceEmailDrafts(body)
             enhanceCode(body)
             renderFileCards(body)
             thinkBody.insertAdjacentHTML('beforeend', `<div class="think-done">${ev.stopped ? '⏹ Gestoppt' : '✓ Fertig'}</div>`)

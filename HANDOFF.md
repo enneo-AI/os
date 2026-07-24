@@ -1,6 +1,12 @@
 # HANDOFF — Stand & nächste Schritte
 
-**Zuletzt aktualisiert:** 2026-07-20 (Chat-Zuverlässigkeit und persistenter Live-Fortschritt produktiv)
+**Zuletzt aktualisiert:** 2026-07-24 (E-Mail-Entwürfe als separat kopierbare Textblöcke)
+
+### Session 2026-07-24 — E-Mail-Entwürfe separat kopierbar
+
+- **Nur den eigentlichen Entwurf kopieren:** Vollständige E-Mail-Texte werden als eigene ruhige `E-Mail-Entwurf`-Karte dargestellt. Das permanent sichtbare Copy-Icon der Karte kopiert ausschließlich Anrede, Mailtext und Grußformel; Analyse, Korrekturhinweise und Rückfragen außerhalb der Karte bleiben bewusst draußen.
+- **Verbindliches Ausgabeformat + Bestandskompatibilität:** Der Agenten-Prompt verlangt für neue Mailentwürfe einen Markdown-Block mit Sprachkennung `email`. Der Frontend-Renderer wandelt ihn semantisch in die Karte um. Bereits gespeicherte Antworten im bisherigen Muster `Überarbeiteter Vorschlag` werden ebenfalls erkannt, sofern eine Grußformel das Ende eindeutig markiert.
+- **Verifikation:** JavaScript-Syntaxchecks und Backend-Regressionstests 30/30 grün. Visueller Chromium-Smoke bestätigte die 585 px breite Karte ohne horizontalen Overflow; der Clipboard-Test kopierte exakt die 223 Zeichen des Mailtexts und keinen umgebenden Hinweis.
 
 ### Session 2026-07-20 — Chat-Zuverlässigkeit + persistenter Live-Fortschritt
 
