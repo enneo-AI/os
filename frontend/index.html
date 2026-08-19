@@ -1095,6 +1095,11 @@
   .library-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;padding:0 2px 22px;border-bottom:1px solid var(--hair)}
   .library-head h2{margin:0;font-size:28px;font-weight:650;letter-spacing:-.035em;line-height:1.1}
   .library-head p{margin:7px 0 0;color:var(--ink-3);font-size:12.5px}
+  /* Erklär-Tooltips auf Seiten-Headern: kleines (i), Hover/Fokus zeigt die Funktion der Seite */
+  .head-info{position:relative;display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:50%;border:1px solid var(--hair);color:var(--ink-3);font-size:10.5px;font-weight:650;letter-spacing:0;cursor:help;flex:none;vertical-align:middle;margin-left:4px;font-family:var(--mono)}
+  .head-info:hover,.head-info:focus-visible{color:var(--ink);border-color:var(--ink-3);outline:0}
+  .head-info::after{content:attr(data-tip);position:absolute;top:calc(100% + 9px);left:-9px;width:max-content;max-width:290px;padding:10px 13px;border-radius:12px;background:var(--glass-strong);-webkit-backdrop-filter:blur(22px) saturate(1.4);backdrop-filter:blur(22px) saturate(1.4);border:1px solid var(--edge);box-shadow:var(--shadow);color:var(--ink-2);font-size:11.5px;font-weight:450;line-height:1.55;text-align:left;white-space:normal;letter-spacing:0;font-family:var(--sans);opacity:0;pointer-events:none;transform:translateY(-4px);transition:opacity .18s ease,transform .18s ease;z-index:80}
+  .head-info:hover::after,.head-info:focus-visible::after{opacity:1;transform:translateY(0)}
   .library-actions{display:flex;align-items:center;gap:5px;flex:none}
   .icon-action{width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:11px;background:transparent;color:var(--ink-3);transition:background .16s,border-color .16s,color .16s,transform .16s}
   .icon-action:hover{border-color:var(--hair);background:var(--surface-2);color:var(--ink);transform:translateY(-1px)}
@@ -1594,6 +1599,7 @@
               <div class="sub" id="pod-sub">Gemeinsamer Kontext für alle Mitglieder</div>
             </div>
           </div>
+          <span class="head-info" tabindex="0" role="note" aria-label="Ein Pod ist ein Projekt-Raum: Team-Chat (Enni antwortet bei @enni), Aufgaben, Dateien und Notizen. Inhalte sehen nur beigetretene Mitglieder." data-tip="Ein Pod ist ein Projekt-Raum: Team-Chat (Enni antwortet bei @enni), Aufgaben, Dateien und Notizen. Inhalte sehen nur beigetretene Mitglieder.">i</span>
         </div>
         <div class="pod-access-gate" id="pod-access-gate" hidden>
           <h3>Diesem Pod beitreten</h3>
@@ -1845,6 +1851,7 @@
         <header class="space-head">
           <div class="space-identity"><span class="space-mark"><svg viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.2 3.9A2 2 0 0 0 7.5 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></svg></span><div class="space-head-copy"><h2 id="sh-title">Space</h2><div class="space-head-meta"><span class="access-badge" id="sh-access">Open</span><span id="sh-sub"></span></div></div></div>
           <div class="space-actions">
+            <span class="head-info" tabindex="0" role="note" aria-label="Ein Space bündelt Wissen und App-Verbindungen mit gleicher Reichweite. Open = alle Accounts, Restricted = nur eingeladene Mitglieder. Enni nutzt in Antworten nur, was deine Spaces freigeben." data-tip="Ein Space bündelt Wissen und App-Verbindungen mit gleicher Reichweite. Open = alle Accounts, Restricted = nur eingeladene Mitglieder. Enni nutzt in Antworten nur, was deine Spaces freigeben.">i</span>
             <button class="icon-action" id="sh-members-manage" hidden aria-label="Mitglieder verwalten" title="Mitglieder verwalten"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3.5 19v-1.5A4.5 4.5 0 0 1 8 13h2a4.5 4.5 0 0 1 4.5 4.5V19"/><path d="M16 8h5M18.5 5.5v5"/></svg></button>
             <button class="icon-action" id="sh-import-markdown" aria-label="Markdown-Dateien importieren" title="Markdown-Dateien importieren"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 15h8M12 11v8"/></svg></button>
             <button class="icon-action" id="sh-import-url" aria-label="URL importieren" title="URL importieren"><svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg></button>
@@ -1902,7 +1909,7 @@
     <!-- CONNECTORS -->
     <section class="view" id="v-marketplace">
       <div class="library-shell">
-        <header class="library-head"><div><h2>Marketplace</h2><p>Apps verbinden. Zugriff regelst du im Space.</p></div><div class="library-actions"><button type="button" class="icon-action" id="tool-research-open" aria-label="Tool anfragen" title="Tool anfragen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18"/></svg></button><button type="button" class="icon-action primary" data-category="tool" aria-label="MCP verbinden" title="MCP verbinden"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7 3 12l5 5M16 7l5 5-5 5M10 19l4-14"/></svg></button></div></header>
+        <header class="library-head"><div><h2>Marketplace <span class="head-info" tabindex="0" role="note" aria-label="Hier verbindest du Apps mit deinem eigenen Zugang. Eine Verbindung wird erst nutzbar, wenn du sie in einem Space aktivierst: Open Space = ganzes Team, Restricted = nur Mitglieder." data-tip="Hier verbindest du Apps mit deinem eigenen Zugang. Eine Verbindung wird erst nutzbar, wenn du sie in einem Space aktivierst: Open Space = ganzes Team, Restricted = nur Mitglieder.">i</span></h2><p>Apps verbinden. Zugriff regelst du im Space.</p></div><div class="library-actions"><button type="button" class="icon-action" id="tool-research-open" aria-label="Tool anfragen" title="Tool anfragen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18"/></svg></button><button type="button" class="icon-action primary" data-category="tool" aria-label="MCP verbinden" title="MCP verbinden"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7 3 12l5 5M16 7l5 5-5 5M10 19l4-14"/></svg></button></div></header>
         <div class="library-toolbar"><label class="library-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input type="search" name="marketplace-search" autocomplete="off" class="wiki-search" id="marketplace-search" aria-label="Apps durchsuchen" placeholder="Apps durchsuchen …"></label><div class="scope-filter" id="marketplace-filter"><button type="button" class="on" data-market-filter="all">Alle</button><button type="button" data-market-filter="read_write">Read &amp; Write</button><button type="button" data-market-filter="read_only">Read-only</button></div></div>
         <div class="oauth-result" id="oauth-result" role="status" aria-live="polite" hidden></div>
         <div class="research-activity" id="tool-research-activity"></div>
@@ -1918,6 +1925,7 @@
           <button class="crow" id="google_drive-row"><span class="c-logo"><img src="/icons/google-drive.svg" alt=""></span><div><div class="c-name">Google Drive</div><div class="c-sub" id="google_drive-sub">Dokumente und Ordner</div></div><span class="c-right off" id="google_drive-status">Verbinden</span></button>
           <button class="crow" id="buchhaltungsbutler-row"><span class="c-logo"><img src="/icons/buchhaltungsbutler.ico" alt=""></span><div><div class="c-name">BuchhaltungsButler</div><div class="c-sub" id="buchhaltungsbutler-sub">Rechnungen, Buchungen und Kontoumsätze</div></div><span class="c-right off" id="buchhaltungsbutler-status">Verbinden</span></button>
           <button class="crow" id="partnerportal-row"><span class="c-logo"><img src="/icons/enneo-icon.svg" alt=""></span><div><div class="c-name">Partnerportal</div><div class="c-sub" id="partnerportal-sub">Partner, Deals, Angebote und Abrechnung</div></div><span class="c-right off" id="partnerportal-status">Verbinden</span></button>
+          <button class="crow" id="beehiiv-row"><span class="c-logo"><img src="/icons/beehiiv.png" alt=""></span><div><div class="c-name">beehiiv</div><div class="c-sub" id="beehiiv-sub">Newsletter-Posts und Engagement-Stats</div></div><span class="c-right off" id="beehiiv-status">Verbinden</span></button>
           <div id="researched-read-only" style="display:contents"></div>
         </div></section>
         <section class="market-section" id="mcp-connections-section"><div class="market-section-head"><h3>Eigene MCPs</h3><span>verbundene Accounts</span></div><div class="asset-grid" id="dyn-tools"></div></section>
@@ -1926,12 +1934,12 @@
 
     <!-- SKILLS -->
     <section class="view" id="v-skills">
-      <div class="library-shell"><header class="library-head"><div><h2>Skills</h2><p>Playbooks für Ennis Arbeitsweise.</p></div><button type="button" class="icon-action primary" id="skill-add" hidden aria-label="Neuer Skill" title="Neuer Skill"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></header><div class="library-toolbar"><label class="library-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input type="search" name="skill-search" autocomplete="off" class="wiki-search" id="skill-search" aria-label="Skills durchsuchen" placeholder="Skills durchsuchen …"></label><div class="scope-filter" id="skill-access-filter"><button type="button" class="on" data-access="all">Alle</button><button type="button" data-access="open">Open</button><button type="button" data-access="restricted">Restricted</button></div></div><div class="asset-grid" id="skill-list"></div></div>
+      <div class="library-shell"><header class="library-head"><div><h2>Skills <span class="head-info" tabindex="0" role="note" aria-label="Skills sind Playbooks für Enni: Workflow, verbindliche Quellen und Definition of Done für wiederkehrende Aufgaben. Start per /slash-Befehl, oder Enni erkennt sie automatisch." data-tip="Skills sind Playbooks für Enni: Workflow, verbindliche Quellen und Definition of Done für wiederkehrende Aufgaben. Start per /slash-Befehl, oder Enni erkennt sie automatisch.">i</span></h2><p>Playbooks für Ennis Arbeitsweise.</p></div><button type="button" class="icon-action primary" id="skill-add" hidden aria-label="Neuer Skill" title="Neuer Skill"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></header><div class="library-toolbar"><label class="library-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input type="search" name="skill-search" autocomplete="off" class="wiki-search" id="skill-search" aria-label="Skills durchsuchen" placeholder="Skills durchsuchen …"></label><div class="scope-filter" id="skill-access-filter"><button type="button" class="on" data-access="all">Alle</button><button type="button" data-access="open">Open</button><button type="button" data-access="restricted">Restricted</button></div></div><div class="asset-grid" id="skill-list"></div></div>
     </section>
 
     <!-- ROUTINEN -->
     <section class="view" id="v-routines">
-      <div class="library-shell"><header class="library-head"><div><h2>Routinen</h2><p>Wiederkehrende Aufgaben für Enni.</p></div><button type="button" class="icon-action primary" id="routine-add" aria-label="Neue Routine" title="Neue Routine"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></header><div class="library-toolbar"><div class="scope-filter" id="routine-access-filter"><button type="button" class="on" data-access="all">Alle</button><button type="button" data-access="open">Open</button><button type="button" data-access="restricted">Restricted</button></div></div><div class="asset-grid" id="routine-list"></div></div>
+      <div class="library-shell"><header class="library-head"><div><h2>Routinen <span class="head-info" tabindex="0" role="note" aria-label="Routinen sind Enni-Aufträge nach Zeitplan. Jeder Lauf erscheint als eigene Konversation." data-tip="Routinen sind Enni-Aufträge nach Zeitplan. Jeder Lauf erscheint als eigene Konversation.">i</span></h2><p>Wiederkehrende Aufgaben für Enni.</p></div><button type="button" class="icon-action primary" id="routine-add" aria-label="Neue Routine" title="Neue Routine"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></header><div class="library-toolbar"><div class="scope-filter" id="routine-access-filter"><button type="button" class="on" data-access="all">Alle</button><button type="button" data-access="open">Open</button><button type="button" data-access="restricted">Restricted</button></div></div><div class="asset-grid" id="routine-list"></div></div>
     </section>
 
     <!-- TEAM -->
@@ -2110,17 +2118,17 @@
 </div>
 
 <!-- ================= CONNECTOR MODAL ================= -->
-<div class="overlay" id="pp-overlay">
+<div class="overlay" id="key-overlay">
   <div class="modal" role="dialog" aria-modal="true">
-    <h3>Partnerportal verbinden</h3>
-    <p class="pf-hint" style="margin-top:0">Deinen persönlichen API-Key erzeugst du im Partnerportal unter API-Zugang (beginnt mit enneo_ro_, nur Lesezugriff).</p>
-    <label for="pp-key">API-Key</label>
-    <input type="password" id="pp-key" autocomplete="off" placeholder="enneo_ro_…">
-    <p class="pf-hint">Die Verbindung gehört ausschließlich deinem Account. Beim Speichern wird sie live getestet; der Key wird verschlüsselt gespeichert und ist danach nicht mehr einsehbar. Zugriff für Enni entsteht erst, wenn du die Verbindung einem Space zuordnest — die Portal-Daten sind enneo-intern, wähle die Reichweite bewusst.</p>
-    <div class="err" id="pp-err"></div>
+    <h3 id="key-title">Verbinden</h3>
+    <p class="pf-hint" id="key-top-hint" style="margin-top:0"></p>
+    <label for="key-input">API-Key</label>
+    <input type="password" id="key-input" autocomplete="off" placeholder="">
+    <p class="pf-hint" id="key-bottom-hint">Die Verbindung gehört ausschließlich deinem Account. Beim Speichern wird sie live getestet; der Key wird verschlüsselt gespeichert und ist danach nicht mehr einsehbar. Zugriff für Enni entsteht erst, wenn du die Verbindung einem Space zuordnest — du entscheidest über die Reichweite.</p>
+    <div class="err" id="key-err"></div>
     <div class="m-actions">
-      <button class="btn quiet" id="pp-cancel">Abbrechen</button>
-      <button class="btn dark" id="pp-save">Verbinden</button>
+      <button class="btn quiet" id="key-cancel">Abbrechen</button>
+      <button class="btn dark" id="key-save">Verbinden</button>
     </div>
   </div>
 </div>

@@ -31,6 +31,11 @@ export const MCP_OAUTH_SERVERS = {
     url: 'https://mcp.ticktick.com',
     category: 'tool',
   },
+  miro: {
+    label: 'Miro',
+    url: 'https://mcp.miro.com/mcp',
+    category: 'tool',
+  },
 }
 
 export const mcpOAuthRedirectUri = (provider) => `${backendOrigin()}/api/mcp/oauth/${provider}/callback`

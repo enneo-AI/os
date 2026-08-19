@@ -1544,6 +1544,47 @@ app.post('/api/connectors', async (req, res) => {
     }
   }
 
+  // Natives beehiiv: Read-only-Newsletter-API mit einem Bearer-Key.
+  // Verbindungstest listet die zugänglichen Publications; jede Person verbindet ihren eigenen Key.
+  if (kind === 'beehiiv') {
+    if (!token?.trim()) return res.status(400).json({ error: 'API-Key ist Pflicht (beehiiv → Settings → Integrations → API Keys).' })
+    try {
+      const [{ probeBeehiiv, invalidateBeehiivCache }, { encryptSecret }] = await Promise.all([
+        import('./tools/beehiiv.js'), import('./crypto.js'),
+      ])
+      const publications = await probeBeehiiv(token.trim())
+      // Re-Connect ersetzt den Key — im jeweiligen Scope (persoenlich vs. team)
+      let oldQ = db.from('connectors').select('id').eq('kind', 'beehiiv')
+      oldQ = personal ? oldQ.eq('owner', user.id).neq('visibility', 'team') : oldQ.eq('visibility', 'team')
+      const { data: previous } = await oldQ
+      let delQ = db.from('connectors').delete().eq('kind', 'beehiiv')
+      delQ = personal ? delQ.eq('owner', user.id).neq('visibility', 'team') : delQ.eq('visibility', 'team')
+      await delQ
+      const { data, error } = await db
+        .from('connectors')
+        .insert({
+          name: 'beehiiv',
+          url: 'https://api.beehiiv.com',
+          token: encryptSecret(token.trim()),
+          category: 'connection',
+          kind: 'beehiiv',
+          tool_count: 4,
+          created_by: user.id,
+          owner,
+          visibility,
+        })
+        .select('id, name')
+        .single()
+      if (error) throw new Error(error.message)
+      const { moveConnectorAssignments } = await import('./connector-access.js')
+      await moveConnectorAssignments((previous || []).map((row) => row.id), data.id)
+      invalidateBeehiivCache()
+      return res.json({ ...data, publications })
+    } catch (err) {
+      return res.status(400).json({ error: `beehiiv-Verbindung fehlgeschlagen: ${err.message}` })
+    }
+  }
+
   // Natives enneo-Partnerportal: Read-only-API mit einem Bearer-Key (enneo_ro_…).
   // Verbindungstest gegen /meta; jede Person verbindet ihren eigenen Key.
   if (kind === 'partnerportal') {
@@ -1896,7 +1937,7 @@ app.post('/api/connectors/:id/:action(approve|reject)', async (req, res) => {
   if (!conn) return res.status(404).json({ error: 'Tool nicht gefunden' })
   let replacedIds = []
   // Pro nativem Anbieter gibt es max. EINEN Team-Connector — alter wird ersetzt.
-  if (target === 'team' && ['attio', 'slack', 'outlook', 'google_drive', 'notion', 'buchhaltungsbutler', 'partnerportal'].includes(conn.kind)) {
+  if (target === 'team' && ['attio', 'slack', 'outlook', 'google_drive', 'notion', 'buchhaltungsbutler', 'partnerportal', 'beehiiv'].includes(conn.kind)) {
     const { data: replaced } = await db.from('connectors').select('id').eq('kind', conn.kind).eq('visibility', 'team').neq('id', conn.id)
     replacedIds = (replaced || []).map((row) => row.id)
     await db.from('connectors').delete().eq('kind', conn.kind).eq('visibility', 'team').neq('id', conn.id)

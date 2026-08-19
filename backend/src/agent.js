@@ -17,6 +17,7 @@ import { attioToolDefinitions, runAttioTool } from './tools/attio.js'
 import { slackToolDefinitions, runSlackTool } from './tools/slack.js'
 import { buchhaltungsbutlerToolDefinitions, runBuchhaltungsbutlerTool } from './tools/buchhaltungsbutler.js'
 import { partnerportalToolDefinitions, runPartnerportalTool } from './tools/partnerportal.js'
+import { beehiivToolDefinitions, runBeehiivTool } from './tools/beehiiv.js'
 import { productivityToolDefinitions, runProductivityTool } from './tools/productivity.js'
 import { registrationToolDefinitions, runRegistrationTool } from './tools/registration.js'
 import { uxUiToolDefinitions, runUxUiTool } from './tools/ux-ui.js'
@@ -80,6 +81,7 @@ Antworte IMMER in der Sprache der letzten Nachricht des Nutzers. Schreibt er auf
 - Slack-Fragen ("was wurde in #channel besprochen", Diskussionen, Entscheidungen aus Threads): wenn slack_-Tools verfügbar sind — erst slack_list_channels, dann slack_read_channel, Threads über slack_read_thread. Slack ist read-only; private Channels siehst du nur, wenn der Bot dort eingeladen wurde — sag das ehrlich, wenn ein Channel fehlt.
 - Buchhaltungs-Fragen (Eingangs-/Ausgangsrechnungen, offene Posten, Buchungen, Kontoumsätze, Kreditoren/Debitoren): wenn bb_-Tools verfügbar sind, ist BuchhaltungsButler die Quelle — bb_get_receipts für Rechnungen (list_direction inbound/outbound, payment_status "unpaid" für offene Posten), bb_get_transactions für Bankbewegungen, bb_get_postings für das Buchungsjournal. Alles read-only; Finanzdaten sind vertraulich und bleiben im jeweiligen Space-Kreis.
 - Partnerportal-Fragen (Partner, Partner-Deals, Angebote/Verträge mit Preis-/TCV-Zerlegung, Lead-Freigaben, Partner-Abrechnung: Rechnungen/Gutschriften/Zahlungen/Provisionen): wenn pp_-Tools verfügbar sind — pp_list für Listen (mit limit/offset), pp_get für Details plus notes/activity. Read-only; die Inhalte sind enneo-intern und vertraulich. Für allgemeines CRM (Accounts, Meetings, Transkripte) bleibt Attio die Quelle — das Partnerportal ist spezifisch für das Partner- und Abrechnungsgeschäft.
+- Newsletter-Fragen (wie lief die letzte Ausgabe, Open-/Click-Rates, Abonnenten-Entwicklung, Themen-Performance): wenn beehiiv_-Tools verfügbar sind — erst beehiiv_publications (liefert die pub_-id), dann beehiiv_posts mit order_by="publish_date", direction="desc". Für Stil-/Strukturreferenz eines alten Posts: beehiiv_post mit include_content=true. Read-only, keine einzelnen Abonnenten-Daten.
 - LIVE-WEBSUCHE: web_search ist für aktuelle EXTERNE Informationen da (News, KI-Trends, Anbieter-Doku, Preise, Regulatorik). Belege jedes Web-Finding mit datierter, verlinkbarer Originalquelle (Titel + URL). Für internes Firmenwissen ist NIE das Web die Quelle, sondern Wiki und Connectoren. Nutze die Suche gezielt (max. 5 Suchläufe pro Turn) statt explorativ.
 - Outlook, Google Drive und Notion: Nutze outlook_*, google_drive_* bzw. notion_* sobald die entsprechende Connection verfügbar ist. Diese Tools sind read-only. Suche zuerst, lies Details danach über die zurückgegebene ID. Behaupte nie Zugriff auf nicht freigegebene Notion-Seiten oder Google-Dateien.
 - WISSENS-UPDATE-LOOP: Wenn du in einer Konversation dauerhaft gültiges Firmenwissen lernst — neue Fakten, Korrekturen an Wiki-Inhalten, getroffene Entscheidungen, Prozessänderungen — schlage PROAKTIV ein Wiki-Update vor: erst wiki_read_page auf die Zielseite (falls vorhanden), dann wiki_propose_update mit dem kompletten neuen Inhalt. Die Vorschläge sieht NUR der Admin in einer Review-Liste und prüft sie gesammelt — nicht der Nutzer im Chat. Sag dem Nutzer NUR dann, dass ein Vorschlag gespeichert wurde oder beim Admin liegt, wenn wiki_propose_update in DIESEM Turn erfolgreich ausgeführt wurde und eine update_id geliefert hat. Ein bloßes wiki_read_page ist niemals eine Änderung oder ein Vorschlag. Kein Vorschlag für Flüchtiges (Termine, Smalltalk, Debug-Zwischenstände). Behaupte nie, das Wiki sei aktualisiert, solange es nur vorgeschlagen ist.
@@ -110,7 +112,7 @@ const TOOLS = [
 // eintippen zu müssen. Dynamische Connectoren werden pro Nutzer aufgelöst.
 export async function availableToolDefinitions(userId) {
   let definitions = [...TOOLS, ...podToolDefinitions]
-  for (const loader of [uxUiToolDefinitions, mcpToolDefinitions, attioToolDefinitions, slackToolDefinitions, buchhaltungsbutlerToolDefinitions, partnerportalToolDefinitions, productivityToolDefinitions]) {
+  for (const loader of [uxUiToolDefinitions, mcpToolDefinitions, attioToolDefinitions, slackToolDefinitions, buchhaltungsbutlerToolDefinitions, partnerportalToolDefinitions, beehiivToolDefinitions, productivityToolDefinitions]) {
     try {
       definitions = [...definitions, ...(await loader(userId))]
     } catch (err) {
@@ -135,6 +137,7 @@ async function executeTool(name, input, ctx) {
     if (name.startsWith('slack_')) return { content: await runSlackTool(name, input, ctx), isError: false }
     if (name.startsWith('bb_')) return { content: await runBuchhaltungsbutlerTool(name, input, ctx), isError: false }
     if (name.startsWith('pp_')) return { content: await runPartnerportalTool(name, input, ctx), isError: false }
+    if (name.startsWith('beehiiv_')) return { content: await runBeehiivTool(name, input, ctx), isError: false }
     if (name.startsWith('outlook_') || name.startsWith('google_drive_') || name.startsWith('notion_')) return { content: await runProductivityTool(name, input, ctx), isError: false }
     if (name === 'create_file') return { content: await runFileTool(name, input, ctx), isError: false }
     return { content: `Unbekanntes Tool: ${name}`, isError: true }
@@ -281,6 +284,12 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
     if (ppDefs.length) turnTools = [...turnTools, ...ppDefs]
   } catch (err) {
     console.error('Partnerportal-Tool-Discovery fehlgeschlagen:', err.message)
+  }
+  try {
+    const beehiivDefs = await beehiivToolDefinitions(ctx.userId) // leer, solange keine zugängliche Space-Zuordnung existiert
+    if (beehiivDefs.length) turnTools = [...turnTools, ...beehiivDefs]
+  } catch (err) {
+    console.error('beehiiv-Tool-Discovery fehlgeschlagen:', err.message)
   }
   try {
     const productivityDefs = await productivityToolDefinitions(ctx.userId)

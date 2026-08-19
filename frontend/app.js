@@ -1246,6 +1246,7 @@ function newConversation() {
   saveMainDraft()
   closeThread(false)
   currentConv = null
+  applyConvModel(null) // neuer Chat startet mit dem Default-Modell
   mountPromptQueue(null)
   viewSeq++
   updateComposerState()
@@ -1277,6 +1278,7 @@ async function openConversation(c) {
   saveMainDraft()
   closeThread(false)
   currentConv = c
+  applyConvModel(c?.id) // gemerktes Modell dieser Konversation wiederherstellen
   viewSeq++
   updateComposerState()
   // Chat und zugehörige Inbox-Notification werden gemeinsam gelesen.
@@ -5024,6 +5026,7 @@ async function send() {
           }
           if (inView() && !currentConv) {
             currentConv = { id: ev.conversation_id, title: text.slice(0, 80), pod_id: convPod?.id || null }
+            rememberConvModel(ev.conversation_id, $('model-select').value) // gewählte Wahl an die frisch angelegte Konversation binden
             mountedMainDraftKey = currentMainDraftKey()
             $('chat-close').hidden = false
             updateComposerState() // Konversations-ID da → Send-Button wird zum Stop-Button
@@ -6487,6 +6490,23 @@ function setModel(model) {
   })
 }
 
+// Modellwahl gilt PRO Konversation (Tristans Multi-Session-Use-Case: parallel laufende
+// Chats mit unterschiedlicher Komplexität). Gespeichert in localStorage; neue Chats
+// starten immer mit dem Default.
+const DEFAULT_CHAT_MODEL = 'claude-sonnet-5'
+let convModels = {}
+try { convModels = JSON.parse(localStorage.getItem('enni-conv-models') || '{}') || {} } catch { convModels = {} }
+function rememberConvModel(convId, model) {
+  if (!convId || !MODEL_LABELS[model]) return
+  convModels[convId] = model
+  const keys = Object.keys(convModels)
+  if (keys.length > 400) for (const key of keys.slice(0, keys.length - 400)) delete convModels[key]
+  try { localStorage.setItem('enni-conv-models', JSON.stringify(convModels)) } catch {}
+}
+function applyConvModel(convId) {
+  setModel((convId && convModels[convId]) || DEFAULT_CHAT_MODEL)
+}
+
 function closeModelMenu() {
   $('model-menu').hidden = true
   $('model-trigger').setAttribute('aria-expanded', 'false')
@@ -6505,6 +6525,8 @@ $('model-trigger').addEventListener('click', (event) => {
 document.querySelectorAll('#model-menu [data-model]').forEach((option) => {
   option.addEventListener('click', () => {
     setModel(option.dataset.model)
+    // Wahl bleibt an DIESER Konversation hängen — andere Sessions unberührt
+    if (currentConv?.id) rememberConvModel(currentConv.id, option.dataset.model)
     closeModelMenu()
     $('model-trigger').focus()
   })
@@ -6549,6 +6571,14 @@ const CURATED_MCP_CONNECTORS = [{
   mcp_url: 'https://mcp.ticktick.com',
   auth_type: 'mcp_oauth',
   oauth_provider: 'ticktick',
+  access_mode: 'read_write',
+}, {
+  display_name: 'Miro',
+  summary: 'Boards, Frames & Whiteboard-Inhalte',
+  logo_url: 'https://cdn.simpleicons.org/miro/FFD02F',
+  mcp_url: 'https://mcp.miro.com/mcp',
+  auth_type: 'mcp_oauth',
+  oauth_provider: 'miro',
   access_mode: 'read_write',
 }]
 
@@ -6911,7 +6941,28 @@ const NATIVE_CONNECTORS = {
   attio: { row: 'attio-row', status: 'attio-status', sub: 'attio-sub', label: 'Attio', icon: '/icons/attio.ico', mcpProvider: 'attio', mcpUrl: 'https://mcp.attio.com/mcp', accessMode: 'read_write', nativeAccessMode: 'read_only', nativeSubConnected: 'CRM-Daten und Meetings · Read-only', subConnected: 'CRM, Aufgaben und Notizen · Read & Write', subDefault: 'CRM, Aufgaben und Notizen · Read & Write' },
   slack: { row: 'slack-row', status: 'slack-status', sub: 'slack-sub', label: 'Slack', icon: '/icons/slack.svg', subConnected: 'Channels und Threads · Read-only', subDefault: 'Channels und Threads · Read-only' },
   buchhaltungsbutler: { row: 'buchhaltungsbutler-row', status: 'buchhaltungsbutler-status', sub: 'buchhaltungsbutler-sub', label: 'BuchhaltungsButler', icon: '/icons/buchhaltungsbutler.ico', credentialForm: 'bb', subConnected: 'Rechnungen, Buchungen und Kontoumsätze · Read-only', subDefault: 'Rechnungen, Buchungen und Kontoumsätze · Read-only' },
-  partnerportal: { row: 'partnerportal-row', status: 'partnerportal-status', sub: 'partnerportal-sub', label: 'Partnerportal', icon: '/icons/enneo-icon.svg', credentialForm: 'pp', subConnected: 'Partner, Deals, Angebote und Abrechnung · Read-only', subDefault: 'Partner, Deals, Angebote und Abrechnung · Read-only' },
+  partnerportal: {
+    row: 'partnerportal-row', status: 'partnerportal-status', sub: 'partnerportal-sub', label: 'Partnerportal', icon: '/icons/enneo-icon.svg',
+    credentialForm: 'key',
+    keyForm: {
+      topHint: 'Deinen persönlichen API-Key erzeugst du im Partnerportal unter API-Zugang (beginnt mit enneo_ro_, nur Lesezugriff).',
+      placeholder: 'enneo_ro_…',
+      bottomHint: 'Die Verbindung gehört ausschließlich deinem Account. Beim Speichern wird sie live getestet; der Key wird verschlüsselt gespeichert. Die Portal-Daten sind enneo-intern — wähle die Space-Reichweite bewusst.',
+      resultLabel: 'access',
+    },
+    subConnected: 'Partner, Deals, Angebote und Abrechnung · Read-only', subDefault: 'Partner, Deals, Angebote und Abrechnung · Read-only',
+  },
+  beehiiv: {
+    row: 'beehiiv-row', status: 'beehiiv-status', sub: 'beehiiv-sub', label: 'beehiiv', icon: '/icons/beehiiv.png',
+    credentialForm: 'key',
+    keyForm: {
+      topHint: 'Deinen API-Key erzeugst du in beehiiv unter Settings → Integrations → API Keys.',
+      placeholder: 'beehiiv API-Key',
+      bottomHint: 'Die Verbindung gehört ausschließlich deinem Account. Beim Speichern wird sie live getestet; der Key wird verschlüsselt gespeichert. Zugriff für Enni entsteht erst durch die Space-Zuordnung.',
+      resultLabel: 'publications',
+    },
+    subConnected: 'Newsletter-Posts und Engagement-Stats · Read-only', subDefault: 'Newsletter-Posts und Engagement-Stats · Read-only',
+  },
 }
 let marketplaceAccessFilter = 'all'
 function applyMarketplaceFilter() {
@@ -7172,7 +7223,7 @@ for (const [kind, cfg] of Object.entries(NATIVE_CONNECTORS)) {
     if (nativeState[kind]) return
     if (cfg.mcpProvider) return startMcpOAuth(cfg.mcpProvider, cfg.label)
     if (cfg.credentialForm === 'bb') return openBbModal()
-    if (cfg.credentialForm === 'pp') return openPpModal()
+    if (cfg.credentialForm === 'key') return openKeyModal(kind)
     const configured = oauthProviders.get(kind)?.configured
     if (!configured) {
       showOAuthResult('error', `${cfg.label} wartet auf die zentrale Freigabe`, 'Enneo-IT richtet die App einmalig ein. Danach verbindest du hier mit einem Klick deinen eigenen Account.')
@@ -7230,39 +7281,51 @@ $('bb-save').addEventListener('click', async () => {
   $('bb-save').textContent = 'Verbinden'
 })
 
-// enneo Partnerportal: Read-only-API mit einem Bearer-Key — persönliche Connection.
-async function openPpModal() {
-  $('pp-key').value = ''
-  $('pp-err').textContent = ''
-  $('pp-overlay').classList.add('open')
-  setTimeout(() => $('pp-key').focus(), 50)
+// Generisches Ein-Key-Modal für native Bearer-Key-Connectoren (Partnerportal,
+// beehiiv, …): Texte kommen aus NATIVE_CONNECTORS[kind].keyForm, die Verbindung
+// ist immer die persönliche Connection des eingeloggten Accounts.
+let keyModalKind = null
+async function openKeyModal(kind) {
+  const cfg = NATIVE_CONNECTORS[kind]
+  keyModalKind = kind
+  $('key-title').textContent = `${cfg.label} verbinden`
+  $('key-top-hint').textContent = cfg.keyForm?.topHint || ''
+  $('key-input').value = ''
+  $('key-input').placeholder = cfg.keyForm?.placeholder || 'API-Key'
+  if (cfg.keyForm?.bottomHint) $('key-bottom-hint').textContent = cfg.keyForm.bottomHint
+  $('key-err').textContent = ''
+  $('key-overlay').classList.add('open')
+  setTimeout(() => $('key-input').focus(), 50)
 }
 
-$('pp-cancel').addEventListener('click', () => $('pp-overlay').classList.remove('open'))
-$('pp-save').addEventListener('click', async () => {
-  const err = $('pp-err')
+$('key-cancel').addEventListener('click', () => $('key-overlay').classList.remove('open'))
+$('key-save').addEventListener('click', async () => {
+  const cfg = NATIVE_CONNECTORS[keyModalKind]
+  if (!cfg) return
+  const err = $('key-err')
   err.textContent = ''
-  const key = $('pp-key').value.trim()
+  const key = $('key-input').value.trim()
   if (!key) { err.textContent = 'API-Key ist Pflicht.'; return }
-  $('pp-save').disabled = true
-  $('pp-save').textContent = 'Teste Verbindung …'
+  $('key-save').disabled = true
+  $('key-save').textContent = 'Teste Verbindung …'
   try {
     const res = await fetch(`${BACKEND_URL}/api/connectors`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
-      body: JSON.stringify({ kind: 'partnerportal', token: key, scope: 'personal' }),
+      body: JSON.stringify({ kind: keyModalKind, token: key, scope: 'personal' }),
     })
     const data = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
-    $('pp-overlay').classList.remove('open')
+    $('key-overlay').classList.remove('open')
     toolCatalogCache = null
-    showOAuthResult('success', 'Partnerportal ist verbunden', `${data.access || ''} · Noch keinem Space zugeordnet und deshalb für Enni inaktiv.`)
+    const detail = cfg.keyForm?.resultLabel ? data[cfg.keyForm.resultLabel] || '' : ''
+    showOAuthResult('success', `${cfg.label} ist verbunden`, `${detail ? detail + ' · ' : ''}Noch keinem Space zugeordnet und deshalb für Enni inaktiv.`)
     await Promise.all([loadConnectorRows(), loadSpacesTree()])
   } catch (e) {
     err.textContent = e.message
   }
-  $('pp-save').disabled = false
-  $('pp-save').textContent = 'Verbinden'
+  $('key-save').disabled = false
+  $('key-save').textContent = 'Verbinden'
 })
 
 async function openConnectorModal(prefill = {}) {
