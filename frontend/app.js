@@ -5758,6 +5758,8 @@ async function openSpaceHome(space) {
   const canManageConnections = canManageSpaceConnections(space, is_admin)
   const memberIds = [...new Set([space.created_by, ...(memberRows || []).map((row) => row.user_id)].filter(Boolean))]
   $('sh-title').textContent = space.name
+  // Umbenennen: Space-Owner oder Admin (deckt sich mit der spaces_update-RLS)
+  $('sh-rename').hidden = !(space.created_by === session.user.id || is_admin)
   const spacePages = (wikiPages || []).filter((p) => p.space_id === space.id)
   $('sh-access').className = `access-badge ${space.restricted ? 'restricted' : 'open'}`
   $('sh-access').textContent = space.restricted ? 'Restricted' : 'Open'
@@ -5835,6 +5837,37 @@ async function openSpaceMemberManager() {
 }
 
 $('sh-members-manage').addEventListener('click', openSpaceMemberManager)
+
+// Space umbenennen: Titel wird inline zum Eingabefeld (gleiches Muster wie bei
+// Konversationen). Enter speichert, Escape bricht ab; RLS ist die Autorität.
+$('sh-rename').addEventListener('click', () => {
+  if (!currentSpace) return
+  const title = $('sh-title')
+  if (title.querySelector('input')) return
+  const input = document.createElement('input')
+  input.className = 'sb-rename'
+  input.style.font = 'inherit'
+  input.value = currentSpace.name
+  title.textContent = ''
+  title.appendChild(input)
+  input.focus()
+  input.select()
+  const restore = () => { title.textContent = currentSpace.name }
+  const commit = async () => {
+    const name = input.value.trim()
+    if (!name || name === currentSpace.name) return restore()
+    const { error } = await sb.from('spaces').update({ name }).eq('id', currentSpace.id)
+    if (error) { window.alert(`Umbenennen fehlgeschlagen: ${error.message}`); return restore() }
+    currentSpace.name = name
+    title.textContent = name
+    await loadSpacesTree()
+  }
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') commit()
+    if (event.key === 'Escape') restore()
+  })
+  input.addEventListener('blur', commit)
+})
 $('space-members-cancel').addEventListener('click', () => $('space-members-overlay').classList.remove('open'))
 $('space-members-save').addEventListener('click', async () => {
   if (!currentSpace?.restricted || currentSpace.created_by !== session.user.id) return
