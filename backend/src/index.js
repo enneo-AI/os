@@ -1544,6 +1544,47 @@ app.post('/api/connectors', async (req, res) => {
     }
   }
 
+  // Natives enneo-Partnerportal: Read-only-API mit einem Bearer-Key (enneo_ro_…).
+  // Verbindungstest gegen /meta; jede Person verbindet ihren eigenen Key.
+  if (kind === 'partnerportal') {
+    if (!token?.trim()) return res.status(400).json({ error: 'API-Key ist Pflicht (Partnerportal → API-Zugang, beginnt mit enneo_ro_).' })
+    try {
+      const [{ probePartnerportal, invalidatePartnerportalCache }, { encryptSecret }] = await Promise.all([
+        import('./tools/partnerportal.js'), import('./crypto.js'),
+      ])
+      const access = await probePartnerportal(token.trim())
+      // Re-Connect ersetzt den Key — im jeweiligen Scope (persoenlich vs. team)
+      let oldQ = db.from('connectors').select('id').eq('kind', 'partnerportal')
+      oldQ = personal ? oldQ.eq('owner', user.id).neq('visibility', 'team') : oldQ.eq('visibility', 'team')
+      const { data: previous } = await oldQ
+      let delQ = db.from('connectors').delete().eq('kind', 'partnerportal')
+      delQ = personal ? delQ.eq('owner', user.id).neq('visibility', 'team') : delQ.eq('visibility', 'team')
+      await delQ
+      const { data, error } = await db
+        .from('connectors')
+        .insert({
+          name: 'Partnerportal',
+          url: 'https://partner.enneo.ai',
+          token: encryptSecret(token.trim()),
+          category: 'connection',
+          kind: 'partnerportal',
+          tool_count: 2,
+          created_by: user.id,
+          owner,
+          visibility,
+        })
+        .select('id, name')
+        .single()
+      if (error) throw new Error(error.message)
+      const { moveConnectorAssignments } = await import('./connector-access.js')
+      await moveConnectorAssignments((previous || []).map((row) => row.id), data.id)
+      invalidatePartnerportalCache()
+      return res.json({ ...data, access })
+    } catch (err) {
+      return res.status(400).json({ error: `Partnerportal-Verbindung fehlgeschlagen: ${err.message}` })
+    }
+  }
+
   if (!name?.trim() || !url?.trim()) return res.status(400).json({ error: 'Name und URL sind Pflicht' })
   if (!/^https:\/\//.test(url.trim())) return res.status(400).json({ error: 'URL muss mit https:// beginnen' })
   try {
@@ -1855,7 +1896,7 @@ app.post('/api/connectors/:id/:action(approve|reject)', async (req, res) => {
   if (!conn) return res.status(404).json({ error: 'Tool nicht gefunden' })
   let replacedIds = []
   // Pro nativem Anbieter gibt es max. EINEN Team-Connector — alter wird ersetzt.
-  if (target === 'team' && ['attio', 'slack', 'outlook', 'google_drive', 'notion', 'buchhaltungsbutler'].includes(conn.kind)) {
+  if (target === 'team' && ['attio', 'slack', 'outlook', 'google_drive', 'notion', 'buchhaltungsbutler', 'partnerportal'].includes(conn.kind)) {
     const { data: replaced } = await db.from('connectors').select('id').eq('kind', conn.kind).eq('visibility', 'team').neq('id', conn.id)
     replacedIds = (replaced || []).map((row) => row.id)
     await db.from('connectors').delete().eq('kind', conn.kind).eq('visibility', 'team').neq('id', conn.id)

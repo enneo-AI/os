@@ -6911,6 +6911,7 @@ const NATIVE_CONNECTORS = {
   attio: { row: 'attio-row', status: 'attio-status', sub: 'attio-sub', label: 'Attio', icon: '/icons/attio.ico', mcpProvider: 'attio', mcpUrl: 'https://mcp.attio.com/mcp', accessMode: 'read_write', nativeAccessMode: 'read_only', nativeSubConnected: 'CRM-Daten und Meetings · Read-only', subConnected: 'CRM, Aufgaben und Notizen · Read & Write', subDefault: 'CRM, Aufgaben und Notizen · Read & Write' },
   slack: { row: 'slack-row', status: 'slack-status', sub: 'slack-sub', label: 'Slack', icon: '/icons/slack.svg', subConnected: 'Channels und Threads · Read-only', subDefault: 'Channels und Threads · Read-only' },
   buchhaltungsbutler: { row: 'buchhaltungsbutler-row', status: 'buchhaltungsbutler-status', sub: 'buchhaltungsbutler-sub', label: 'BuchhaltungsButler', icon: '/icons/buchhaltungsbutler.ico', credentialForm: 'bb', subConnected: 'Rechnungen, Buchungen und Kontoumsätze · Read-only', subDefault: 'Rechnungen, Buchungen und Kontoumsätze · Read-only' },
+  partnerportal: { row: 'partnerportal-row', status: 'partnerportal-status', sub: 'partnerportal-sub', label: 'Partnerportal', icon: '/icons/enneo-icon.svg', credentialForm: 'pp', subConnected: 'Partner, Deals, Angebote und Abrechnung · Read-only', subDefault: 'Partner, Deals, Angebote und Abrechnung · Read-only' },
 }
 let marketplaceAccessFilter = 'all'
 function applyMarketplaceFilter() {
@@ -7171,6 +7172,7 @@ for (const [kind, cfg] of Object.entries(NATIVE_CONNECTORS)) {
     if (nativeState[kind]) return
     if (cfg.mcpProvider) return startMcpOAuth(cfg.mcpProvider, cfg.label)
     if (cfg.credentialForm === 'bb') return openBbModal()
+    if (cfg.credentialForm === 'pp') return openPpModal()
     const configured = oauthProviders.get(kind)?.configured
     if (!configured) {
       showOAuthResult('error', `${cfg.label} wartet auf die zentrale Freigabe`, 'Enneo-IT richtet die App einmalig ein. Danach verbindest du hier mit einem Klick deinen eigenen Account.')
@@ -7226,6 +7228,41 @@ $('bb-save').addEventListener('click', async () => {
   }
   $('bb-save').disabled = false
   $('bb-save').textContent = 'Verbinden'
+})
+
+// enneo Partnerportal: Read-only-API mit einem Bearer-Key — persönliche Connection.
+async function openPpModal() {
+  $('pp-key').value = ''
+  $('pp-err').textContent = ''
+  $('pp-overlay').classList.add('open')
+  setTimeout(() => $('pp-key').focus(), 50)
+}
+
+$('pp-cancel').addEventListener('click', () => $('pp-overlay').classList.remove('open'))
+$('pp-save').addEventListener('click', async () => {
+  const err = $('pp-err')
+  err.textContent = ''
+  const key = $('pp-key').value.trim()
+  if (!key) { err.textContent = 'API-Key ist Pflicht.'; return }
+  $('pp-save').disabled = true
+  $('pp-save').textContent = 'Teste Verbindung …'
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/connectors`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({ kind: 'partnerportal', token: key, scope: 'personal' }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+    $('pp-overlay').classList.remove('open')
+    toolCatalogCache = null
+    showOAuthResult('success', 'Partnerportal ist verbunden', `${data.access || ''} · Noch keinem Space zugeordnet und deshalb für Enni inaktiv.`)
+    await Promise.all([loadConnectorRows(), loadSpacesTree()])
+  } catch (e) {
+    err.textContent = e.message
+  }
+  $('pp-save').disabled = false
+  $('pp-save').textContent = 'Verbinden'
 })
 
 async function openConnectorModal(prefill = {}) {
