@@ -7182,17 +7182,13 @@ for (const [kind, cfg] of Object.entries(NATIVE_CONNECTORS)) {
 }
 
 // BuchhaltungsButler: klassische REST-API mit drei Credentials statt OAuth.
-// Admins können die Verbindung direkt als Team-Verbindung anlegen.
+// Wie bei jedem Marketplace-Tool: Jede Person verbindet ihren eigenen Zugang
+// (persönliche Connection) und entscheidet selbst über die Space-Zuordnung.
 async function openBbModal() {
   $('bb-client').value = ''
   $('bb-secret').value = ''
   $('bb-key').value = ''
   $('bb-err').textContent = ''
-  $('bb-team').checked = false
-  try {
-    const { is_admin: isAdmin } = await ownProfile()
-    $('bb-team-wrap').hidden = !isAdmin
-  } catch { $('bb-team-wrap').hidden = true }
   $('bb-overlay').classList.add('open')
   setTimeout(() => $('bb-client').focus(), 50)
 }
@@ -7216,7 +7212,7 @@ $('bb-save').addEventListener('click', async () => {
         api_client: apiClient,
         api_secret: apiSecret,
         api_key: apiKey,
-        scope: $('bb-team').checked ? 'team' : 'personal',
+        scope: 'personal',
       }),
     })
     const data = await res.json().catch(() => ({}))
