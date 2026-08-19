@@ -12,7 +12,7 @@ import { getAttioRecordSummary, hasAttioConnection, searchAttioRecords } from '.
 import {
   createNotification, createNotifications, notifyPodMentions, notifyPodThreadReply, pushPublicKey, startPushTicker,
 } from './notifications.js'
-import { loadSkillWithContexts, savePersonalContext } from './contexts.js'
+import { savePersonalContext } from './contexts.js'
 import { podContextPrompt } from './pod-context.js'
 
 const app = express()
@@ -618,14 +618,16 @@ app.post('/api/chat', async (req, res) => {
     // Slash-Command: /slug an einer beliebigen Wortposition ruft einen Skill explizit auf —
     // voller Skill geht als System-Block mit, Enni startet mit einem Workflow-Overview.
     if (slashMatch) {
-      const skill = await loadSkillWithContexts(slashMatch[1].toLowerCase(), user.id)
-      // Persönliche Skills gelten nur für ihren Ersteller (team-weite für alle)
-      const visibleRequiredCount = (skill?.skill_contexts || []).filter((link) => link.requirement === 'required').length
-      if (skill?.enabled && visibleRequiredCount === skill.required_context_count && (skill.visibility === 'team' || skill.created_by === user.id)) {
+      const { loadSkillWithSources, attachSkillSourcesText } = await import('./contexts.js')
+      const skill = await loadSkillWithSources(slashMatch[1].toLowerCase(), user.id)
+      // Persönliche Skills gelten nur für ihren Ersteller (team-weite für alle);
+      // Skills mit Quellen aus nicht freigegebenen Spaces bleiben unsichtbar.
+      if (skill?.enabled && skill._sourcesVisible && (skill.visibility === 'team' || skill.created_by === user.id)) {
         const { skillText } = await import('./tools/skills.js')
+        await attachSkillSourcesText(skill, user.id)
         extraSystem =
           (extraSystem ? extraSystem + '\n\n' : '') +
-          `Der Nutzer hat den Skill /${skill.slug} explizit per Slash-Command aufgerufen. Vollständiger Skill:\n\n${skillText(skill, user.id)}\n\nBeginne deine Antwort mit einem kompakten Workflow-Overview (nummerierte Schritte, je eine Zeile — was du jetzt tun wirst), dann arbeite den Workflow ab. Fehlen dir dafür nötige Inputs, stelle GENAU EINE gebündelte Rückfrage nach allen fehlenden Angaben.`
+          `Der Nutzer hat den Skill /${skill.slug} explizit per Slash-Command aufgerufen. Vollständiger Skill:\n\n${skillText(skill)}\n\nBeginne deine Antwort mit einem kompakten Workflow-Overview (nummerierte Schritte, je eine Zeile — was du jetzt tun wirst), dann arbeite den Workflow ab. Fehlen dir dafür nötige Inputs, stelle GENAU EINE gebündelte Rückfrage nach allen fehlenden Angaben.`
       }
     }
 
@@ -1494,6 +1496,54 @@ app.post('/api/connectors', async (req, res) => {
     }
   }
 
+  // Nativer BuchhaltungsButler-Connector: klassische REST-API mit drei Credentials
+  // (API-Client + API-Secret als Basic Auth, api_key als Form-Feld pro Request).
+  // Verbindungstest gegen /accounts/get, Speicherung als verschlüsseltes JSON.
+  if (kind === 'buchhaltungsbutler') {
+    const apiClient = String(req.body?.api_client || '').trim()
+    const apiSecret = String(req.body?.api_secret || '').trim()
+    const apiKey = String(req.body?.api_key || '').trim()
+    if (!apiClient || !apiSecret || !apiKey) {
+      return res.status(400).json({ error: 'API-Client, API-Secret und API-Key sind Pflicht (BuchhaltungsButler → Einstellungen → API-Zugang).' })
+    }
+    try {
+      const [{ probeBuchhaltungsbutler, invalidateBuchhaltungsbutlerCache }, { encryptSecret }] = await Promise.all([
+        import('./tools/buchhaltungsbutler.js'), import('./crypto.js'),
+      ])
+      const creds = { api_client: apiClient, api_secret: apiSecret, api_key: apiKey }
+      const accounts = await probeBuchhaltungsbutler(creds)
+      // Re-Connect ersetzt die Credentials — im jeweiligen Scope (persoenlich vs. team)
+      let oldQ = db.from('connectors').select('id').eq('kind', 'buchhaltungsbutler')
+      oldQ = personal ? oldQ.eq('owner', user.id).neq('visibility', 'team') : oldQ.eq('visibility', 'team')
+      const { data: previous } = await oldQ
+      let delQ = db.from('connectors').delete().eq('kind', 'buchhaltungsbutler')
+      delQ = personal ? delQ.eq('owner', user.id).neq('visibility', 'team') : delQ.eq('visibility', 'team')
+      await delQ
+      const { data, error } = await db
+        .from('connectors')
+        .insert({
+          name: 'BuchhaltungsButler',
+          url: 'https://webapp.buchhaltungsbutler.de',
+          token: encryptSecret(JSON.stringify(creds)),
+          category: 'connection',
+          kind: 'buchhaltungsbutler',
+          tool_count: 10,
+          created_by: user.id,
+          owner,
+          visibility,
+        })
+        .select('id, name')
+        .single()
+      if (error) throw new Error(error.message)
+      const { moveConnectorAssignments } = await import('./connector-access.js')
+      await moveConnectorAssignments((previous || []).map((row) => row.id), data.id)
+      invalidateBuchhaltungsbutlerCache()
+      return res.json({ ...data, accounts })
+    } catch (err) {
+      return res.status(400).json({ error: `BuchhaltungsButler-Verbindung fehlgeschlagen: ${err.message}` })
+    }
+  }
+
   if (!name?.trim() || !url?.trim()) return res.status(400).json({ error: 'Name und URL sind Pflicht' })
   if (!/^https:\/\//.test(url.trim())) return res.status(400).json({ error: 'URL muss mit https:// beginnen' })
   try {
@@ -1805,7 +1855,7 @@ app.post('/api/connectors/:id/:action(approve|reject)', async (req, res) => {
   if (!conn) return res.status(404).json({ error: 'Tool nicht gefunden' })
   let replacedIds = []
   // Pro nativem Anbieter gibt es max. EINEN Team-Connector — alter wird ersetzt.
-  if (target === 'team' && ['attio', 'slack', 'outlook', 'google_drive', 'notion'].includes(conn.kind)) {
+  if (target === 'team' && ['attio', 'slack', 'outlook', 'google_drive', 'notion', 'buchhaltungsbutler'].includes(conn.kind)) {
     const { data: replaced } = await db.from('connectors').select('id').eq('kind', conn.kind).eq('visibility', 'team').neq('id', conn.id)
     replacedIds = (replaced || []).map((row) => row.id)
     await db.from('connectors').delete().eq('kind', conn.kind).eq('visibility', 'team').neq('id', conn.id)

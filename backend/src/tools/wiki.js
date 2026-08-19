@@ -88,75 +88,9 @@ export async function reindexPage(page) {
   return rows.length
 }
 
-function contextTypeForSlug(slug) {
-  if (/brand|tonality|tone-of-voice/i.test(slug)) return 'brand'
-  if (/persona/i.test(slug)) return 'persona'
-  if (/customer|kunde|client/i.test(slug)) return 'customer'
-  return 'knowledge'
-}
-
-function contextNameForUpdate(update, page) {
-  const heading = update.new_content?.match(/^#\s+(.+)$/m)?.[1]?.trim()
-  return update.new_title || heading || page?.title || update.slug.split('/').pop().replaceAll('-', ' ')
-}
-
-async function mirrorContextProposal(update, page) {
-  if (!update.slug?.startsWith('kontext/') || !update.triggered_by) return
-  if (page?.id) {
-    const { data: published } = await db.from('contexts').select('id')
-      .eq('wiki_page_id', page.id).eq('visibility', 'team').limit(1).maybeSingle()
-    if (published) return
-  }
-  const row = {
-    name: contextNameForUpdate(update, page),
-    description: update.summary,
-    content: update.new_content,
-    context_type: contextTypeForSlug(update.slug),
-    visibility: 'proposed',
-    owner_id: update.triggered_by,
-    source: 'import',
-    created_by: update.triggered_by,
-    updated_by: update.triggered_by,
-    wiki_page_id: page?.id || null,
-    knowledge_update_id: update.id,
-    structured_data: { wiki_slug: update.slug, knowledge_update_id: update.id },
-  }
-  const { error } = await db.from('contexts').upsert(row, { onConflict: 'knowledge_update_id' })
-  if (error) throw new Error(`Kontext-Vorschlag konnte nicht gespiegelt werden: ${error.message}`)
-}
-
-async function publishContextFromKnowledgeUpdate(update, page, userId) {
-  if (!update.slug?.startsWith('kontext/')) return
-  const row = {
-    name: contextNameForUpdate(update, page),
-    description: update.summary,
-    content: page.content,
-    context_type: contextTypeForSlug(page.slug),
-    visibility: 'team',
-    owner_id: null,
-    source: 'import',
-    updated_by: userId,
-    wiki_page_id: page.id,
-    structured_data: { wiki_slug: page.slug, knowledge_update_id: update.id },
-  }
-  const [{ data: published }, { data: proposal }] = await Promise.all([
-    db.from('contexts').select('id').eq('wiki_page_id', page.id).eq('visibility', 'team').limit(1).maybeSingle(),
-    db.from('contexts').select('id').eq('knowledge_update_id', update.id).maybeSingle(),
-  ])
-  if (published) {
-    const { error } = await db.from('contexts').update(row).eq('id', published.id)
-    if (error) throw new Error(error.message)
-    if (proposal && proposal.id !== published.id) await db.from('contexts').delete().eq('id', proposal.id)
-    return
-  }
-  if (proposal) {
-    const { error } = await db.from('contexts').update(row).eq('id', proposal.id)
-    if (error) throw new Error(error.message)
-    return
-  }
-  const { error } = await db.from('contexts').insert({ ...row, created_by: userId, knowledge_update_id: update.id })
-  if (error) throw new Error(error.message)
-}
+// Die frühere Kontexte-Bibliothek (contexts-Spiegelung für kontext/-Slugs) ist seit
+// 2026-08-19 stillgelegt: Wissen lebt an EINEM Ort — als Wiki-Seite im Space. Skills
+// referenzieren Seiten/Ordner direkt über skill_sources (siehe contexts.js).
 
 // Kompakter Zeilen-Diff für die Learn-Karte (gemeinsamer Prefix/Suffix raus, Mitte als -/+)
 function lineDiff(oldText, newText) {
@@ -241,7 +175,7 @@ export const wikiToolDefinitions = [
 // Space-Rechte im Tool-Layer: Enni sieht beim Antworten NUR Spaces, die der fragende
 // Nutzer sehen darf (open + eigene Restricted-Mitgliedschaften; Admins alles).
 // Rückgabe null = kein Filter nötig (Admin), sonst Array erlaubter space_ids.
-async function allowedSpaceIds(userId) {
+export async function allowedSpaceIds(userId) {
   if (!userId) {
     const { data } = await db.from('spaces').select('id').eq('restricted', false)
     return (data || []).map((s) => s.id)
@@ -290,7 +224,6 @@ export async function runWikiTool(name, input, ctx = {}) {
       .select('id, triggered_by, slug, new_title, new_content, summary, wiki_page_id')
       .single()
     if (error) throw new Error(error.message)
-    await mirrorContextProposal(data, page)
     return JSON.stringify({
       update_id: data.id,
       status: 'proposed',
@@ -406,7 +339,6 @@ export async function applyKnowledgeUpdate(updateId, userId) {
     }
     // RAG sofort aktuell halten — sonst antwortet die Semantik-Suche mit altem Stand
     const n = await reindexPage(page)
-    await publishContextFromKnowledgeUpdate(u, page, userId)
     result = `Seite "${page.slug}" aktualisiert, ${n} RAG-Chunks neu indexiert.`
   } catch (err) {
     // Enum kennt nur proposed/approved/rejected → bei Apply-Fehler bleibt der Vorschlag proposed,
@@ -440,4 +372,48 @@ export async function rejectKnowledgeUpdate(updateId, userId) {
     .update({ status: 'rejected', reviewed_by: userId, reviewed_at: new Date().toISOString() })
     .eq('id', updateId)
   return { status: 'rejected' }
+}
+
+// ============================================================ Wissenskarte
+// Kompakte Übersicht "welcher Ordner enthält welches Wissen" für Ennis System-Prompt.
+// Damit sucht Enni gezielt im richtigen Ordner statt breit über alles — und liest
+// vollen Inhalt erst, wenn er wirklich gebraucht wird (Map statt Massen-Einlesen).
+let knowledgeMapCache = { at: 0, spaces: null, pages: null }
+const KNOWLEDGE_MAP_TTL_MS = 5 * 60 * 1000
+
+export async function knowledgeMapPromptBlock(userId) {
+  const now = Date.now()
+  if (!knowledgeMapCache.pages || now - knowledgeMapCache.at > KNOWLEDGE_MAP_TTL_MS) {
+    const [{ data: spaces }, { data: pages }] = await Promise.all([
+      db.from('spaces').select('id, name, restricted').order('name'),
+      db.from('wiki_pages').select('slug, space_id'),
+    ])
+    knowledgeMapCache = { at: now, spaces: spaces || [], pages: pages || [] }
+  }
+  const spaceIds = await allowedSpaceIds(userId)
+  const visibleSpaces = knowledgeMapCache.spaces.filter(
+    (space) => spaceIds === null || spaceIds.includes(space.id)
+  )
+  if (!visibleSpaces.length) return null
+  const lines = []
+  for (const space of visibleSpaces) {
+    const pages = knowledgeMapCache.pages.filter((page) => page.space_id === space.id)
+    if (!pages.length) continue
+    const folders = new Map()
+    for (const page of pages) {
+      const folder = page.slug.includes('/') ? page.slug.split('/')[0] + '/' : '(ohne Ordner)'
+      folders.set(folder, (folders.get(folder) || 0) + 1)
+    }
+    const folderList = [...folders.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => `${name} (${count})`)
+      .join(' · ')
+    lines.push(`- ${space.name}${space.restricted ? ' [Restricted]' : ''}: ${folderList}`)
+  }
+  if (!lines.length) return null
+  return (
+    `# Wissenskarte (Spaces → Ordner → Seitenzahl)\n` +
+    `So ist das Firmenwissen organisiert. Wähle bei Wissensfragen zuerst den fachlich passenden Ordner und suche dann gezielt (wiki_list_pages mit dem Ordner-Prefix, wiki_semantic_search, dann wiki_read_page). Lies NICHT breit über alle Ordner.\n` +
+    lines.join('\n')
+  )
 }

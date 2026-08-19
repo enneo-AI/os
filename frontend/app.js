@@ -909,7 +909,7 @@ $('pf-save').addEventListener('click', async () => {
 
 // Rail-Navigation — Sidebar-Inhalt wechselt mit dem Bereich
 const views = {
-  chat: 'v-chat', wiki: 'v-wiki', team: 'v-team', admin: 'v-admin', contexts: 'v-contexts', skills: 'v-skills', routines: 'v-routines',
+  chat: 'v-chat', wiki: 'v-wiki', team: 'v-team', admin: 'v-admin', skills: 'v-skills', routines: 'v-routines',
   connected: 'v-connected', pagelist: 'v-pagelist', marketplace: 'v-marketplace', pod: 'v-pod',
   'space-home': 'v-space-home', 'page-edit': 'v-page-edit',
 }
@@ -1000,7 +1000,7 @@ function syncUrl(area, view) {
   let path = '/chat'
   if (view === 'pod' && activePod) path = `/pod/${activePod.id}`
   else if (area === 'chat') path = currentConv?.id ? `/chat/${currentConv.id}` : '/chat'
-  else if (area === 'wiki') path = view === 'marketplace' ? '/spaces/marketplace' : view === 'contexts' ? '/spaces/kontexte' : view === 'skills' ? '/spaces/skills' : view === 'routines' ? '/spaces/routinen' : '/spaces'
+  else if (area === 'wiki') path = view === 'marketplace' ? '/spaces/marketplace' : view === 'skills' ? '/spaces/skills' : view === 'routines' ? '/spaces/routinen' : '/spaces'
   else if (area === 'team') path = '/team'
   else if (area === 'admin') path = '/admin'
   if (location.pathname !== path) history.pushState({}, '', path)
@@ -1034,10 +1034,9 @@ async function route() {
     if (c) return openConversation(c)
   }
   if (p.startsWith('/spaces')) {
-    const spview = p === '/spaces/kontexte' ? 'contexts' : p === '/spaces/skills' ? 'skills' : p === '/spaces/routinen' ? 'routines' : 'marketplace'
+    const spview = p === '/spaces/skills' ? 'skills' : p === '/spaces/routinen' ? 'routines' : 'marketplace'
     activateArea('wiki', spview)
     if (spview === 'marketplace') loadConnectorRows()
-    if (spview === 'contexts') loadContexts()
     if (p === '/spaces/skills') loadSkills()
     if (p === '/spaces/routinen') loadRoutines()
     await loadSpacesTree()
@@ -1077,7 +1076,6 @@ document.querySelectorAll('.admin-area').forEach((b) =>
   b.addEventListener('click', () => {
     activateArea('wiki', b.dataset.view)
     if (b.dataset.view === 'skills') loadSkills()
-    if (b.dataset.view === 'contexts') loadContexts()
     if (b.dataset.view === 'routines') loadRoutines()
     if (b.dataset.view === 'marketplace') loadConnectorRows()
   })
@@ -6755,15 +6753,30 @@ async function decideToolResearch(id, action) {
     approveButton.disabled = true
     approveButton.textContent = 'Verbindung wird geprüft …'
   }
-  const res = await fetch(`${BACKEND_URL}/api/tool-requests/${id}/${action}`, { method: 'POST', headers: { Authorization: `Bearer ${await token()}` } })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) {
-    $('trd-err').textContent = data.error || 'Entscheidung fehlgeschlagen'
+  // Fehler landen sichtbar am Button, nicht nur im #trd-err unterhalb des Folds —
+  // sonst sieht eine abgelehnte Zertifizierung wie ein stiller No-Op aus.
+  const fail = (message) => {
+    const err = $('trd-err')
+    err.textContent = message
+    err.scrollIntoView({ behavior: 'smooth', block: 'center' })
     if (approveButton) {
       approveButton.disabled = false
       approveButton.textContent = 'Im Marketplace veröffentlichen'
     }
-    return
+  }
+  let res, data
+  try {
+    res = await fetch(`${BACKEND_URL}/api/tool-requests/${id}/${action}`, { method: 'POST', headers: { Authorization: `Bearer ${await token()}` } })
+    data = await res.json().catch(() => ({}))
+  } catch (networkError) {
+    return fail(`Netzwerkfehler: ${networkError.message}`)
+  }
+  if (!res.ok) {
+    let message = data.error || 'Entscheidung fehlgeschlagen'
+    if (/Remote-MCP/i.test(message)) {
+      message += ' Klassische REST-APIs ohne MCP (z. B. BuchhaltungsButler) werden stattdessen als native Integration eingebaut — melde dich dafür bei Aleksa.'
+    }
+    return fail(message)
   }
   $('tool-research-detail-overlay').classList.remove('open')
   await Promise.all([loadToolResearch(), loadToolResearchProposals()])
@@ -6890,6 +6903,7 @@ const NATIVE_CONNECTORS = {
   notion: { row: 'notion-row', status: 'notion-status', sub: 'notion-sub', label: 'Notion', icon: '/icons/notion.svg', mcpProvider: 'notion', mcpUrl: 'https://mcp.notion.com/mcp', accessMode: 'read_write', nativeAccessMode: 'read_only', nativeSubConnected: 'Seiten und Datenbanken · Read-only', subConnected: 'Seiten und Datenbanken · Read & Write', subDefault: 'Seiten und Datenbanken · Read & Write' },
   attio: { row: 'attio-row', status: 'attio-status', sub: 'attio-sub', label: 'Attio', icon: '/icons/attio.ico', mcpProvider: 'attio', mcpUrl: 'https://mcp.attio.com/mcp', accessMode: 'read_write', nativeAccessMode: 'read_only', nativeSubConnected: 'CRM-Daten und Meetings · Read-only', subConnected: 'CRM, Aufgaben und Notizen · Read & Write', subDefault: 'CRM, Aufgaben und Notizen · Read & Write' },
   slack: { row: 'slack-row', status: 'slack-status', sub: 'slack-sub', label: 'Slack', icon: '/icons/slack.svg', subConnected: 'Channels und Threads · Read-only', subDefault: 'Channels und Threads · Read-only' },
+  buchhaltungsbutler: { row: 'buchhaltungsbutler-row', status: 'buchhaltungsbutler-status', sub: 'buchhaltungsbutler-sub', label: 'BuchhaltungsButler', icon: '/icons/buchhaltungsbutler.ico', credentialForm: 'bb', subConnected: 'Rechnungen, Buchungen und Kontoumsätze · Read-only', subDefault: 'Rechnungen, Buchungen und Kontoumsätze · Read-only' },
 }
 let marketplaceAccessFilter = 'all'
 function applyMarketplaceFilter() {
@@ -7132,7 +7146,9 @@ function renderNativeRow(kind, conn, isAdmin, me, activeSpaces = []) {
     })
   } else {
     status.className = 'c-right off'
-    const selfService = !!cfg.mcpProvider
+    // Self-Service: OAuth-MCPs UND native Credential-Formulare (z. B. BuchhaltungsButler)
+    // brauchen keine zentrale OAuth-App-Freischaltung.
+    const selfService = !!cfg.mcpProvider || !!cfg.credentialForm
     const configured = oauthProviders.get(kind)?.configured
     status.innerHTML = selfService || configured
       ? '<span class="connector-connect"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Account verbinden</span>'
@@ -7147,6 +7163,7 @@ for (const [kind, cfg] of Object.entries(NATIVE_CONNECTORS)) {
   $(cfg.row).addEventListener('click', async () => {
     if (nativeState[kind]) return
     if (cfg.mcpProvider) return startMcpOAuth(cfg.mcpProvider, cfg.label)
+    if (cfg.credentialForm === 'bb') return openBbModal()
     const configured = oauthProviders.get(kind)?.configured
     if (!configured) {
       showOAuthResult('error', `${cfg.label} wartet auf die zentrale Freigabe`, 'Enneo-IT richtet die App einmalig ein. Danach verbindest du hier mit einem Klick deinen eigenen Account.')
@@ -7156,6 +7173,57 @@ for (const [kind, cfg] of Object.entries(NATIVE_CONNECTORS)) {
     startProviderOAuth(kind)
   })
 }
+
+// BuchhaltungsButler: klassische REST-API mit drei Credentials statt OAuth.
+// Admins können die Verbindung direkt als Team-Verbindung anlegen.
+async function openBbModal() {
+  $('bb-client').value = ''
+  $('bb-secret').value = ''
+  $('bb-key').value = ''
+  $('bb-err').textContent = ''
+  $('bb-team').checked = false
+  try {
+    const { is_admin: isAdmin } = await ownProfile()
+    $('bb-team-wrap').hidden = !isAdmin
+  } catch { $('bb-team-wrap').hidden = true }
+  $('bb-overlay').classList.add('open')
+  setTimeout(() => $('bb-client').focus(), 50)
+}
+
+$('bb-cancel').addEventListener('click', () => $('bb-overlay').classList.remove('open'))
+$('bb-save').addEventListener('click', async () => {
+  const err = $('bb-err')
+  err.textContent = ''
+  const apiClient = $('bb-client').value.trim()
+  const apiSecret = $('bb-secret').value.trim()
+  const apiKey = $('bb-key').value.trim()
+  if (!apiClient || !apiSecret || !apiKey) { err.textContent = 'Alle drei Felder sind Pflicht.'; return }
+  $('bb-save').disabled = true
+  $('bb-save').textContent = 'Teste Verbindung …'
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/connectors`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({
+        kind: 'buchhaltungsbutler',
+        api_client: apiClient,
+        api_secret: apiSecret,
+        api_key: apiKey,
+        scope: $('bb-team').checked ? 'team' : 'personal',
+      }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+    $('bb-overlay').classList.remove('open')
+    toolCatalogCache = null
+    showOAuthResult('success', 'BuchhaltungsButler ist verbunden', `${data.accounts || ''} · Noch keinem Space zugeordnet und deshalb für Enni inaktiv.`)
+    await Promise.all([loadConnectorRows(), loadSpacesTree()])
+  } catch (e) {
+    err.textContent = e.message
+  }
+  $('bb-save').disabled = false
+  $('bb-save').textContent = 'Verbinden'
+})
 
 async function openConnectorModal(prefill = {}) {
     cnCategory = prefill.category || 'tool'
@@ -7213,110 +7281,92 @@ $('cn-save').addEventListener('click', async () => {
   $('cn-save').textContent = 'Verknüpfen'
 })
 
-// ============================================================ Kontexte (wiederverwendbares Wissen mit explizitem Scope)
-let editingContext = null
-let contextListCache = []
-let contextAccessFilter = 'all'
+// ============================================================ Verbindliche Skill-Quellen
+// Wissen lebt an EINEM Ort: als Wiki-Seite in einem Space (Company Data & Co.).
+// Die frühere Kontexte-Bibliothek ist entfernt — Skills referenzieren stattdessen
+// Seiten, Ordner oder ganze Spaces direkt (Tabelle skill_sources).
+let skillSourcesDraft = [] // [{space_id, folder, wiki_page_id, _label}]
+let sourcePickerSpaces = []
+let sourcePickerPages = []
 
-async function loadContexts() {
-  const { data, error } = await sb.from('contexts').select('*').order('updated_at', { ascending: false })
-  if (error) { $('context-list').innerHTML = `<div class="empty-plain">${esc(error.message)}</div>`; return }
-  contextListCache = data || []
-  renderContextList($('context-search').value)
+async function loadSourcePickerData() {
+  const [{ data: spaces }, { data: pages }] = await Promise.all([
+    sb.from('spaces').select('id, name, restricted').order('name'),
+    sb.from('wiki_pages').select('id, slug, title, space_id').order('slug'),
+  ])
+  sourcePickerSpaces = spaces || []
+  sourcePickerPages = pages || []
 }
 
-function renderContextList(filter = '') {
-  const q = filter.trim().toLowerCase()
-  const contexts = contextListCache.filter((context) => {
-    const access = context.visibility === 'team' ? 'open' : 'restricted'
-    return (contextAccessFilter === 'all' || access === contextAccessFilter)
-      && (!q || `${context.name} ${context.description} ${context.context_type}`.toLowerCase().includes(q))
+function sourceLabel(source) {
+  if (source.wiki_page_id) {
+    const page = sourcePickerPages.find((p) => p.id === source.wiki_page_id)
+    return { kind: 'Seite', name: page ? `${page.title} (${page.slug})` : 'Unbekannte Seite' }
+  }
+  const space = sourcePickerSpaces.find((s) => s.id === source.space_id)
+  const spaceName = space?.name || 'Space'
+  return source.folder
+    ? { kind: 'Ordner', name: `${spaceName} → ${source.folder}/` }
+    : { kind: 'Space', name: spaceName }
+}
+
+function renderSkillSources(canEdit) {
+  const host = $('sk-sources-list')
+  host.innerHTML = ''
+  if (!skillSourcesDraft.length) {
+    host.innerHTML = '<div class="skill-tools-empty">Keine verbindlichen Quellen — der Skill arbeitet dann rein über die Wissenssuche.</div>'
+  }
+  skillSourcesDraft.forEach((source, index) => {
+    const { kind, name } = sourceLabel(source)
+    const chip = document.createElement('span')
+    chip.className = 'skill-tool-card'
+    chip.title = `${kind} · ${name}`
+    chip.innerHTML = `<span class="skill-tool-copy"><span class="skill-tool-service">${esc(kind)}</span><span class="skill-tool-action">${esc(name)}</span></span>` +
+      (canEdit ? '<button type="button" class="skill-tool-remove" aria-label="Quelle entfernen">×</button>' : '')
+    chip.querySelector('.skill-tool-remove')?.addEventListener('click', () => {
+      skillSourcesDraft.splice(index, 1)
+      renderSkillSources(canEdit)
+    })
+    host.appendChild(chip)
   })
-  $('context-list').innerHTML = ''
-  if (!contexts.length) { $('context-list').innerHTML = '<div class="empty-plain">Noch keine passenden Kontexte.</div>'; return }
-  for (const context of contexts) {
-    const row = document.createElement('button')
-    row.className = 'crow'
-    const personalProfile = context.context_type === 'personal_profile'
-    const scope = context.visibility === 'team'
-      ? '<span class="access-badge open">Open</span>'
-      : context.visibility === 'proposed'
-        ? '<span class="access-badge pending">Wartet auf Freigabe</span>'
-        : '<span class="access-badge restricted">Restricted · nur du</span>'
-    row.innerHTML = `<span class="c-logo" style="background:none;border-style:dashed">${personalProfile ? '⌾' : '⌁'}</span><div><div class="c-name">${esc(context.name)}</div><div class="c-sub">${esc(context.description || context.content.split('\n').find(Boolean) || 'Ohne Beschreibung')}</div></div>${scope}`
-    row.addEventListener('click', () => openContext(context))
-    $('context-list').appendChild(row)
-  }
+  $('sk-source-add').hidden = !canEdit
 }
 
-async function openContext(context = null) {
-  const { is_admin } = await ownProfile()
-  editingContext = context
-  const personalProfile = context?.context_type === 'personal_profile'
-  const pendingReview = context?.visibility === 'proposed' && !!context.knowledge_update_id
-  const canEdit = !pendingReview && (!context || context.owner_id === session.user.id || (is_admin && context.visibility === 'team'))
-  $('cx-title').textContent = context?.name || 'Neuer Kontext'
-  $('cx-name').value = context?.name || ''
-  if (personalProfile && !$('cx-type').querySelector('option[value="personal_profile"]')) $('cx-type').insertAdjacentHTML('beforeend', '<option value="personal_profile">Persönliches Profil</option>')
-  $('cx-type').value = personalProfile ? 'personal_profile' : (context?.context_type || 'knowledge')
-  $('cx-visibility').value = pendingReview ? 'proposed' : (context?.visibility || (is_admin ? 'team' : 'personal'))
-  $('cx-visibility').querySelector('option[value="team"]').disabled = !is_admin
-  $('cx-description').value = context?.description || ''
-  $('cx-content').value = context?.content || ''
-  $('cx-err').textContent = ''
-  $('cx-import-name').textContent = personalProfile ? 'Privater Onboarding-Kontext' : 'Markdown oder Text'
-  for (const id of ['cx-name', 'cx-type', 'cx-visibility', 'cx-description', 'cx-content']) $(id).disabled = !canEdit || (personalProfile && ['cx-name', 'cx-type', 'cx-visibility'].includes(id))
-  $('cx-import').hidden = !canEdit || personalProfile
-  $('cx-save').hidden = !canEdit
-  $('cx-delete').hidden = !canEdit || !context || personalProfile
-  $('context-overlay').classList.add('open')
+function syncSourceFolderOptions() {
+  const spaceId = $('sk-src-space').value
+  const pages = sourcePickerPages.filter((page) => page.space_id === spaceId)
+  const folders = [...new Set(pages.filter((page) => page.slug.includes('/')).map((page) => page.slug.split('/')[0]))].sort()
+  $('sk-src-folder').innerHTML =
+    '<option value="">Ganzer Space</option>' +
+    folders.map((folder) => `<option value="${esc(folder)}">${esc(folder)}/</option>`).join('')
+  syncSourcePageOptions()
 }
 
-$('context-search').addEventListener('input', () => renderContextList($('context-search').value))
-$('context-access-filter').addEventListener('click', (event) => {
-  const button = event.target.closest('[data-access]')
-  if (!button) return
-  contextAccessFilter = button.dataset.access
-  $('context-access-filter').querySelectorAll('button').forEach((item) => item.classList.toggle('on', item === button))
-  renderContextList($('context-search').value)
-})
-$('context-add').addEventListener('click', () => openContext())
-$('cx-cancel').addEventListener('click', () => $('context-overlay').classList.remove('open'))
-$('cx-import').addEventListener('click', () => $('cx-file').click())
-$('cx-file').addEventListener('change', async () => {
-  const file = $('cx-file').files[0]
-  if (!file) return
-  if (file.size > 1024 * 1024) { $('cx-err').textContent = 'Die Datei darf maximal 1 MB groß sein.'; return }
-  $('cx-content').value = await file.text()
-  if (!$('cx-name').value) $('cx-name').value = file.name.replace(/\.(md|txt)$/i, '')
-  $('cx-import-name').textContent = file.name
-})
-$('cx-save').addEventListener('click', async () => {
-  const name = $('cx-name').value.trim()
-  const content = $('cx-content').value.trim()
-  if (!name || !content) { $('cx-err').textContent = 'Name und Inhalt sind Pflicht.'; return }
-  const { is_admin } = await ownProfile()
-  const visibility = is_admin ? $('cx-visibility').value : 'personal'
-  if (visibility === 'team' && editingContext?.context_type === 'personal_profile') { $('cx-err').textContent = 'Der persönliche Arbeitskontext bleibt immer privat.'; return }
-  const row = {
-    name, content, description: $('cx-description').value.trim(), context_type: $('cx-type').value,
-    visibility, owner_id: visibility === 'team' ? null : session.user.id,
-    source: editingContext?.source || ($('cx-file').files[0] ? 'import' : 'manual'), updated_by: session.user.id,
-  }
-  $('cx-save').disabled = true
-  const query = editingContext ? sb.from('contexts').update(row).eq('id', editingContext.id) : sb.from('contexts').insert({ ...row, created_by: session.user.id })
-  const { error } = await query
-  $('cx-save').disabled = false
-  if (error) { $('cx-err').textContent = error.message; return }
-  $('context-overlay').classList.remove('open')
-  await loadContexts()
-})
-$('cx-delete').addEventListener('click', async () => {
-  if (!editingContext || !window.confirm(`Kontext "${editingContext.name}" löschen?`)) return
-  const { error } = await sb.from('contexts').delete().eq('id', editingContext.id)
-  if (error) { $('cx-err').textContent = error.message; return }
-  $('context-overlay').classList.remove('open')
-  await loadContexts()
+function syncSourcePageOptions() {
+  const spaceId = $('sk-src-space').value
+  const folder = $('sk-src-folder').value
+  const pages = sourcePickerPages.filter((page) =>
+    page.space_id === spaceId && (!folder || page.slug === folder || page.slug.startsWith(`${folder}/`))
+  )
+  $('sk-src-page').innerHTML =
+    `<option value="">${folder ? 'Ganzer Ordner' : 'Alle Seiten'}</option>` +
+    pages.map((page) => `<option value="${page.id}">${esc(page.title)}</option>`).join('')
+}
+
+$('sk-src-space')?.addEventListener('change', syncSourceFolderOptions)
+$('sk-src-folder')?.addEventListener('change', syncSourcePageOptions)
+$('sk-src-add-btn')?.addEventListener('click', () => {
+  const spaceId = $('sk-src-space').value
+  if (!spaceId) return
+  const pageId = $('sk-src-page').value || null
+  const folder = $('sk-src-folder').value || null
+  const source = pageId
+    ? { wiki_page_id: pageId, space_id: null, folder: null }
+    : { wiki_page_id: null, space_id: spaceId, folder }
+  const key = (item) => `${item.wiki_page_id || ''}|${item.space_id || ''}|${item.folder || ''}`
+  if (skillSourcesDraft.some((item) => key(item) === key(source))) return
+  skillSourcesDraft.push(source)
+  renderSkillSources(true)
 })
 
 // ============================================================ Skills (Best-Practice-Playbooks)
@@ -7330,7 +7380,7 @@ let skillAccessFilter = 'all'
 
 async function loadSkills() {
   const [{ data: skills }, { is_admin }, profs] = await Promise.all([
-    sb.from('skills').select('*, skill_contexts(context_id, requirement, position)').order('name'),
+    sb.from('skills').select('*, skill_sources(id, space_id, folder, wiki_page_id, position)').order('name'),
     ownProfile(),
     allProfiles(),
   ])
@@ -7590,14 +7640,15 @@ async function openSkill(s, isAdmin) {
   }
   $('sk-enabled').checked = s ? s.enabled : true
   $('sk-context').value = s?.context || ''
-  if (!contextListCache.length) {
-    const { data } = await sb.from('contexts').select('*').order('name')
-    contextListCache = data || []
-  }
-  const selectedContextIds = new Set((s?.skill_contexts || []).filter((link) => link.requirement === 'required').map((link) => link.context_id))
-  $('sk-required-contexts').innerHTML = contextListCache
-    .filter((context) => context.context_type !== 'personal_profile')
-    .map((context) => `<option value="${context.id}"${selectedContextIds.has(context.id) ? ' selected' : ''}>${esc(context.name)} · ${context.visibility === 'team' ? 'Open' : 'Restricted'}</option>`).join('')
+  // Verbindliche Quellen: Seiten/Ordner/Spaces aus Company Data & Co. (skill_sources)
+  await loadSourcePickerData()
+  skillSourcesDraft = [...(s?.skill_sources || [])]
+    .sort((a, b) => (a.position || 0) - (b.position || 0))
+    .map((source) => ({ wiki_page_id: source.wiki_page_id, space_id: source.space_id, folder: source.folder }))
+  $('sk-src-space').innerHTML = sourcePickerSpaces
+    .map((space) => `<option value="${space.id}">${esc(space.name)}${space.restricted ? ' · Restricted' : ''}</option>`).join('')
+  syncSourceFolderOptions()
+  renderSkillSources(canEdit)
   $('sk-workflow').value = s?.workflow || ''
   $('sk-tools').value = (s?.tools || []).join('\n')
   skillToolsEditable = canEdit
@@ -7661,9 +7712,12 @@ $('sk-save').addEventListener('click', async () => {
     ...(is_admin ? { created_by: $('sk-owner').value || session.user.id } : {}),
   }
   $('sk-save').disabled = true
-  const requiredContextIds = Array.from($('sk-required-contexts').selectedOptions).map((option) => option.value)
-  if (row.visibility === 'team' && requiredContextIds.some((id) => contextListCache.find((context) => context.id === id)?.visibility !== 'team')) {
-    err.textContent = 'Ein Open Skill darf nur Open Kontexte als verbindliche Quellen verwenden.'
+  // Open Skills dürfen keine Restricted-Quellen tragen — sonst wäre der Skill für
+  // Nicht-Mitglieder unbrauchbar (er wird dann serverseitig komplett ausgeblendet).
+  const restrictedSpaceIds = new Set(sourcePickerSpaces.filter((space) => space.restricted).map((space) => space.id))
+  const sourceSpaceId = (source) => source.space_id || sourcePickerPages.find((page) => page.id === source.wiki_page_id)?.space_id
+  if (row.visibility === 'team' && skillSourcesDraft.some((source) => restrictedSpaceIds.has(sourceSpaceId(source)))) {
+    err.textContent = 'Ein Open Skill darf nur Quellen aus Open Spaces verwenden.'
     $('sk-save').disabled = false
     return
   }
@@ -7676,14 +7730,18 @@ $('sk-save').addEventListener('click', async () => {
     err.textContent = error.code === '23505' ? `Slug "/${slug}" ist schon vergeben.` : 'Fehler: ' + error.message
     return
   }
-  if (requiredContextIds.length) {
-    const { error: linkError } = await sb.from('skill_contexts').upsert(requiredContextIds.map((contextId, position) => ({ skill_id: savedSkill.id, context_id: contextId, requirement: 'required', position })), { onConflict: 'skill_id,context_id' })
+  // Quellen als Ganzes ersetzen (delete + insert) — einfach und deterministisch
+  const { error: clearError } = await sb.from('skill_sources').delete().eq('skill_id', savedSkill.id)
+  if (clearError) { $('sk-save').disabled = false; err.textContent = 'Skill gespeichert, aber alte Quellen konnten nicht entfernt werden: ' + clearError.message; return }
+  if (skillSourcesDraft.length) {
+    const { error: linkError } = await sb.from('skill_sources').insert(skillSourcesDraft.map((source, position) => ({
+      skill_id: savedSkill.id,
+      space_id: source.space_id,
+      folder: source.folder,
+      wiki_page_id: source.wiki_page_id,
+      position,
+    })))
     if (linkError) { $('sk-save').disabled = false; err.textContent = 'Skill gespeichert, aber Quellen konnten nicht verknüpft werden: ' + linkError.message; return }
-  }
-  const removedContextIds = (editingSkill?.skill_contexts || []).map((link) => link.context_id).filter((id) => !requiredContextIds.includes(id))
-  if (removedContextIds.length) {
-    const { error: unlinkError } = await sb.from('skill_contexts').delete().eq('skill_id', savedSkill.id).in('context_id', removedContextIds)
-    if (unlinkError) { $('sk-save').disabled = false; err.textContent = 'Skill gespeichert, aber alte Quellen konnten nicht entfernt werden: ' + unlinkError.message; return }
   }
   $('sk-save').disabled = false
   $('skill-overlay').classList.remove('open')

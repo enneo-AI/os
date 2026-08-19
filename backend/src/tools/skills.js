@@ -1,5 +1,6 @@
 import { db } from '../db.js'
-import { CONTEXT_RELATION, loadSkillWithContexts, requiredContextsText, visibleSkillContexts } from '../contexts.js'
+import { SOURCES_RELATION, loadSkillWithSources, attachSkillSourcesText, skillSourcesVisible } from '../contexts.js'
+import { allowedSpaceIds } from './wiki.js'
 
 // ============================================================ Skills (Best-Practice-Playbooks)
 // Skills sagen Enni, WIE man Dinge bei enneo richtig macht. Die Trigger-Übersicht
@@ -8,21 +9,19 @@ import { CONTEXT_RELATION, loadSkillWithContexts, requiredContextsText, visibleS
 
 // Sichtbar für einen Nutzer: alle team-weiten Skills + die eigenen persönlichen
 // (visibility 'personal'/'proposed' wirkt beim Ersteller sofort — wie Learnings).
+// Skills mit verbindlichen Quellen aus Spaces, die der Nutzer nicht sehen darf,
+// werden komplett ausgeblendet (kein Lauf ohne Pflichtwissen, kein Restricted-Leak).
 export async function loadEnabledSkills(userId = null) {
   const q = db
     .from('skills')
-    .select(`id, slug, name, category, visibility, created_by, context, workflow, tools, triggers, definition_of_done, corner_cases, ${CONTEXT_RELATION}`)
+    .select(`id, slug, name, category, visibility, created_by, context, workflow, tools, triggers, definition_of_done, corner_cases, ${SOURCES_RELATION}`)
     .eq('enabled', true)
     .order('name')
-  const { data } = await (userId
-    ? q.or(`visibility.eq.team,created_by.eq.${userId}`)
-    : q.eq('visibility', 'team'))
-  return (data || []).filter((skill) => {
-    const required = (skill.skill_contexts || []).filter((link) => link.requirement === 'required')
-    const visibleRequired = visibleSkillContexts(skill, userId, 'required')
-    skill.skill_contexts = visibleSkillContexts(skill, userId)
-    return required.length === visibleRequired.length
-  })
+  const [{ data }, spaceIds] = await Promise.all([
+    userId ? q.or(`visibility.eq.team,created_by.eq.${userId}`) : q.eq('visibility', 'team'),
+    allowedSpaceIds(userId),
+  ])
+  return (data || []).filter((skill) => skillSourcesVisible(skill, spaceIds))
 }
 
 export function skillVisibleTo(s, userId) {
@@ -91,10 +90,10 @@ export function autoSkillsPromptBlock(skills) {
   )
 }
 
-export function skillText(s, userId = null) {
+export function skillText(s) {
   return [
     `# Skill: ${s.name} (/${s.slug})`,
-    requiredContextsText(s, userId),
+    s._sourcesText || null,
     `## Kontext\n${s.context}`,
     `## Workflow\n${s.workflow}`,
     s.tools?.length ? `## Verknüpfte Tools\n${s.tools.join(', ')}` : null,
@@ -170,13 +169,13 @@ export async function runSkillTool(name, input, ctx = {}) {
   }
   if (name !== 'skill_read') throw new Error(`Unbekanntes Skill-Tool: ${name}`)
   const slug = String(input.slug || '').replace(/^\//, '').trim().toLowerCase()
-  const s = await loadSkillWithContexts(slug, ctx.userId)
+  const s = await loadSkillWithSources(slug, ctx.userId)
   if (!s || !skillVisibleTo(s, ctx.userId)) {
     const skills = await loadEnabledSkills(ctx.userId)
     return `Kein Skill "${slug}". Verfügbar: ${skills.map((x) => '/' + x.slug).join(', ') || 'keine'}`
   }
   if (!s.enabled) return `Skill "${slug}" ist deaktiviert.`
-  const visibleRequiredCount = (s.skill_contexts || []).filter((link) => link.requirement === 'required').length
-  if (visibleRequiredCount !== s.required_context_count) return `Skill "${slug}" ist für deinen Account nicht verfügbar, weil ein verbindlicher Kontext fehlt.`
-  return skillText(s, ctx.userId)
+  if (!s._sourcesVisible) return `Skill "${slug}" ist für deinen Account nicht verfügbar, weil eine verbindliche Quelle in einem für dich nicht freigegebenen Space liegt.`
+  await attachSkillSourcesText(s, ctx.userId)
+  return skillText(s)
 }

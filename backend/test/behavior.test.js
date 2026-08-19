@@ -176,7 +176,7 @@ test('invites use durable temporary passwords instead of expiring links', () => 
   assert.match(frontendSource, /await enterWorkspace\(\)/)
 })
 
-test('contexts stay private and required skill sources load deterministically', () => {
+test('skill sources come from spaces, load deterministically and respect space access', () => {
   const contextSource = readFileSync(join(here, '../src/contexts.js'), 'utf8')
   const skillSource = readFileSync(join(here, '../src/tools/skills.js'), 'utf8')
   const agentSource = readFileSync(join(here, '../src/agent.js'), 'utf8')
@@ -184,26 +184,45 @@ test('contexts stay private and required skill sources load deterministically', 
     join(here, '../../supabase/migrations/20260717073201_context_foundation.sql'),
     'utf8'
   )
-  const syncMigration = readFileSync(
-    join(here, '../../supabase/migrations/20260717173000_context_knowledge_sync.sql'),
+  const sourcesMigration = readFileSync(
+    join(here, '../../supabase/migrations/20260819113000_skill_sources.sql'),
     'utf8'
   )
   const wikiSource = readFileSync(join(here, '../src/tools/wiki.js'), 'utf8')
   const frontendSource = readFileSync(join(here, '../../frontend/app.js'), 'utf8')
+  const frontendHtml = readFileSync(join(here, '../../frontend/index.html'), 'utf8')
 
+  // Persönlicher Profil-Kontext bleibt privat (contexts-Tabelle, RLS unangetastet)
   const selectPolicy = migration.match(/create policy contexts_select[\s\S]*?;\n/)?.[0] || ''
   assert.match(selectPolicy, /visibility = 'team' or owner_id = \(select auth\.uid\(\)\)/)
   assert.doesNotMatch(selectPolicy, /p\.is_admin/)
   assert.match(migration, /active_account_only on public\.contexts as restrictive/)
-  assert.match(migration, /profiles_departments_check/)
   assert.match(contextSource, /Privater persönlicher Kontext/)
-  assert.match(contextSource, /Verbindlich geladene Kontexte/)
-  assert.match(syncMigration, /knowledge_update_id uuid references public\.knowledge_updates/)
-  assert.match(wikiSource, /mirrorContextProposal/)
-  assert.match(wikiSource, /publishContextFromKnowledgeUpdate/)
-  assert.match(frontendSource, /Wartet auf Freigabe/)
-  assert.match(skillSource, /requiredContextsText/)
   assert.match(agentSource, /loadPersonalContextBlock/)
+
+  // Verbindliche Quellen kommen aus den Spaces (skill_sources) — EIN Ort für Wissen
+  assert.match(sourcesMigration, /create table public\.skill_sources/)
+  assert.match(sourcesMigration, /wiki_page_id is not null or space_id is not null/)
+  assert.match(sourcesMigration, /active_account_only on public\.skill_sources as restrictive/)
+  assert.match(sourcesMigration, /delete from public\.contexts where context_type <> 'personal_profile'/)
+  assert.match(contextSource, /Verbindliche Quellen \(aus den Spaces geladen\)/)
+  assert.match(contextSource, /skillSourcesVisible/)
+  assert.match(contextSource, /wiki_read_page/)
+  assert.match(skillSource, /attachSkillSourcesText/)
+  assert.match(skillSource, /skillSourcesVisible\(skill, spaceIds\)/)
+  assert.match(agentSource, /attachSkillSourcesText\(skill, ctx\.userId\)/)
+
+  // Die alte Kontexte-Bibliothek ist vollständig stillgelegt
+  assert.doesNotMatch(wikiSource, /mirrorContextProposal/)
+  assert.doesNotMatch(wikiSource, /publishContextFromKnowledgeUpdate/)
+  assert.doesNotMatch(frontendHtml, /id="v-contexts"/)
+  assert.doesNotMatch(frontendSource, /\/spaces\/kontexte/)
+  assert.match(frontendSource, /skill_sources/)
+  assert.match(frontendHtml, /id="sk-sources-list"/)
+
+  // Wissenskarte: Enni bekommt die Ordner-Landkarte statt Massen-Einlesen
+  assert.match(wikiSource, /knowledgeMapPromptBlock/)
+  assert.match(agentSource, /knowledgeMapPromptBlock\(ctx\.userId\)/)
 })
 
 test('remote MCP research is structured and keeps provider auth headers explicit', () => {
@@ -322,7 +341,7 @@ test('marketplace connections stay dormant until an accessible Space activates t
   assert.match(frontendHtml, /Apps verbinden\. Zugriff regelst du im Space\./)
   assert.match(frontendHtml, /<h2>Marketplace<\/h2>/)
   assert.match(frontendHtml, /id="installed-connections"/)
-  assert.match(frontendHtml, /id="context-access-filter"/)
+  assert.match(frontendHtml, /id="buchhaltungsbutler-row"/)
   assert.match(frontendHtml, /Restricted · nur du/)
   assert.match(frontendSource, /connectorDirectory/)
   assert.match(frontendSource, /connectorAccess/)

@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { wikiToolDefinitions, runWikiTool } from './tools/wiki.js'
+import { wikiToolDefinitions, runWikiTool, knowledgeMapPromptBlock } from './tools/wiki.js'
 import { gitlabToolDefinitions, runGitlabTool } from './tools/gitlab.js'
 import { enneoToolDefinitions, runEnneoTool } from './tools/enneo.js'
 import { mcpToolDefinitions, runMcpTool } from './tools/mcp.js'
@@ -15,6 +15,7 @@ import {
 import { fileToolDefinitions, runFileTool } from './tools/files.js'
 import { attioToolDefinitions, runAttioTool } from './tools/attio.js'
 import { slackToolDefinitions, runSlackTool } from './tools/slack.js'
+import { buchhaltungsbutlerToolDefinitions, runBuchhaltungsbutlerTool } from './tools/buchhaltungsbutler.js'
 import { productivityToolDefinitions, runProductivityTool } from './tools/productivity.js'
 import { registrationToolDefinitions, runRegistrationTool } from './tools/registration.js'
 import { uxUiToolDefinitions, runUxUiTool } from './tools/ux-ui.js'
@@ -58,7 +59,7 @@ Antworte IMMER in der Sprache der letzten Nachricht des Nutzers. Schreibt er auf
 - ENTSCHEIDUNGSPROTOKOLL — vor jeder Antwort intern durchlaufen, aber nicht als Meta-Erklärung ausgeben:
   1. Ziel erkennen: Was will der Nutzer am Ende wissen, entscheiden, erstellen oder verändern? Beachte den Gesprächskontext, nicht nur den letzten Satz. Wenn eine fehlende Information das Ergebnis wesentlich verändern würde, stelle genau EINE gezielte Rückfrage. Sonst arbeite mit einer klar benannten Annahme weiter.
   2. Skill wählen: Prüfe die Skill-Trigger. Der spezifischste Fach-Skill gewinnt; /enneo-context ist nur der Fallback. Passt ein Skill, MUSS sein voller Inhalt vor der Facharbeit geladen sein. Steht er bereits unter "Automatisch geladene Skills", verwende ihn direkt und rufe skill_read nicht doppelt auf; sonst skill_read aufrufen. Bei kombinierten Aufgaben Skills ketten: zuerst Fach-/Recherche-Skill, danach Ausgabe-Skill wie /dokument oder /praesentation.
-  3. Evidenz planen: Wähle die Quelle nach der Art der Wahrheit — Wiki/Docs für dauerhaftes Wissen, GitLab für echten Code, Enneo-Tools für Live-Instanzen, Attio für CRM/Deals/Meetings, Slack für Diskussionen/Entscheidungen, Drive/Notion/Outlook für dort abgelegte Inhalte. Bei technischen UND fachlichen Fragen kombiniere Quellen, wenn eine allein die Aussage nicht tragen kann.
+  3. Evidenz planen: Wähle die Quelle nach der Art der Wahrheit — Wiki/Docs für dauerhaftes Wissen, GitLab für echten Code, Enneo-Tools für Live-Instanzen, Attio für CRM/Deals/Meetings, Slack für Diskussionen/Entscheidungen, Drive/Notion/Outlook für dort abgelegte Inhalte, BuchhaltungsButler (bb_-Tools) für Rechnungen/Buchungen/Kontoumsätze, web_search für aktuelle externe Informationen aus dem Netz. Bei technischen UND fachlichen Fragen kombiniere Quellen, wenn eine allein die Aussage nicht tragen kann.
   4. Minimal ausreichend recherchieren: Nutze nicht reflexhaft jedes Tool. Starte mit der stärksten Quelle, vertiefe nur bei Lücken oder Widersprüchen und stoppe, sobald die Nutzerfrage belastbar beantwortet ist. Eine qualifizierte Antwort ist wichtiger als viele Tool-Calls.
   5. Antwort synthetisieren: Ziehe eine klare Schlussfolgerung aus den Ergebnissen. Zitiere keine Tool-Ausgaben roh und liste nicht bloß Fundstellen auf. Sage zuerst, was daraus folgt; nenne danach nur die Evidenz, die der Nutzer für Vertrauen oder Handeln braucht.
 - RECHERCHE-BUDGET: Wiederhole nicht dieselbe Suche mit immer neuen Synonymen. Pro Quellenfamilie gelten standardmäßig höchstens drei Such-Calls; danach liest du den besten Treffer gezielt oder beantwortest mit klar benannter Lücke. Überschreite das nur bei ausdrücklich verlangter Vollständigkeit oder echter Pagination.
@@ -76,6 +77,8 @@ Antworte IMMER in der Sprache der letzten Nachricht des Nutzers. Schreibt er auf
 - FEHLENDES TOOL: Wenn eine Aufgabe oder ein Skill-Workflow ein Tool braucht, das nicht verbunden ist (kein attio_/slack_/passendes mcp__-Tool verfügbar), oder der Nutzer ein neues Tool anbinden will: rufe SOFORT request_tool_connection auf — frag NICHT erst nach URL oder Zugangsdaten. Die Karte im Chat hat Felder für alles; der Nutzer trägt URL und Key dort selbst ein (du siehst sie nie). url im Tool-Call nur vorbefüllen, wenn du sie sicher kennst — sonst weglassen. Danach erscheint das Tool als persönliches Tool des Nutzers unter Spaces → Tools.
 - CRM-Fragen (Kunden-Accounts, Ansprechpartner, Deals, Discovery-Notizen): wenn attio_-Tools verfügbar sind, ist Attio die Quelle — erst attio_query_records (Filter z.B. {"name":{"$contains":"..."}}), dann attio_get_record / attio_list_notes für Details. Für Calls/Meetings und deren Gesprächs-Transkripte: attio_list_meetings (nach Titel/Zeitraum/Teilnehmern filtern) → attio_get_transcript mit der meeting_id. Attio ist read-only.
 - Slack-Fragen ("was wurde in #channel besprochen", Diskussionen, Entscheidungen aus Threads): wenn slack_-Tools verfügbar sind — erst slack_list_channels, dann slack_read_channel, Threads über slack_read_thread. Slack ist read-only; private Channels siehst du nur, wenn der Bot dort eingeladen wurde — sag das ehrlich, wenn ein Channel fehlt.
+- Buchhaltungs-Fragen (Eingangs-/Ausgangsrechnungen, offene Posten, Buchungen, Kontoumsätze, Kreditoren/Debitoren): wenn bb_-Tools verfügbar sind, ist BuchhaltungsButler die Quelle — bb_get_receipts für Rechnungen (list_direction inbound/outbound, payment_status "unpaid" für offene Posten), bb_get_transactions für Bankbewegungen, bb_get_postings für das Buchungsjournal. Alles read-only; Finanzdaten sind vertraulich und bleiben im jeweiligen Space-Kreis.
+- LIVE-WEBSUCHE: web_search ist für aktuelle EXTERNE Informationen da (News, KI-Trends, Anbieter-Doku, Preise, Regulatorik). Belege jedes Web-Finding mit datierter, verlinkbarer Originalquelle (Titel + URL). Für internes Firmenwissen ist NIE das Web die Quelle, sondern Wiki und Connectoren. Nutze die Suche gezielt (max. 5 Suchläufe pro Turn) statt explorativ.
 - Outlook, Google Drive und Notion: Nutze outlook_*, google_drive_* bzw. notion_* sobald die entsprechende Connection verfügbar ist. Diese Tools sind read-only. Suche zuerst, lies Details danach über die zurückgegebene ID. Behaupte nie Zugriff auf nicht freigegebene Notion-Seiten oder Google-Dateien.
 - WISSENS-UPDATE-LOOP: Wenn du in einer Konversation dauerhaft gültiges Firmenwissen lernst — neue Fakten, Korrekturen an Wiki-Inhalten, getroffene Entscheidungen, Prozessänderungen — schlage PROAKTIV ein Wiki-Update vor: erst wiki_read_page auf die Zielseite (falls vorhanden), dann wiki_propose_update mit dem kompletten neuen Inhalt. Die Vorschläge sieht NUR der Admin in einer Review-Liste und prüft sie gesammelt — nicht der Nutzer im Chat. Sag dem Nutzer NUR dann, dass ein Vorschlag gespeichert wurde oder beim Admin liegt, wenn wiki_propose_update in DIESEM Turn erfolgreich ausgeführt wurde und eine update_id geliefert hat. Ein bloßes wiki_read_page ist niemals eine Änderung oder ein Vorschlag. Kein Vorschlag für Flüchtiges (Termine, Smalltalk, Debug-Zwischenstände). Behaupte nie, das Wiki sei aktualisiert, solange es nur vorgeschlagen ist.
 - DATEIEN & PRÄSENTATIONEN: Bei Dokumenten/PDFs muss /dokument, bei Decks/Slides /praesentation vollständig geladen sein (Auto-Block oder skill_read). Wenn der Inhalt einen weiteren Fach-Skill braucht (z. B. Sales Call, Health-Check, Executive Brief), diesen ZUERST und den Ausgabe-Skill DANACH anwenden. Erstelle erst nach der fachlichen Recherche mit create_file die Datei im enneo-Brand-Design (standardmäßig echtes PDF; format="html" nur auf ausdrücklichen Wunsch). Inhalte: Deutsch, Sie-Form, pragmatisch, kein Hype, keine Emojis. Nach dem Erstellen: Link als Markdown-Link ausgeben.
@@ -105,7 +108,7 @@ const TOOLS = [
 // eintippen zu müssen. Dynamische Connectoren werden pro Nutzer aufgelöst.
 export async function availableToolDefinitions(userId) {
   let definitions = [...TOOLS, ...podToolDefinitions]
-  for (const loader of [uxUiToolDefinitions, mcpToolDefinitions, attioToolDefinitions, slackToolDefinitions, productivityToolDefinitions]) {
+  for (const loader of [uxUiToolDefinitions, mcpToolDefinitions, attioToolDefinitions, slackToolDefinitions, buchhaltungsbutlerToolDefinitions, productivityToolDefinitions]) {
     try {
       definitions = [...definitions, ...(await loader(userId))]
     } catch (err) {
@@ -128,6 +131,7 @@ async function executeTool(name, input, ctx) {
     if (name.startsWith('skill_')) return { content: await runSkillTool(name, input, ctx), isError: false }
     if (name.startsWith('attio_')) return { content: await runAttioTool(name, input, ctx), isError: false }
     if (name.startsWith('slack_')) return { content: await runSlackTool(name, input, ctx), isError: false }
+    if (name.startsWith('bb_')) return { content: await runBuchhaltungsbutlerTool(name, input, ctx), isError: false }
     if (name.startsWith('outlook_') || name.startsWith('google_drive_') || name.startsWith('notion_')) return { content: await runProductivityTool(name, input, ctx), isError: false }
     if (name === 'create_file') return { content: await runFileTool(name, input, ctx), isError: false }
     return { content: `Unbekanntes Tool: ${name}`, isError: true }
@@ -172,6 +176,10 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
       ? latestUser.content
       : (latestUser?.content || []).filter((block) => block.type === 'text').map((block) => block.text).join('\n')
     autoSkills = selectSkillsForPrompt(enabledSkills, latestText)
+    // Verbindliche Quellen (Wiki-Seiten/Ordner) der auto-geladenen Skills mitladen —
+    // erst dadurch trägt der Skill sein Pflichtwissen wirklich im Prompt.
+    const { attachSkillSourcesText } = await import('./contexts.js')
+    await Promise.all(autoSkills.map((skill) => attachSkillSourcesText(skill, ctx.userId)))
     autoSkillsBlock = autoSkillsPromptBlock(autoSkills)
   } catch (err) {
     console.error('Skills-Load fehlgeschlagen:', err.message)
@@ -211,6 +219,14 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
     releasesBlock = await releaseNotesPromptBlock()
   } catch (err) {
     console.error('Release-Notes-Load fehlgeschlagen:', err.message)
+  }
+  // Wissenskarte: welcher Space/Ordner enthält wie viel Wissen — Enni sucht damit
+  // gezielt statt breit (Tristans "Map statt Massen-Einlesen"-Prinzip).
+  let knowledgeMapBlock = null
+  try {
+    knowledgeMapBlock = await knowledgeMapPromptBlock(ctx.userId)
+  } catch (err) {
+    console.error('Wissenskarte-Load fehlgeschlagen:', err.message)
   }
   // Aktuelles Datum als eigener (uncached) Block — sonst kann Enni "diese Woche",
   // "gestern", "letzter Monat" nicht einordnen (z.B. bei Attio-/Slack-/Report-Fragen).
@@ -252,16 +268,29 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
     console.error('Slack-Tool-Discovery fehlgeschlagen:', err.message)
   }
   try {
+    const bbDefs = await buchhaltungsbutlerToolDefinitions(ctx.userId) // leer, solange keine zugängliche Space-Zuordnung existiert
+    if (bbDefs.length) turnTools = [...turnTools, ...bbDefs]
+  } catch (err) {
+    console.error('BuchhaltungsButler-Tool-Discovery fehlgeschlagen:', err.message)
+  }
+  try {
     const productivityDefs = await productivityToolDefinitions(ctx.userId)
     if (productivityDefs.length) turnTools = [...turnTools, ...productivityDefs]
   } catch (err) {
     console.error('Produktivitäts-Tool-Discovery fehlgeschlagen:', err.message)
   }
+  // Live-Websuche als Anthropic-Server-Tool: läuft API-seitig (kein Executor nötig).
+  // Haiku kann nur die Basis-Variante; die 2026er-Variante bringt dynamisches Filtering.
+  const webSearchTool = MODEL.startsWith('claude-haiku')
+    ? { type: 'web_search_20250305', name: 'web_search', max_uses: 5 }
+    : { type: 'web_search_20260209', name: 'web_search', max_uses: 5 }
+  turnTools = [...turnTools, webSearchTool]
   const capabilitiesBlock = capabilityPromptBlock(turnTools)
   const systemBlocks = [
     { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
     { type: 'text', text: selfContextPromptBlock() },
     { type: 'text', text: `Aktuelles Datum und Uhrzeit: ${now} (Europe/Berlin). Die aktuelle Woche läuft von Montag, ${d(monday)}, bis Sonntag, ${d(sunday)}. Rechne relative Zeitangaben ("diese Woche", "gestern", "letzter Monat") immer davon ausgehend.` },
+    ...(knowledgeMapBlock ? [{ type: 'text', text: knowledgeMapBlock }] : []),
     ...(skillsBlock ? [{ type: 'text', text: skillsBlock }] : []),
     ...(autoSkillsBlock ? [{ type: 'text', text: autoSkillsBlock }] : []),
     { type: 'text', text: capabilitiesBlock },
@@ -326,6 +355,9 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
             thinkingText += event.delta.thinking
             emit({ type: 'thinking_delta', text: event.delta.thinking })
           }
+        } else if (event.type === 'content_block_start' && event.content_block?.type === 'server_tool_use') {
+          // Server-Tools (Websuche) laufen API-seitig — Sichtbarkeit im Gedanken-Panel trotzdem live
+          emit({ type: 'tool_use', name: event.content_block.name, input: {} })
         }
       }
       response = await stream.finalMessage()
@@ -349,6 +381,39 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
     totalUsage.output_tokens += response.usage.output_tokens
     totalUsage.cache_creation_input_tokens += response.usage.cache_creation_input_tokens || 0
     totalUsage.cache_read_input_tokens += response.usage.cache_read_input_tokens || 0
+
+    // Server-Tool-Aufrufe (Websuche) fürs Audit-Protokoll festhalten — sie haben
+    // keinen executeTool-Durchlauf, sollen aber wie jeder Tool-Call nachvollziehbar sein.
+    for (const block of response.content) {
+      if (block.type !== 'server_tool_use') continue
+      const resultBlock = response.content.find(
+        (candidate) => candidate.type?.endsWith('_tool_result') && candidate.tool_use_id === block.id
+      )
+      const resultContent = resultBlock?.content
+      const isError = !!(resultContent && !Array.isArray(resultContent) && resultContent.error_code)
+      toolCalls.push({
+        name: block.name,
+        input: block.input || {},
+        output: isError
+          ? `Websuche-Fehler: ${resultContent.error_code}`
+          : Array.isArray(resultContent)
+            ? resultContent.map((r) => `${r.title || ''} — ${r.url || ''}`).filter((s) => s.trim() !== '—').slice(0, 10).join('\n')
+            : '',
+        is_error: isError,
+        suppressed: false,
+        server_tool: true,
+        duration_ms: 0,
+      })
+      emit({ type: 'tool_result', name: block.name, is_error: isError, duration_ms: 0 })
+    }
+
+    // Server-Tools können den Turn API-seitig pausieren (lange Suchläufe):
+    // Zwischenstand zurückgeben und einfach weiterlaufen lassen.
+    if (response.stop_reason === 'pause_turn') {
+      if (iterText.trim()) narrative.push(iterText.trim())
+      messages.push({ role: 'assistant', content: response.content })
+      continue
+    }
 
     if (response.stop_reason === 'refusal') {
       emit({ type: 'error', message: 'Anfrage wurde aus Sicherheitsgründen abgelehnt.' })
@@ -470,6 +535,10 @@ export async function runEnniTurn(history, emit, modelOverride, extraSystem = nu
       const finalResponse = await anthropic.messages.create({
         model: MODEL,
         max_tokens: 5000,
+        // Die History kann server_tool_use-/tool_use-Blöcke enthalten — Definitionen
+        // mitgeben, aber weitere Aufrufe hart unterbinden (reine Synthese).
+        tools: turnTools,
+        tool_choice: { type: 'none' },
         system: [
           ...systemBlocks,
           {

@@ -1428,7 +1428,6 @@
       <div class="sb-scroll">
         <div class="sb-sec">Bibliothek</div>
         <button class="sb-item admin-area" data-view="marketplace"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span class="txt">Marketplace</span></button>
-        <button class="sb-item admin-area" data-view="contexts"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/></svg><span class="txt">Kontexte</span></button>
         <button class="sb-item admin-area" data-view="skills"><svg class="nav-ico" viewBox="0 0 24 24"><path d="m13 2-9 12h8l-1 8 9-12h-8z"/></svg><span class="txt">Skills</span></button>
         <button class="sb-item admin-area" data-view="routines"><svg class="nav-ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span class="txt">Routinen</span></button>
         <div class="sb-sec">Spaces <button class="sec-add" id="new-space" title="Neuer Space" aria-label="Neuen Space erstellen">＋</button></div>
@@ -1917,15 +1916,11 @@
           <button class="crow" id="outlook-row"><span class="c-logo"><img src="/icons/outlook.svg" alt=""></span><div><div class="c-name">Outlook</div><div class="c-sub" id="outlook-sub">E-Mails und Kalender</div></div><span class="c-right off" id="outlook-status">Verbinden</span></button>
           <button class="crow" id="slack-row"><span class="c-logo"><img src="/icons/slack.svg" alt=""></span><div><div class="c-name">Slack</div><div class="c-sub" id="slack-sub">Channels und Threads</div></div><span class="c-right off" id="slack-status">Verbinden</span></button>
           <button class="crow" id="google_drive-row"><span class="c-logo"><img src="/icons/google-drive.svg" alt=""></span><div><div class="c-name">Google Drive</div><div class="c-sub" id="google_drive-sub">Dokumente und Ordner</div></div><span class="c-right off" id="google_drive-status">Verbinden</span></button>
+          <button class="crow" id="buchhaltungsbutler-row"><span class="c-logo"><img src="/icons/buchhaltungsbutler.ico" alt=""></span><div><div class="c-name">BuchhaltungsButler</div><div class="c-sub" id="buchhaltungsbutler-sub">Rechnungen, Buchungen und Kontoumsätze</div></div><span class="c-right off" id="buchhaltungsbutler-status">Verbinden</span></button>
           <div id="researched-read-only" style="display:contents"></div>
         </div></section>
         <section class="market-section" id="mcp-connections-section"><div class="market-section-head"><h3>Eigene MCPs</h3><span>verbundene Accounts</span></div><div class="asset-grid" id="dyn-tools"></div></section>
       </div>
-    </section>
-
-    <!-- CONTEXTS -->
-    <section class="view" id="v-contexts">
-      <div class="library-shell"><header class="library-head"><div><h2>Kontexte</h2><p>Wissen, das Skills zuverlässig laden.</p></div><button type="button" class="icon-action primary" id="context-add" aria-label="Neuer Kontext" title="Neuer Kontext"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></header><div class="library-toolbar"><label class="library-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input type="search" name="context-search" autocomplete="off" class="wiki-search" id="context-search" aria-label="Kontexte durchsuchen" placeholder="Kontexte durchsuchen …"></label><div class="scope-filter" id="context-access-filter"><button type="button" class="on" data-access="all">Alle</button><button type="button" data-access="open">Open</button><button type="button" data-access="restricted">Restricted</button></div></div><div class="asset-grid" id="context-list"></div></div>
     </section>
 
     <!-- SKILLS -->
@@ -2114,6 +2109,26 @@
 </div>
 
 <!-- ================= CONNECTOR MODAL ================= -->
+<div class="overlay" id="bb-overlay">
+  <div class="modal" role="dialog" aria-modal="true">
+    <h3>BuchhaltungsButler verbinden</h3>
+    <p class="pf-hint" style="margin-top:0">Die drei Zugangsdaten findest du in BuchhaltungsButler unter Einstellungen → Datenübertragung / Schnittstellen / API-Zugang.</p>
+    <label for="bb-client">API-Client</label>
+    <input type="text" id="bb-client" autocomplete="off" placeholder="z. B. enneo_gmbh">
+    <label for="bb-secret">API-Secret</label>
+    <input type="password" id="bb-secret" autocomplete="off" placeholder="API-Secret">
+    <label for="bb-key">API-Key</label>
+    <input type="password" id="bb-key" autocomplete="off" placeholder="API-Key des Mandanten">
+    <label class="pf-hint" id="bb-team-wrap" hidden style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="bb-team" style="width:auto;margin:0">Als gemeinsame Team-Verbindung anlegen (nur Admin)</label>
+    <p class="pf-hint">Beim Speichern wird die Verbindung live getestet; die Zugangsdaten werden verschlüsselt gespeichert und sind danach nicht mehr einsehbar. Zugriff für Enni entsteht erst durch die Zuordnung zu einem Space.</p>
+    <div class="err" id="bb-err"></div>
+    <div class="m-actions">
+      <button class="btn quiet" id="bb-cancel">Abbrechen</button>
+      <button class="btn dark" id="bb-save">Verbinden</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="conn-overlay">
   <div class="modal" role="dialog" aria-modal="true">
     <h3 id="cm-title">MCP-Server verknüpfen</h3>
@@ -2134,18 +2149,6 @@
 </div>
 
 <!-- ================= CONTEXT MODAL ================= -->
-<div class="overlay" id="context-overlay">
-  <div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="cx-title">
-    <h3 id="cx-title">Kontext</h3>
-    <div class="sk-grid"><div><label for="cx-name">Name</label><input type="text" id="cx-name" placeholder="z. B. enneo Brand Voice"></div><div><label for="cx-type">Typ</label><select id="cx-type" class="sk-select"><option value="knowledge">Wissen</option><option value="brand">Marke</option><option value="persona">Persona</option><option value="customer">Kunde</option></select></div></div>
-    <label for="cx-visibility">Zugriff</label><select id="cx-visibility" class="sk-select"><option value="personal">Restricted · nur du</option><option value="proposed" disabled>Wartet auf Freigabe</option><option value="team">Open · alle Accounts</option></select>
-    <label for="cx-description">Kurzbeschreibung</label><input type="text" id="cx-description" placeholder="Wann und wofür dieser Kontext gilt">
-    <label for="cx-content">Inhalt <span class="lbl-hint">— Markdown oder Klartext</span></label><textarea id="cx-content" rows="12"></textarea>
-    <input type="file" id="cx-file" hidden accept=".md,.txt,text/markdown,text/plain"><button class="btn quiet" id="cx-import" type="button">Datei importieren</button><span class="pf-hint" id="cx-import-name" style="margin-left:8px">Markdown oder Text</span>
-    <div class="err" id="cx-err"></div><div class="m-actions"><button class="btn quiet danger-link" id="cx-delete" hidden>Kontext löschen</button><span style="flex:1"></span><button class="btn quiet" id="cx-cancel">Abbrechen</button><button class="btn dark" id="cx-save">Speichern</button></div>
-  </div>
-</div>
-
 <!-- ================= SKILL MODAL ================= -->
 <div class="overlay" id="skill-overlay">
   <div class="modal wide" role="dialog" aria-modal="true">
@@ -2186,8 +2189,14 @@
     </div>
     <label for="sk-context">Kontext <span class="lbl-hint">— warum gibt es diesen Skill, wofür ist er da, typische Use Cases</span></label>
     <textarea id="sk-context" rows="4"></textarea>
-    <label for="sk-required-contexts">Verbindliche Quellen <span class="lbl-hint">— werden bei jeder Ausführung vollständig und aktuell geladen</span></label>
-    <select id="sk-required-contexts" class="context-select" multiple></select>
+    <label>Verbindliche Quellen <span class="lbl-hint">— Seiten oder Ordner aus Company Data &amp; Spaces, werden bei jeder Ausführung aktuell geladen</span></label>
+    <div id="sk-sources-list" class="skill-tools-list"></div>
+    <div class="sk-grid" id="sk-source-add" style="grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end">
+      <div><label for="sk-src-space" class="lbl-hint">Space</label><select id="sk-src-space" class="sk-select"></select></div>
+      <div><label for="sk-src-folder" class="lbl-hint">Ordner</label><select id="sk-src-folder" class="sk-select"></select></div>
+      <div><label for="sk-src-page" class="lbl-hint">Seite</label><select id="sk-src-page" class="sk-select"></select></div>
+      <button class="btn quiet" id="sk-src-add-btn" type="button" style="padding:8px 14px">Hinzufügen</button>
+    </div>
     <div class="context-meta">⌁ Mehrfachauswahl mit ⌘/Strg · Restricted-Quellen bleiben auf denselben Account begrenzt</div>
     <div class="wf-label-row">
       <label for="sk-workflow" style="margin:0">Workflow <span class="lbl-hint">— nummerierte Schritte (1., 2., 3. …), Tools im Schritt benennen</span></label>
