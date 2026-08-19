@@ -6064,18 +6064,25 @@ async function openConnectedData(space) {
 }
 $('cd-back').addEventListener('click', () => { if (currentSpace) openSpaceHome(currentSpace) })
 
-$('cd-add').addEventListener('click', () => {
+$('cd-add').addEventListener('click', async () => {
   if (!currentSpace) return
+  const { is_admin } = await ownProfile()
   $('cdm-space').textContent = `„${currentSpace.name}“`
   $('cdm-access-hint').textContent = currentSpace.restricted
     ? 'Restricted · nur Mitglieder dieses Space'
     : 'Open · alle aktiven Accounts'
   const list = $('cdm-list')
   list.innerHTML = ''
+  // Team-Connections (z. B. BuchhaltungsButler, Attio) darf nur ein Admin zuordnen —
+  // die RLS erzwingt das serverseitig, der Picker bietet sie deshalb gar nicht erst an.
+  // Bereits zugeordnete bleiben sichtbar, damit ein Space-Owner sie abwählen kann.
   const entries = [
     ...Object.entries(CONNECTIONS),
     ...[...connectorDirectory.entries()]
-      .filter(([key, connector]) => currentSpace.connections.includes(key) || connector.owner === session.user.id || connector.visibility === 'team')
+      .filter(([key, connector]) =>
+        currentSpace.connections.includes(key)
+        || connector.owner === session.user.id
+        || (connector.visibility === 'team' && is_admin))
       .map(([key]) => [key, connectionInfo(key)]),
   ]
   for (const [key, c] of entries) {

@@ -330,6 +330,17 @@ test('marketplace connections stay dormant until an accessible Space activates t
     join(here, '../../supabase/migrations/20260717082825_space_scoped_connectors.sql'),
     'utf8'
   )
+  // Team-Connections (Finanz-/CRM-Daten) darf ausschließlich ein aktiver Admin einem
+  // Space zuordnen — sonst könnte jeder Account sie über einen eigenen Space aktivieren.
+  const attachMigration = readFileSync(
+    join(here, '../../supabase/migrations/20260819150000_team_connector_attach_admin_only.sql'),
+    'utf8'
+  )
+  const attachFn = attachMigration.match(/create or replace function private\.can_attach_connector[\s\S]*?\$\$;/)?.[0] || ''
+  assert.match(attachFn, /c\.owner = \(select auth\.uid\(\)\)/)
+  assert.match(attachFn, /p\.is_admin/)
+  assert.doesNotMatch(attachFn, /c\.visibility = 'team'/)
+  assert.match(frontendSource, /connector\.visibility === 'team' && is_admin/)
 
   assert.match(accessSource, /space_connections/)
   assert.match(accessSource, /!space\.restricted \|\| space\.created_by === userId \|\| memberOf\.has\(space\.id\)/)
